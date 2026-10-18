@@ -27,11 +27,18 @@ namespace PokerEngine
         public CardDuelState Before { get; }
         public CardDuelState State { get; }
         public IReadOnlyList<BattleSessionStep> Steps { get; }
+        public IReadOnlyList<BattleTimelineEntry> Timeline { get; }
         internal BattleSessionResult(CardDuelState before, CardDuelState state, CardDuelError error,
             IEnumerable<BattleSessionStep> steps)
         {
             Before = before; State = state; Error = error;
             Steps = Array.AsReadOnly(new List<BattleSessionStep>(steps).ToArray());
+            var timeline = new List<BattleTimelineEntry>();
+            if (error == CardDuelError.None)
+                for (int step = 0; step < Steps.Count; step++)
+                    foreach (var fact in Steps[step].Transition.Timeline)
+                        timeline.Add(fact.InBatch(timeline.Count, step));
+            Timeline = timeline.AsReadOnly();
         }
     }
 

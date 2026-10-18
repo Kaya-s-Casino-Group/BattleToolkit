@@ -65,6 +65,14 @@ graph TD
 
 主线战斗的 `BattleSession` 持有权威 CardDuelState，一次数据命令自动推进敌人队列及收牌到下一玩家决策点或终局，并返回有序、不可变的 `BattleSessionResult/Step`。补牌与洗牌顺序沿用 CardDuelEngine；所有步骤成功才提交。外部只提交 Start / Play / Discard / EndTurn，EnemyAction / CollectPlayed 是内部步骤。Session 不认识动画、场景对象或 Unity 时钟。
 
+`CardDuelTransition.Timeline` 和 `BattleSessionResult.Timeline` 额外提供有序、只读的 `BattleTimelineEntry`，保留原有 Steps / RuleEvents / Events / Draws。CardDuel 的序号属于本步骤，Session 合并为从 0 开始连续的批次 `Sequence`，并标记 `StepIndex`、`ActionId`、`Action`、`Actor` 和已提交选牌。任何步骤失败时，Session 不发布部分事实、不提交部分状态。
+
+时间线在真实结算位置记录 BattleStarted、PhaseStarted、PhaseEnding、PhaseEnded；因终局提前关闭已经进入的阶段时记录 PhaseClosed。BattleEnded 在该命令的规则和卡牌收尾完成后出现一次，开战直接终局不会虚构尚未进入的玩家阶段。稳定边界不要求存在周期状态或遗物，也不额外执行 CombatTiming、不增加权威 Revision 或消耗随机数。ActionStarted 表示接受的行动窗口；`IsActionSkipped` 在该窗口确实被控制跳过时对其所有事实为 true（包括 ActionStarted），并保留单独的 ActionSkipped 与原始跳过原因。不能把 EnemyAction 或 Damage 自动解释成普通攻击。
+
+每个 `entry.State` 是该事实后的完整中间快照，提供单位、状态、能量、遗物、阶段、卡牌区及随机状态；它不是整步最终状态。效果和状态基于原始不可变 RuleEvent 的明确 delta 逐项记录，保留 Provenance、父事件和多段身份。RelicActivated 在触发父事实之后、其子效果之前记录。CardsMoved / CardsDealt / DeckRecycled 提供具体 `Cards`、`CardOwner`、`FromZone`、`ToZone`、`DealTrigger` 与有序牌区快照。各卡牌记录保持既有算法顺序，例如出牌伤害先结算、随后实际移入 Played，再补牌；界面的提前飞行动作不能改写该事实顺序。
+
+这些中间快照只供投影与观察，不能拿来替换 Session 权威状态或提交命令。Revision 仍具有原来的规则含义，多个事实可以共享 Revision；表现顺序使用批次 Sequence。Preview 的临时时间线也不会自动发布给表现端。2D、3D、即时显示或外部前端均通过自己的适配器读取事实，规则程序集不引用任何动作、信号、场景或动画工具。专项验证入口为 `bash Tools/test-poker-engine.sh BattleTimelineTests`。
+
 `BattleHost` 是普通 C# 的通用会话生命周期入口：通过工厂委托创建或重开，接入已有会话，并统一同步表现；不引用 Unity、配置资产或场景类型。
 
 `IBattleSessionPresentation` 是 2D / 3D 共用表现端口：Initialize / Present / IsPresenting / Synchronize。纯 `BattleSessionPlayback` 把命令交给 Session，再把批次派发给端口；本地播放门禁只在此层，不进入 Session。当前 SingleBattleHost 实现 3D 端口，规则状态与展示快照分开；同步和动画完成不触发规则。使用方式和职责见 Unity 主工程中的 SingleBattle 模块说明。
