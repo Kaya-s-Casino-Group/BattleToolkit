@@ -1,0 +1,89 @@
+name: Standalone battle toolkit
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rules-and-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Battle Toolkit 策划
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Battle Toolkit 策划
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check macOS launcher in a path containing spaces and Chinese
+        if: runner.os == 'macOS'
+        run: bash start.command --check
+      - name: Check Windows cmd launcher in a path containing spaces and Chinese
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: start.cmd --check
+      - name: Test shared engine without Unity
+        run: dotnet test Tests/BattleToolkit.Tests.csproj --configuration Release --logger "trx;LogFileName=rules.trx"
+      - name: Test compiler, sessions and HTTP contracts
+        run: python -m unittest discover -s Tools/BattleContentEditor/tests -p "test_*.py" -v
+      - name: Test dependency bootstrap behavior
+        run: python -m unittest discover -s Tests -p "test_*.py" -v
+      - name: Install browser test dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Test configuration forms and interactive battle UI
+        run: python Tools/BattleContentEditor/tests/run_browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rule-tests-${{ matrix.os }}
+          path: Battle Toolkit 策划/Tests/TestResults/*.trx
+
+  first-launch:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Battle Toolkit 策划
+    env:
+      BATTLE_TOOLKIT_LOCAL_SDK: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Battle Toolkit 策划
+      - name: Download a private SDK and verify macOS startup
+        if: runner.os == 'macOS'
+        run: bash start.command --check
+      - name: Download a private SDK and verify Windows startup
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: start.cmd --check
+      - name: Verify installed SDK on macOS
+        if: runner.os == 'macOS'
+        run: .runtime/dotnet/dotnet --info
+      - name: Verify installed SDK on Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: .runtime\dotnet\dotnet.exe --info

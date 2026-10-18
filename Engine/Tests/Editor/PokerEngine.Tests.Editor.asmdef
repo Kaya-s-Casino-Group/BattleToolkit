@@ -1,0 +1,24 @@
+{
+  "name": "PokerEngine.Tests.Editor",
+  "rootNamespace": "PokerEngine.Tests",
+  "references": [
+    "PokerEngine.Core",
+    "PokerEngine.Abilities",
+    "PokerEngine.Scoring",
+    "PokerEngine.Holdem",
+    "PokerEngine.Draw",
+    "PokerEngine.Runs",
+    "PokerEngine.Composition",
+    "PokerEngine.Progression",
+    "PokerEngine.Encounters",
+    "PokerEngine.Combat"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false,
+  "noEngineReferences": false
+}

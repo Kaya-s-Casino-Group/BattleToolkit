@@ -1,0 +1,14 @@
+{
+  "name": "PokerEngine.Runs",
+  "rootNamespace": "PokerEngine",
+  "references": [
+    "PokerEngine.Core",
+    "PokerEngine.Abilities",
+    "PokerEngine.Scoring"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

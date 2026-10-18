@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>战斗内容工坊 · XML 配置</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/playtest.css"></head>
+<body>
+<header class="topbar"><div class="brand"><span class="brand-icon">♠</span><div><strong>战斗内容工坊</strong><small>CONTENT WORKSHOP / 本地配置</small></div></div><div class="toolbar"><button id="new-pack">新建内容包</button><button id="import">导入 XML</button><button id="save">保存草稿</button><button id="validate">校验内容</button><button id="export" class="primary">导出 XML ↗</button></div></header>
+<div id="notice" role="status" aria-live="polite"></div>
+<div id="restore-banner" hidden class="restore"></div>
+<div class="workspace"><aside class="sidebar"><div class="side-title"><span>内容目录</span><button id="pack-settings" class="icon-button" title="编辑内容包">⚙</button></div><input id="search" type="search" placeholder="搜索名称或 ID…" aria-label="搜索配置"><nav id="navigation" aria-label="配置目录"></nav><div class="side-footer"><span id="connection">连接校验器…</span><small id="save-state">尚未保存草稿</small></div></aside>
+<main><div class="page-heading"><div><div id="breadcrumb" class="eyebrow">内容包</div><h1 id="title">正在加载配置工具…</h1><p id="subtitle">正在连接本机规则校验服务</p></div><div class="page-actions"><button id="undo" title="撤销 Ctrl/⌘ Z">撤销</button><button id="redo">重做</button><button id="duplicate">复制</button><button id="delete" class="danger">删除</button></div></div>
+<div class="view-tabs"><button id="form-tab" class="active">配置表单</button><button id="xml-tab">XML 预览</button><button id="playtest-tab">对局试玩</button><span id="pack-summary"></span></div><div id="editor"></div><section id="xml-view" hidden><p>编辑 XML 后点击“应用修改”。导入失败不会覆盖当前内容。</p><textarea id="xml-source" spellcheck="false" aria-label="XML 源码"></textarea><div class="row"><button id="apply-xml" class="primary">校验并应用修改</button><button id="reset-xml">恢复当前内容</button><button id="raw-download">下载当前 XML 草稿</button></div></section>
+<section id="playtest-view" hidden aria-label="对局试玩"></section>
+<section class="diagnostics"><div class="diagnostic-heading"><h2>内容校验 <span id="validation-state" class="badge">尚未校验</span></h2><button id="show-all">显示全部问题</button></div><p class="muted">检查所选配置是否存在、效果能否使用、状态持续时间以及对局配置是否完整。</p><div id="issues" aria-live="polite"></div></section></main>
+<aside class="inspector"><div class="eyebrow">当前配置</div><h2>说明与关联配置</h2><div id="context"></div><section class="help-card"><h3>先配置，再校验</h3><p>空白可选字段沿用规则默认值。修改类型时，不适用字段会保留供你检查。</p><p>草稿允许有错误；正式 XML 导出前必须通过规则校验。</p><p>“对局试玩”使用当前配置在本机运行规则。配置修改后重开生效。</p></section><button id="example">载入功能示例</button><button id="backup">下载草稿备份</button><label class="file-label">恢复草稿备份<input id="backup-file" type="file" accept=".json,application/json"></label></aside></div>
+<input id="xml-file" type="file" accept=".xml,text/xml,application/xml" hidden>
+<dialog id="modal"><form method="dialog"><div id="modal-body"></div><div class="dialog-actions"><button value="cancel">取消</button><button id="modal-confirm" value="confirm" class="primary">确认</button></div></form></dialog>
+<script type="module" src="/app.js"></script>
+</body></html>

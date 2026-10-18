@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>PokerEngine.Composition</AssemblyName><RootNamespace>PokerEngine</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Engine/Runtime/Composition/**/*.cs" />
+    <ProjectReference Include="../PokerEngine.Core/PokerEngine.Core.csproj" />
+    <ProjectReference Include="../PokerEngine.Abilities/PokerEngine.Abilities.csproj" />
+    <ProjectReference Include="../PokerEngine.Scoring/PokerEngine.Scoring.csproj" />
+    <ProjectReference Include="../PokerEngine.Holdem/PokerEngine.Holdem.csproj" />
+    <ProjectReference Include="../PokerEngine.Draw/PokerEngine.Draw.csproj" />
+    <ProjectReference Include="../PokerEngine.Runs/PokerEngine.Runs.csproj" />
+    <ProjectReference Include="../PokerEngine.Progression/PokerEngine.Progression.csproj" />
+    <ProjectReference Include="../PokerEngine.Encounters/PokerEngine.Encounters.csproj" />
+    <ProjectReference Include="../PokerEngine.Combat/PokerEngine.Combat.csproj" />
+  </ItemGroup>
+</Project>

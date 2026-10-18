@@ -1,0 +1,14 @@
+.runtime/
+**/bin/
+**/obj/
+**/node_modules/
+**/__pycache__/
+*.pyc
+**/TestResults/
+**/playwright-report/
+**/test-results/
+.DS_Store
+.idea/
+.vs/
+*.user
+*.suo

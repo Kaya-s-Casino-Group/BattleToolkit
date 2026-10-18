@@ -1,0 +1,10 @@
+{
+  "name": "PokerEngine.Core",
+  "rootNamespace": "PokerEngine",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

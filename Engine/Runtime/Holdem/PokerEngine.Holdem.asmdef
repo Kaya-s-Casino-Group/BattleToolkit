@@ -1,0 +1,13 @@
+{
+  "name": "PokerEngine.Holdem",
+  "rootNamespace": "PokerEngine",
+  "references": [
+    "PokerEngine.Core",
+    "PokerEngine.Abilities"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

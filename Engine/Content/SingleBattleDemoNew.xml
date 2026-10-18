@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 场景规则内容：策划案 revision 1277。通过 HTML 配置工具导入本文件修改；旧 SO 不再参与本场景开战。 -->
+<!-- 未定案的牌型系数、状态和遗物数值均为可调测试值，不代表正式平衡。角色生命/敌人伤害等沿用旧场景。 -->
+<BattleContent schemaVersion="1" id="single-battle-new-content" name="单局战斗·策划规则测试" version="single-battle.xml.1">
+  <ScoringProfiles>
+    <!-- 精确抄录 SingleBattleRules.scoring 指向的 DefaultPokerScore.asset（guid 6e557c2965504c1789ae21437c604b3c）。 -->
+    <Scoring id="single-battle-score" name="现有场景计分表" version="score.balatro.1">
+      <Hand category="HighCard" points="5" multiplier="1" pointsPerLevel="10" multiplierPerLevel="1"/>
+      <Hand category="OnePair" points="10" multiplier="2" pointsPerLevel="15" multiplierPerLevel="1"/>
+      <Hand category="TwoPair" points="20" multiplier="2" pointsPerLevel="20" multiplierPerLevel="1"/>
+      <Hand category="ThreeOfAKind" points="30" multiplier="3" pointsPerLevel="20" multiplierPerLevel="2"/>
+      <Hand category="Straight" points="30" multiplier="4" pointsPerLevel="30" multiplierPerLevel="3"/>
+      <Hand category="Flush" points="35" multiplier="4" pointsPerLevel="15" multiplierPerLevel="2"/>
+      <Hand category="FullHouse" points="40" multiplier="4" pointsPerLevel="25" multiplierPerLevel="2"/>
+      <Hand category="FourOfAKind" points="60" multiplier="7" pointsPerLevel="30" multiplierPerLevel="3"/>
+      <Hand category="StraightFlush" points="100" multiplier="8" pointsPerLevel="40" multiplierPerLevel="4"/>
+      <Hand category="FiveOfAKind" points="120" multiplier="12" pointsPerLevel="35" multiplierPerLevel="3"/>
+      <CardPoints>
+        <Rank rank="Two" points="2"/><Rank rank="Three" points="3"/><Rank rank="Four" points="4"/>
+        <Rank rank="Five" points="5"/><Rank rank="Six" points="6"/><Rank rank="Seven" points="7"/>
+        <Rank rank="Eight" points="8"/><Rank rank="Nine" points="9"/><Rank rank="Ten" points="10"/>
+        <Rank rank="Jack" points="10"/><Rank rank="Queen" points="10"/><Rank rank="King" points="10"/><Rank rank="Ace" points="11"/>
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <BattleRules>
+    <Rules id="single-battle-rules" name="单局共享规则" scoringRef="single-battle-score" roundLimit="20" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16"/>
+  </BattleRules>
+  <Statuses>
+    <!-- 先施加免控，阻止之后到来的控制；不实现事后清除负面状态。 -->
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1"><BlockActionWindow/></Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy"><PreventStatusApplication tags="Control"/></Status>
+    <!-- DoT 为独立实例，每段命中各附加一份；每份触发两次，不做层数衰减。 -->
+    <Status id="bleed" name="流血·行动后2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="ActionCompleted" amount="2" target="Self"/></Status>
+    <Status id="poison" name="中毒·己方阶段末2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="PhaseEnding" amount="2" target="Self"/></Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved"><ReflectBlockedDamage ratio="1" target="EventSource"/></Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved"><OverhealDamage ratio="1" target="Opponents" selection="FirstLiving"/></Status>
+    <!-- 供后续遗物选用；同花基础恢复来自筹码，不默认叠加按实际伤害吸血。 -->
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved"><LifeSteal ratio="0.2" target="Self"/></Status>
+  </Statuses>
+  <HandRules>
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.test.1">
+      <!-- 伤害系数为策划填表前的测试值；一对/两对的高伤由现有计分表体现。 -->
+      <Hand category="HighCard"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
+      <Hand category="OnePair"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
+      <Hand category="TwoPair"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
+      <Hand category="ThreeOfAKind"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving"/></Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving"/>
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving"/>
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving"/>
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/>
+        <Effect id="heal" kind="Heal" amountKind="ScorePointsScale" amount="0.2" target="Self"/>
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving"/>
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self"/>
+      </Hand>
+      <Hand category="FourOfAKind"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving"/></Hand>
+      <!-- 普通同花顺和五条未单列策划技能，显式保留单体伤害兼容项，供策划后续替换。 -->
+      <Hand category="StraightFlush" variant="Ordinary"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
+      <Hand category="StraightFlush" variant="Royal"><Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving"/></Hand>
+      <Hand category="FiveOfAKind"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
+    </HandRule>
+  </HandRules>
+  <Relics>
+    <!-- 三条流派仅供可选测试编成使用，默认编成不装备任何遗物。以下数值全部可调。 -->
+    <Relic id="straight-dot" name="测试·顺子流血中毒" version="straight-dot.test.1">
+      <FactTrigger id="bleed-per-hit" timing="DamageSettled" relation="OwnerIsSource" occurrence="PerEvent" origins="Primary">
+        <Conditions><HandIs category="Straight"/></Conditions><Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget"/>
+      </FactTrigger>
+      <FactTrigger id="poison-per-hit" timing="DamageSettled" relation="OwnerIsSource" occurrence="PerEvent" origins="Primary">
+        <Conditions><HandIs category="Straight"/></Conditions><Effect kind="ApplyStatus" statusRef="poison" target="EventTarget"/>
+      </FactTrigger>
+    </Relic>
+    <Relic id="discard-reflect" name="测试·弃牌盾反" version="discard-reflect.test.1">
+      <BoundaryTrigger id="opening-reflect" timing="BattleStarted"><Effect kind="ApplyStatus" statusRef="shield-reflect" target="Self"/></BoundaryTrigger>
+    </Relic>
+    <Relic id="flush-overheal" name="测试·同花治疗与溢疗转伤" version="flush-overheal.test.1">
+      <Numeric id="flush-heal-rate" stat="HealingDone" operation="AddRate" value="0.5" origins="Primary" hand="Flush"/>
+      <BoundaryTrigger id="opening-overheal" timing="BattleStarted"><Effect kind="ApplyStatus" statusRef="overheal-damage" target="Self"/></BoundaryTrigger>
+    </Relic>
+  </Relics>
+  <!-- 共享3点能量，出牌弃牌各1点，出弃后立即补至8张。有限弃牌为整场3次，不是每回合刷新。 -->
+  <Players><Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="false" maxPlayCards="5" maxDiscardCards="5" playRefill="AfterAction" discardRefill="AfterAction" discardBlockPerCard="8"/></Players>
+  <Enemies><Enemy id="guardian" name="守卫·固定伤害测试" maxHealth="1200" initialBlock="0" damage="240"/></Enemies>
+  <Decks><Deck id="standard-deck" name="标准52张牌">
+    <Card id="standard-1-2" face="standard:1:2"/>
+    <Card id="standard-1-3" face="standard:1:3"/>
+    <Card id="standard-1-4" face="standard:1:4"/>
+    <Card id="standard-1-5" face="standard:1:5"/>
+    <Card id="standard-1-6" face="standard:1:6"/>
+    <Card id="standard-1-7" face="standard:1:7"/>
+    <Card id="standard-1-8" face="standard:1:8"/>
+    <Card id="standard-1-9" face="standard:1:9"/>
+    <Card id="standard-1-10" face="standard:1:10"/>
+    <Card id="standard-1-11" face="standard:1:11"/>
+    <Card id="standard-1-12" face="standard:1:12"/>
+    <Card id="standard-1-13" face="standard:1:13"/>
+    <Card id="standard-1-14" face="standard:1:14"/>
+    <Card id="standard-2-2" face="standard:2:2"/>
+    <Card id="standard-2-3" face="standard:2:3"/>
+    <Card id="standard-2-4" face="standard:2:4"/>
+    <Card id="standard-2-5" face="standard:2:5"/>
+    <Card id="standard-2-6" face="standard:2:6"/>
+    <Card id="standard-2-7" face="standard:2:7"/>
+    <Card id="standard-2-8" face="standard:2:8"/>
+    <Card id="standard-2-9" face="standard:2:9"/>
+    <Card id="standard-2-10" face="standard:2:10"/>
+    <Card id="standard-2-11" face="standard:2:11"/>
+    <Card id="standard-2-12" face="standard:2:12"/>
+    <Card id="standard-2-13" face="standard:2:13"/>
+    <Card id="standard-2-14" face="standard:2:14"/>
+    <Card id="standard-3-2" face="standard:3:2"/>
+    <Card id="standard-3-3" face="standard:3:3"/>
+    <Card id="standard-3-4" face="standard:3:4"/>
+    <Card id="standard-3-5" face="standard:3:5"/>
+    <Card id="standard-3-6" face="standard:3:6"/>
+    <Card id="standard-3-7" face="standard:3:7"/>
+    <Card id="standard-3-8" face="standard:3:8"/>
+    <Card id="standard-3-9" face="standard:3:9"/>
+    <Card id="standard-3-10" face="standard:3:10"/>
+    <Card id="standard-3-11" face="standard:3:11"/>
+    <Card id="standard-3-12" face="standard:3:12"/>
+    <Card id="standard-3-13" face="standard:3:13"/>
+    <Card id="standard-3-14" face="standard:3:14"/>
+    <Card id="standard-4-2" face="standard:4:2"/>
+    <Card id="standard-4-3" face="standard:4:3"/>
+    <Card id="standard-4-4" face="standard:4:4"/>
+    <Card id="standard-4-5" face="standard:4:5"/>
+    <Card id="standard-4-6" face="standard:4:6"/>
+    <Card id="standard-4-7" face="standard:4:7"/>
+    <Card id="standard-4-8" face="standard:4:8"/>
+    <Card id="standard-4-9" face="standard:4:9"/>
+    <Card id="standard-4-10" face="standard:4:10"/>
+    <Card id="standard-4-11" face="standard:4:11"/>
+    <Card id="standard-4-12" face="standard:4:12"/>
+    <Card id="standard-4-13" face="standard:4:13"/>
+    <Card id="standard-4-14" face="standard:4:14"/>
+  </Deck></Decks>
+  <Loadouts>
+    <Loadout id="baseline" name="默认·无遗物" deckRef="standard-deck"/>
+    <Loadout id="dot-build" name="可选·顺子DoT" deckRef="standard-deck"><Relic instanceId="straight-dot" ref="straight-dot"/></Loadout>
+    <Loadout id="reflect-build" name="可选·弃牌盾反" deckRef="standard-deck"><Relic instanceId="discard-reflect" ref="discard-reflect"/></Loadout>
+    <Loadout id="overheal-build" name="可选·同花溢疗" deckRef="standard-deck"><Relic instanceId="flush-overheal" ref="flush-overheal"/></Loadout>
+  </Loadouts>
+  <Encounters>
+    <Encounter id="single-battle-new" name="默认·策划基础规则" rulesRef="single-battle-rules"><Player id="player" ref="hero" loadoutRef="baseline"/><Enemy id="enemy" ref="guardian"/></Encounter>
+    <Encounter id="single-battle-dot" name="可选测试·顺子DoT" rulesRef="single-battle-rules"><Player id="player" ref="hero" loadoutRef="dot-build"/><Enemy id="enemy" ref="guardian"/></Encounter>
+    <Encounter id="single-battle-reflect" name="可选测试·弃牌盾反" rulesRef="single-battle-rules"><Player id="player" ref="hero" loadoutRef="reflect-build"/><Enemy id="enemy" ref="guardian"/></Encounter>
+    <Encounter id="single-battle-overheal" name="可选测试·同花溢疗" rulesRef="single-battle-rules"><Player id="player" ref="hero" loadoutRef="overheal-build"/><Enemy id="enemy" ref="guardian"/></Encounter>
+  </Encounters>
+</BattleContent>

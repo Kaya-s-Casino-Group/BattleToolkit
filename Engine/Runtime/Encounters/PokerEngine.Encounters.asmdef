@@ -1,0 +1,7 @@
+{
+  "name": "PokerEngine.Encounters",
+  "rootNamespace": "PokerEngine",
+  "references": ["PokerEngine.Core"],
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

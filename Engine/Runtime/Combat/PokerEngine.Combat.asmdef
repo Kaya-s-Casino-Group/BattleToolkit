@@ -1,0 +1,6 @@
+{
+  "name": "PokerEngine.Combat",
+  "rootNamespace": "PokerEngine",
+  "references": ["PokerEngine.Core", "PokerEngine.Abilities"],
+  "noEngineReferences": true
+}

@@ -1,0 +1,100 @@
+# XML 战斗内容 v1
+
+本目录是纯规则层的内容入口。XML 文本 → 不可变来源树 → 统一校验/类型化内容 → 既有 CardDuelEngine / BattleSession。读取器只接收字符串；文件选择、读写、HTML 表单和 Unity 资产属于宿主。`SingleBattleDemoNew` 宿主现已消费独立的场景内容 XML；其他场景和旧 SO 入口继续保留，纯规则包不引用 Unity。
+
+[完整示例](Examples/battle-content.xml) 展示所有配置目录的连接方式，数值仅用于格式与功能演示，不是正式平衡配置。
+
+## 入口与提交边界
+
+```csharp
+var build = BattleContentCompiler.CompileXml(xmlText, "battle-content.xml");
+if (!build.Success) { /* 展示 build.Diagnostics，不能运行部分内容 */ }
+else
+{
+    var result = BattleContentFactory.Create(build.Content,
+        new BattleSetupRequest("example-fight", "battle-001", randomState));
+    if (result.Success)
+    {
+        var session = result.Session; // 未 Start；没有执行开战触发或发牌
+        var started = session.Execute(session.State.Revision,
+            new ParticipantId("p"), CardDuelAction.Start);
+    }
+}
+```
+
+也可分别调用 `BattleContentXmlReader.Read` 和 `BattleContentCompiler.Compile(source)`，便于工具保留原始位置。编译与组装结果均包含 Success、Diagnostics；任何 Error 时 Content/Session 为 null，Warning 不阻止编译。诊断携带 Code、Severity、Message、SourceName/Line/Column/Path，以及可用时的 DefinitionId、FieldPath。独立定义错误尽量一次收集；一个定义内依赖失败后不继续制造级联错误。位置精确到 XML 元素，属性错误附带字段名；组合错误定位编成并注明相关参与者/遗物/步骤。
+
+`CompiledBattleContent` 保存类型化只读字典；定义与局内状态分离。Factory 复制玩家规则和构筑状态，每个参与者获得独立遗物身份、次数、冷却与记忆。随机状态必须显式传入；创建时沿用旧洗牌规则，但不修改调用方的 RandomState、不执行 Start。同一配置、对局 ID、初始随机状态产生相同初始对局。
+
+编译阶段也走真实创建路径校验每个编成，但不 Start、不结算效果、不消耗遗物。运行中的溢出、触发队列上限、死亡目标、费用、补牌与整体事务提交继续由现有引擎负责。编译通过不表示任何运行状态下都不可能溢出，也不代替对局/平衡测试。
+
+## 配置归属
+
+根为 `<BattleContent schemaVersion="1" id="..." version="...">`。每个目录至多一次；目录可省略，适合先编辑内容草稿。目录内 ID 唯一、大小写敏感；跨目录通过明确的类型引用，不隐式查找同名内容。
+
+| 目录 / 子项 | 拥有的数据 | 引用与边界 |
+| --- | --- | --- |
+| ScoringProfiles / Scoring | 全部牌型基础分、倍率、升级增量、单牌分值 | 公共计分；不含玩家当前等级 |
+| BattleRules / Rules | 回合上限、清盾规则、触发队列限制 | scoringRef；共享状态目录；不含角色属性 |
+| HandRules / HandRule | 各牌型的有序效果与稳定步骤 ID | ApplyStatus 引用状态；不含遗物实例 |
+| Statuses / Status | 标签、默认期限、重复施加策略、行为列表 | 行为参数内联；不配置局内剩余期限 |
+| Relics / Relic | 获取/升级约束、四类能力、共享触发预算 | 引用状态和牌型步骤；不持有局内使用次数 |
+| Players / Player | 基础生命/护盾、个人行动与补牌规则、伤害/目标策略 | 可选 handRuleRef；不含当前血量或构筑 |
+| Enemies / Enemy | 基础属性、固定伤害或固定效果序列 | 引用状态；本期没有敌人轮换 AI 脚本 |
+| Decks / Deck | 卡牌来源 ID、标准牌面、卡牌效果、失效标志 | 定义初始牌组；不定义洗牌后的手牌/牌区 |
+| Loadouts / Loadout | 初始牌组、牌型等级、遗物实例初始值 | deckRef 可省略；Relic.ref；不定义敌人 |
+| Encounters / Encounter | 规则集、阵容顺序、参与者 ID、当前血量覆盖 | rulesRef、Player.ref/loadoutRef、Enemy.ref |
+
+章节与独立定义可前向引用，解析顺序由编译器控制。编成参与者 ID 必须全局唯一；遗物 instanceId 在构筑内唯一，组装时按参与者生成不冲突的局内 ID。角色模板不因 initialHealth 覆盖而改变。
+
+根和多数定义允许可选 name，供外部工具显示。XML 不持有图片、特效、动画、Unity 类型名或脚本路径。当前是单个内容包，不处理外部文件 include、跨包合并、覆盖顺序或热更新迁移；这些行为不能通过未知字段暗中启用。
+
+## 主要字段与默认值
+
+- `Scoring preset="Default"` 使用现有 ScoreProfile.Default，不能同时填写自定义版本/子项。自定义 Scoring 必须有十类 Hand（category、points、multiplier 必填；pointsPerLevel 默认 10、multiplierPerLevel 默认 1）。可选 CardPoints 内需要十三个 Rank（rank/points），可追加 Face（rank/suit/points）覆盖；缺省整个表沿用既有单牌分值。
+- `Rules`：scoringRef 必填；roundLimit 默认 20，blockExpiry 默认 Retain；maxReactionEffects 默认 256、maxReactionDepth 默认 16。可选 version 默认继承包版本。
+- `Player`：maxHealth=100、initialBlock=0、maxEnergy=3、initialEnergy=3、playEnergyCost=1、discardEnergyCost=1、handSize=8、discards=3、unlimitedDiscards=false、maxPlayCards=5、maxDiscardCards=5。playRefill=NextPlayerTurn、discardRefill=AfterAction。缺省弃牌收益为空；显式 discardBlockPerCard 启用既有按张护盾。未设置 handRuleRef 时仍为 EqualScoreDamageRule；可选 pointsPerDamage 使用旧除法伤害规则，不能与 handRuleRef 同时配置。现有引擎的手牌选择上限/初始能量处理语义不变。
+- 双方模板可配 attackMultiplier/attackFlat、incomingMultiplier/incomingFlat、attackTarget/allowRequestedTargets；未填写时使用现有默认策略。单步目标仍由效果自己配置；ActorPolicy 才委托给角色目标策略。本期 XML 未开放独立 supportTarget 字段，沿用现有默认友方策略；需要自动选定友方时可直接配置效果的 Allies/selection。
+- `Enemy`：maxHealth=100、initialBlock=0；缺省 damage=0。damage 与子项 Effects 互斥，Effects 内每个 Effect 必须有稳定 id。敌人序列只支持常量，不支持手动 Requested 目标。
+- `Deck/Card`：id 是来源 ID，face 是现有标准牌面 ID（例如 standard:1:2，梅花 2），effects 为 CardEffects 的枚举名称或逗号组合，disabled 默认 false。来源 ID 不同可以引用同一牌面。目录验证 1–512 张和来源 ID 唯一；实际编成还验证有效手牌上限所需牌数。
+- `Loadout`：deckRef 省略时使用既有标准 52 张牌组。HandLevel 要求 category/level，省略类别默认 1 级。Relic 要求 instanceId/ref，level=1、growth=0、cooldownRounds=0；charges 省略继承遗物定义，未限次遗物不能填有限 charges。实例参数不能越过定义的等级/拷贝约束。
+- `Encounter`：rulesRef 必填。Player 子项要求 id/ref，可选 loadoutRef、initialHealth；Enemy 子项要求 id/ref。参与者数量、重复 ID 和初始血量通过现有组装检查。
+
+## 效果、目标和状态
+
+HandRule 中每类 Hand 必须覆盖且不能重叠。同花顺可用单个 Any 分支统一行为，或分别配置 Ordinary/Royal；其他类别只允许 Any。每个分支有 1–64 个步骤，id 只需在本分支唯一，效果顺序影响结算。
+
+Effect.kind 仅允许 Damage、Heal、GainBlock、ApplyStatus、Eliminate。前三者必须显式填写 amount：默认 amountKind=Constant（非负整数），牌型效果另外支持 ScoreTotalScale / ScorePointsScale（非负十进制系数，乘以权威总分/Points 后向下取整、检查溢出）。这是封闭表达式集合，不执行自由公式或代码。ApplyStatus 要求 statusRef，可填 stacks（默认 1）及期限覆盖；Eliminate 不接受数值/状态字段。当前类型无关的字段会报错，而不是读取后忽略。
+
+主效果目标默认 Opponents/FirstLiving；可选 Self、Opponents、Allies，selection 可选 FirstLiving、LowestHealth、HighestHealth、AllLiving、Requested、ActorPolicy（组合限制复用 EffectTargetSpec）。Requested 可配 requestSlot。AOE 是 selection=AllLiving，与能力类型解耦；Heal 若要治疗自己须明确 target=Self，不按效果类型推测目标。
+
+自动触发使用 CombatTargetSpec，可配置 Self、Opponents、Allies、EventSource、EventTarget、EventActor；后面三者仅在相应事实存在的入口使用。EventActor 仅供行动完成触发；边界没有事件来源/目标，不允许借用。自动触发不接收 Requested/requestSlot。遗物触发目标默认 Self；盾反默认 EventSource、吸血默认 Self、溢出治疗转伤默认 Opponents、周期伤害默认 Self。
+
+Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 为 ActionCompleted（流血）或 PhaseEnding（中毒）。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances。控制免疫是 PreventStatusApplication 的提前状态，不是事后移除眩晕。
+
+## 遗物四类能力
+
+遗物内部条目 id 跨四类能力和全部触发列表唯一，最多 32 项。配置复用 BattleRelicRules，XML 不引入另一套叠加或排序规则。
+
+| 子项 | 字段和用途 |
+| --- | --- |
+| Numeric | id/stat/operation/value；stat 为伤害、治疗、护盾的施加方/接收方；operation 为 AddFlat/AddRate；origins 默认 Primary，可填逗号列表；可选 hand 限定牌型 |
+| HandModifier | id/category/operation；AppendEffect 追加一个含目标的 Effect；ReplaceEffect 用 stepId 替换无目标 Effect；AddHits 用 stepId/hits；ChangeTarget 用 stepId/target/selection/requestSlot |
+| RuleValue | id/key/delta：能量上限、初始能量、出牌/弃牌费用、手牌上限的整数修正 |
+| Refill | id/timing，及可选 mode/fixedCount/delta：沿用既有补牌修正规则 |
+| FactTrigger | id/timing；可选 relation/occurrence/origins/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
+| BoundaryTrigger | id/timing；可选 phase/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
+| ActionTrigger | id/timing；可选 relation/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
+| Budget | 共享 maxUsesPerAction/maxUsesPerRound/maxUsesPerBoundary，chargeCost 默认 1、cooldownRounds 默认 0；每件遗物最多一个 |
+
+Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasStatus、EventStatus、HandIs、SubmittedCardsAtLeast、DiscardedCardsAtLeast。事实时机/行动种类不可提供的条件会拒绝。触发 Effect 不填步骤 id，由触发条目标识；这里仅接受常量。固定修正和百分比修正仍按既有公式 `base × (1 + Σrate) + Σflat`，沿用既有取整与上下限。
+
+结构修正先检查遗物之间替换/目标冲突，再结合实际编成的牌型分支校验：加段数只命中原始及替换后都为 Damage 的步骤，展开结果不能超过 64 步。某个 stepId 在该类别的全部分支均不存在时给出 Warning；允许皇家分支没有普通同花顺的伤害步骤。未装备的遗物不会被任意玩家模板套用。
+
+## 格式、指纹与扩展
+
+数值使用 invariant culture，十进制小数点为 `.`；布尔仅 true/false；枚举使用精确名称，不接受数字或大小写猜测。未知元素/属性、无效或不适用字段、重复 ID、断引用全部报错。只允许数据属性和空白正文；注释可用。读取上限为 1,048,576 字符、32 层、20,000 元素、每元素 64 属性；禁止 DTD、外部实体、命名空间、处理指令，不加载文件或网络资源。
+
+编译结果提供 SchemaVersion、RulesContractVersion、包 Id/Version 和 SHA-256 Fingerprint。指纹忽略注释、排版空白、属性顺序、name/explanation，以及根章节和独立定义排列顺序；保留效果、阵容、牌组、构筑等子项的语义顺序。缺省字段与显式默认值、等值数字的不同写法仍可能产生不同指纹，本期不承诺完全语义归一化。它用于内容包身份，不能替代已有对局快照/绑定指纹；未改动旧存档 schema 或旧绑定算法。
+
+需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。

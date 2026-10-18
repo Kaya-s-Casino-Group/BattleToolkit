@@ -1,0 +1,8 @@
+{
+  "name": "battle-content-editor",
+  "private": true,
+  "version": "1.0.0",
+  "description": "本地 XML 战斗配置工具；运行无需 npm 依赖",
+  "scripts": { "test:browser": "node tests/browser.cjs", "test:playtest": "node tests/playtest-browser.cjs" },
+  "devDependencies": { "playwright": "1.62.1" }
+}

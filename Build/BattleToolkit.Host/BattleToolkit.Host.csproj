@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>BattleToolkit.Host</AssemblyName>
+    <RootNamespace>BattleToolkit</RootNamespace>
+    <StartupObject>NativeServer</StartupObject>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Tools/BattleContentEditor/*.cs" />
+    <ProjectReference Include="../PokerEngine.Composition/PokerEngine.Composition.csproj" />
+  </ItemGroup>
+</Project>

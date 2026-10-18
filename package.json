@@ -1,0 +1,14 @@
+{
+  "name": "battle-toolkit-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "独立战斗内容工具；Node.js 仅用于浏览器回归测试",
+  "scripts": {
+    "test:browser": "node Tools/BattleContentEditor/tests/browser.cjs",
+    "test:playtest": "node Tools/BattleContentEditor/tests/playtest-browser.cjs",
+    "test:web": "npm run test:browser && npm run test:playtest"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

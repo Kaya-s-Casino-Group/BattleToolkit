@@ -1,0 +1,20 @@
+{
+  "name": "PokerEngine.Composition",
+  "rootNamespace": "PokerEngine",
+  "references": [
+    "PokerEngine.Core",
+    "PokerEngine.Abilities",
+    "PokerEngine.Scoring",
+    "PokerEngine.Holdem",
+    "PokerEngine.Draw",
+    "PokerEngine.Runs",
+    "PokerEngine.Progression",
+    "PokerEngine.Encounters",
+    "PokerEngine.Combat"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

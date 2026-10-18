@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>PokerEngine.Core</AssemblyName><RootNamespace>PokerEngine</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Engine/Runtime/Core/**/*.cs" />
+  </ItemGroup>
+</Project>

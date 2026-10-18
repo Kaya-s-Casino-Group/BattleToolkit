@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>PokerEngine.Encounters</AssemblyName><RootNamespace>PokerEngine</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Engine/Runtime/Encounters/**/*.cs" />
+    <ProjectReference Include="../PokerEngine.Core/PokerEngine.Core.csproj" />
+  </ItemGroup>
+</Project>
