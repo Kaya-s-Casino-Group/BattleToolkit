@@ -38,6 +38,10 @@ python3 -m unittest discover -s Tests -p 'test_bootstrap.py' -v
 
 Windows 对应 `start.cmd --check`、`powershell -File Tools/test-poker-engine.ps1`。浏览器回归在本机服务启动后运行 `npm ci`、`npx playwright install chromium`、`npm run test:browser` 和 `npm run test:playtest`。CI 在 Windows/macOS 验证独立构建、规则、HTTP、浏览器以及首次安装入口。
 
+## 日常协作
+
+策划改 XML、程序改规则、Unity 接入与回退的完整步骤见 [两个仓库的日常协作](COLLABORATION.md)。小仓库先提交/推送，主工程再提交采用的子模块版本。
+
 ## Unity 主工程集成
 
 主工程使用 Git submodule 固定本仓库提交，路径 `External/BattleToolkit`；`Packages/manifest.json` 引用 `file:../External/BattleToolkit/Engine`，并在 `testables` 中列出 `com.kaya.battle-engine`。场景 XML 的 Unity 路径为 `Packages/com.kaya.battle-engine/Content/SingleBattleDemoNew.xml`。

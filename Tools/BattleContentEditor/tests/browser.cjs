@@ -11,7 +11,9 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
  let passes=0;const test=async(name,fn)=>{await fn();passes++;console.log('PASS '+name);};
  const confirm=()=>page.locator('#modal-confirm').click();
  const settle=async()=>{await page.waitForFunction(()=>!document.querySelector('#import').disabled&&/\d+ 错误 \/ \d+ 警告/.test(document.querySelector('#validation-state').textContent),{},{timeout:30000});};
- const clean=async()=>{await settle();assert.match(await page.locator('#validation-state').innerText(),/^0 错误/);};
+ // Wait for the successful state in one browser evaluation. A second DOM read after
+ // settle() can race with a rename/undo mutation or the debounced validation timer.
+ const clean=async()=>{await page.waitForFunction(()=>!document.querySelector('#import').disabled&&/^0 错误 \/ \d+ 警告$/.test(document.querySelector('#validation-state').textContent),{},{timeout:30000});};
  const nav=async(title)=>page.locator('.section-button').filter({hasText:title}).click();
  const open=async(title,id)=>{await nav(title);await page.locator('.definition-button').filter({hasText:id}).click();};
  const edit=async(key,value)=>{const input=page.locator('#editor > .field-grid [data-key="'+key+'"]');await input.fill(value);await input.press('Tab');};
