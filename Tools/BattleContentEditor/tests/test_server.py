@@ -45,7 +45,9 @@ class HostTests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(10, len(result['metadata']['enums']['HandCategory']))
         self.assertEqual(52, len(result['metadata']['cards']))
-        self.assertEqual('battle-content.1', result['metadata']['contract'])
+        self.assertEqual('battle-content.2', result['metadata']['contract'])
+        self.assertIn('Cleanse', result['metadata']['enums']['CombatEffectKind'])
+        self.assertIn('Negative', result['metadata']['enums']['StatusTags'])
 
     def test_example_http_matches_direct_compiler(self):
         status, result, _ = self.request('/api/validate', self.example)
