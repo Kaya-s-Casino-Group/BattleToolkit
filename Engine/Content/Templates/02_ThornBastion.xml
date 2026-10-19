@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<BattleContent schemaVersion="1" id="thorn-bastion-content" name="荆棘堡垒" version="thorn-bastion.1">
+  <!--玩法：高牌先架盾，弃至少3张牌触发额外护盾；两名敌人攻击时以实际格挡反伤。盾保留到后续回合。 所有数值为玩法实验值，可直接修改；不代表策划定案。-->
+  <ScoringProfiles>
+    <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="Straight" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="7" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
+      <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
+      <CardPoints>
+        <Rank rank="Two" points="2" />
+        <Rank rank="Three" points="3" />
+        <Rank rank="Four" points="4" />
+        <Rank rank="Five" points="5" />
+        <Rank rank="Six" points="6" />
+        <Rank rank="Seven" points="7" />
+        <Rank rank="Eight" points="8" />
+        <Rank rank="Nine" points="9" />
+        <Rank rank="Ten" points="10" />
+        <Rank rank="Jack" points="10" />
+        <Rank rank="Queen" points="10" />
+        <Rank rank="King" points="10" />
+        <Rank rank="Ace" points="11" />
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <BattleRules>
+    <Rules id="single-battle-rules" name="模板公共规则" scoringRef="single-battle-score" roundLimit="16" blockExpiry="Retain" maxReactionEffects="256" maxReactionDepth="16" />
+  </BattleRules>
+  <Statuses>
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
+      <BlockActionWindow />
+    </Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
+      <PreventStatusApplication tags="Control" />
+    </Status>
+    <Status id="bleed" tags="Negative" name="流血·行动后2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances">
+      <PeriodicDamage timing="ActionCompleted" amount="2" target="Self" />
+    </Status>
+    <Status id="poison" tags="Negative" name="中毒·己方阶段末2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances">
+      <PeriodicDamage timing="PhaseEnding" amount="2" target="Self" />
+    </Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
+      <ReflectBlockedDamage ratio="1" target="EventSource" />
+    </Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved">
+      <OverhealDamage ratio="1" target="Opponents" selection="FirstLiving" />
+    </Status>
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
+      <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+  </Statuses>
+  <HandRules>
+    <HandRule id="document-hands" name="荆棘堡垒·牌型技能" version="thorn-bastion.hands.1">
+      <Hand category="HighCard">
+        <Effect kind="GainBlock" id="guard" amountKind="ScorePointsScale" amount="2" target="Self" />
+      </Hand>
+      <Hand category="OnePair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="TwoPair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="ThreeOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="heal" kind="Heal" amountKind="ScorePointsScale" amount="0.2" target="Self" />
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving" />
+        <Effect id="cleanse" kind="Cleanse" target="Self" />
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
+      </Hand>
+      <Hand category="FourOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Ordinary">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Royal">
+        <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="FiveOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+    </HandRule>
+  </HandRules>
+  <Relics>
+    <Relic id="thorn-mirror" name="荆棘镜·永久盾反" version="thorn-mirror.1">
+      <BoundaryTrigger id="opening-shield-reflect" timing="BattleStarted">
+        <Effect kind="ApplyStatus" statusRef="shield-reflect" target="Self" />
+      </BoundaryTrigger>
+    </Relic>
+    <Relic id="discard-bulwark" name="舍牌壁垒·弃3张额外20盾" version="discard-bulwark.1">
+      <ActionTrigger id="three-card-guard" timing="DiscardCompleted" relation="OwnerIsActor">
+        <Conditions>
+          <DiscardedCardsAtLeast count="3" />
+        </Conditions>
+        <Effect kind="GainBlock" amount="20" target="Self" />
+      </ActionTrigger>
+    </Relic>
+  </Relics>
+  <Players>
+    <Player id="hero" name="荆棘堡垒·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="6" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="5" playRefill="AfterAction" discardRefill="AfterAction" discardBlockPerCard="10" />
+  </Players>
+  <Enemies>
+    <Enemy id="mauler" name="重锤兵" maxHealth="180" damage="34" />
+    <Enemy id="archer" name="弩手" maxHealth="120" damage="18" />
+  </Enemies>
+  <Decks>
+    <Deck id="fortress-deck" name="20张离散点数牌">
+      <Card id="fortress-deck-01" face="standard:1:2" />
+      <Card id="fortress-deck-02" face="standard:1:5" />
+      <Card id="fortress-deck-03" face="standard:1:8" />
+      <Card id="fortress-deck-04" face="standard:1:11" />
+      <Card id="fortress-deck-05" face="standard:1:14" />
+      <Card id="fortress-deck-06" face="standard:2:2" />
+      <Card id="fortress-deck-07" face="standard:2:5" />
+      <Card id="fortress-deck-08" face="standard:2:8" />
+      <Card id="fortress-deck-09" face="standard:2:11" />
+      <Card id="fortress-deck-10" face="standard:2:14" />
+      <Card id="fortress-deck-11" face="standard:3:2" />
+      <Card id="fortress-deck-12" face="standard:3:5" />
+      <Card id="fortress-deck-13" face="standard:3:8" />
+      <Card id="fortress-deck-14" face="standard:3:11" />
+      <Card id="fortress-deck-15" face="standard:3:14" />
+      <Card id="fortress-deck-16" face="standard:4:2" />
+      <Card id="fortress-deck-17" face="standard:4:5" />
+      <Card id="fortress-deck-18" face="standard:4:8" />
+      <Card id="fortress-deck-19" face="standard:4:11" />
+      <Card id="fortress-deck-20" face="standard:4:14" />
+    </Deck>
+  </Decks>
+  <Loadouts>
+    <Loadout id="fortress" deckRef="fortress-deck">
+      <Relic instanceId="acquired-01" ref="thorn-mirror" />
+      <Relic instanceId="acquired-02" ref="discard-bulwark" />
+    </Loadout>
+  </Loadouts>
+  <Encounters>
+    <Encounter id="thorn-bastion" name="荆棘堡垒" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="fortress" />
+      <Enemy id="enemy-1" ref="mauler" />
+      <Enemy id="enemy-2" ref="archer" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<BattleContent schemaVersion="1" id="venom-straight-content" name="蛇牙连击" version="venom-straight.1">
+  <!--玩法：用顺子多段叠加流血和中毒，穿插回合推进让负面结算。开局已装备蛇牙和分叉刃。 所有数值为玩法实验值，可直接修改；不代表策划定案。-->
+  <ScoringProfiles>
+    <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="Straight" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="7" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
+      <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
+      <CardPoints>
+        <Rank rank="Two" points="2" />
+        <Rank rank="Three" points="3" />
+        <Rank rank="Four" points="4" />
+        <Rank rank="Five" points="5" />
+        <Rank rank="Six" points="6" />
+        <Rank rank="Seven" points="7" />
+        <Rank rank="Eight" points="8" />
+        <Rank rank="Nine" points="9" />
+        <Rank rank="Ten" points="10" />
+        <Rank rank="Jack" points="10" />
+        <Rank rank="Queen" points="10" />
+        <Rank rank="King" points="10" />
+        <Rank rank="Ace" points="11" />
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <BattleRules>
+    <Rules id="single-battle-rules" name="模板公共规则" scoringRef="single-battle-score" roundLimit="16" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" />
+  </BattleRules>
+  <Statuses>
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
+      <BlockActionWindow />
+    </Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
+      <PreventStatusApplication tags="Control" />
+    </Status>
+    <Status id="bleed" tags="Negative" name="流血·行动后6伤共3次" lifetime="TriggerCount" count="3" reapply="IndependentInstances">
+      <PeriodicDamage timing="ActionCompleted" amount="6" target="Self" />
+    </Status>
+    <Status id="poison" tags="Negative" name="中毒·阶段末5伤共3次" lifetime="TriggerCount" count="3" reapply="IndependentInstances">
+      <PeriodicDamage timing="PhaseEnding" amount="5" target="Self" />
+    </Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
+      <ReflectBlockedDamage ratio="1" target="EventSource" />
+    </Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved">
+      <OverhealDamage ratio="1" target="Opponents" selection="FirstLiving" />
+    </Status>
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
+      <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+  </Statuses>
+  <HandRules>
+    <HandRule id="document-hands" name="蛇牙连击·牌型技能" version="venom-straight.hands.1">
+      <Hand category="HighCard">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="OnePair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="TwoPair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="ThreeOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="heal" kind="Heal" amountKind="ScorePointsScale" amount="0.2" target="Self" />
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving" />
+        <Effect id="cleanse" kind="Cleanse" target="Self" />
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
+      </Hand>
+      <Hand category="FourOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Ordinary">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Royal">
+        <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="FiveOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+      </Hand>
+    </HandRule>
+  </HandRules>
+  <Relics>
+    <Relic id="serpent-fangs" name="蛇牙·顺子逐段附加双毒" version="serpent-fangs.1">
+      <FactTrigger id="bleed-per-hit" timing="DamageSettled" relation="OwnerIsSource" origins="Primary" occurrence="PerEvent">
+        <Conditions>
+          <HandIs category="Straight" />
+        </Conditions>
+        <Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget" />
+      </FactTrigger>
+      <FactTrigger id="poison-per-hit" timing="DamageSettled" relation="OwnerIsSource" origins="Primary" occurrence="PerEvent">
+        <Conditions>
+          <HandIs category="Straight" />
+        </Conditions>
+        <Effect kind="ApplyStatus" statusRef="poison" target="EventTarget" />
+      </FactTrigger>
+    </Relic>
+    <Relic id="forked-blade" name="分叉刃·顺子第一段额外命中一次" version="forked-blade.1">
+      <HandModifier id="extra-hit" category="Straight" operation="AddHits" stepId="damage/1" hits="1" />
+    </Relic>
+  </Relics>
+  <Players>
+    <Player id="hero" name="蛇牙连击·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="10" discards="6" unlimitedDiscards="false" maxPlayCards="5" maxDiscardCards="5" playRefill="AfterAction" discardRefill="AfterAction" discardBlockPerCard="6" />
+  </Players>
+  <Enemies>
+    <Enemy id="iron-beast" name="铁甲兽" maxHealth="700" initialBlock="80" damage="32" />
+  </Enemies>
+  <Decks>
+    <Deck id="run-deck" name="20张低点连续牌">
+      <Card id="run-deck-01" face="standard:1:2" />
+      <Card id="run-deck-02" face="standard:1:3" />
+      <Card id="run-deck-03" face="standard:1:4" />
+      <Card id="run-deck-04" face="standard:1:5" />
+      <Card id="run-deck-05" face="standard:1:6" />
+      <Card id="run-deck-06" face="standard:2:2" />
+      <Card id="run-deck-07" face="standard:2:3" />
+      <Card id="run-deck-08" face="standard:2:4" />
+      <Card id="run-deck-09" face="standard:2:5" />
+      <Card id="run-deck-10" face="standard:2:6" />
+      <Card id="run-deck-11" face="standard:3:2" />
+      <Card id="run-deck-12" face="standard:3:3" />
+      <Card id="run-deck-13" face="standard:3:4" />
+      <Card id="run-deck-14" face="standard:3:5" />
+      <Card id="run-deck-15" face="standard:3:6" />
+      <Card id="run-deck-16" face="standard:4:2" />
+      <Card id="run-deck-17" face="standard:4:3" />
+      <Card id="run-deck-18" face="standard:4:4" />
+      <Card id="run-deck-19" face="standard:4:5" />
+      <Card id="run-deck-20" face="standard:4:6" />
+    </Deck>
+  </Decks>
+  <Loadouts>
+    <Loadout id="venom" deckRef="run-deck">
+      <Relic instanceId="acquired-01" ref="serpent-fangs" />
+      <Relic instanceId="acquired-02" ref="forked-blade" />
+    </Loadout>
+  </Loadouts>
+  <Encounters>
+    <Encounter id="venom-straight" name="蛇牙连击" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="venom" />
+      <Enemy id="enemy-1" ref="iron-beast" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

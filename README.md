@@ -12,6 +12,8 @@
 
 按策划案整理的独立标准单局见 `Engine/Content/StandardSingleBattle.xml`，编成 ID 为 `standard-single-battle`。使用方式、可配置范围、占位数值与未覆盖项见 [单对局配置说明](Engine/Content/README.md)。现有 Demo 场景绑定保持不变。
 
+探索不同玩法可导入 [六套可试玩 XML 模板](Engine/Content/Templates/README.md)，包含八种编成、主题卡组、初始遗物和固定种子体验步骤。
+
 已有网页草稿保存在同一浏览器和地址中。工具不会自动写回 XML，导出文件仍需保存到约定位置。首次安装通常需要几分钟；不需要管理员权限，也不修改全局运行环境。macOS 若解压后失去执行权限，可在终端执行 `bash start.command`。
 
 [详细工具用法](Tools/BattleContentEditor/README.md) · [启动与故障排查](scripts/README.md) · [XML 配置契约](Engine/Runtime/Composition/Content/README.md)

@@ -1,5 +1,7 @@
 # 单对局配置
 
+想试不同流派和组合，可直接导入 [Templates 玩法模板](Templates/README.md)：六份 XML、八种编成，覆盖顺子叠毒、盾反、溢疗、净化、双人支援与遗物顺序对照。
+
 `StandardSingleBattle.xml` 是按[《德州+肉鸽》](https://moonton.feishu.cn/wiki/KZGawy0ypiSMPtkmqwDcAKLFnle) revision 1278 整理的单局机制基线。依据为 2026-10-19 上一轮成功读取的正文与流程图；本轮未能刷新远端版本。它只有一个编成 `standard-single-battle`，一名玩家对一名普通敌人，标准 52 张牌，初始无遗物、无牌型升级。数值尚未定案，不作为正式平衡表。
 
 `SingleBattleDemoNew.xml` 保留现有 Unity 场景配置和三个流派测试编成。新标准文件不自动替换它，避免改变当前 Demo 的体验。
