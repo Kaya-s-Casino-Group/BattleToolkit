@@ -78,7 +78,7 @@ namespace PokerEngine
         internal static void WriteTarget(BinaryWriter writer, EffectTargetSpec target)
         {
             writer.Write(target != null); if (target == null) return;
-            writer.Write((int)target.Group); writer.Write((int)target.Selection); WriteText(writer, target.RequestSlot);
+            writer.Write((int)target.Group); writer.Write((int)target.Selection); WriteText(writer, target.RequestSlot); WriteText(writer, target.RetargetChain);
         }
         private static void WriteText(BinaryWriter writer, string value)
         { writer.Write(value != null); if (value != null) writer.Write(value); }

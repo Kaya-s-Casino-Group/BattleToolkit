@@ -53,15 +53,16 @@ namespace PokerEngine
         /// <summary>Optional per-effect rule. When set, it replaces the legacy damage-policy execution path.</summary>
         public IScoredHandEffectRule EffectRule { get; }
         public BattleHandLevels HandLevels { get; }
+        public BattleTurnFlowRules Flow { get; }
         public BattlePlayerRules(int maxEnergy = 3, int initialEnergy = 3, int playEnergyCost = 1, int discardEnergyCost = 1,
             int handSize = 8, int discards = 3, ICardDuelDealPolicy dealPolicy = null,
             bool unlimitedDiscards = false, int maxPlayCards = 5, int maxDiscardCards = 5, IDiscardRewardRule discardReward = null,
-            IScoredHandDamageRule damagePolicy = null, BattleHandLevels handLevels = null, IScoredHandEffectRule effectRule = null)
+            IScoredHandDamageRule damagePolicy = null, BattleHandLevels handLevels = null, IScoredHandEffectRule effectRule = null, BattleTurnFlowRules flow = null)
         {
             if (maxEnergy < 1 || initialEnergy < 0 || playEnergyCost < 0 || discardEnergyCost < 0 || handSize < 1 || handSize > 52 || discards < 0 || discards > 1000)
                 throw new ArgumentException("Invalid player card/action budget.");
             // Poker classification accepts at most five submitted cards. Discard has no poker-pattern constraint.
-            if (maxPlayCards < 1 || maxPlayCards > 5 || maxDiscardCards < 1 || maxDiscardCards > 52)
+            if (maxPlayCards < 1 || maxPlayCards > 10 || maxDiscardCards < 1 || maxDiscardCards > 52)
                 throw new ArgumentException("Invalid play/discard card limit.");
             if (damagePolicy != null && effectRule != null) throw new ArgumentException("Choose either a damage policy or a scored-hand effect rule.");
             MaxEnergy = maxEnergy; InitialEnergy = initialEnergy; PlayEnergyCost = playEnergyCost; DiscardEnergyCost = discardEnergyCost;
@@ -70,6 +71,8 @@ namespace PokerEngine
             DamagePolicy = damagePolicy ?? new EqualScoreDamageRule();
             EffectRule = effectRule;
             HandLevels = handLevels ?? new BattleHandLevels();
+            Flow = flow ?? new BattleTurnFlowRules();
+            if (Flow.MinPlayCards > maxPlayCards) throw new ArgumentException("Minimum play cards exceeds maximum.");
             UnlimitedDiscards = unlimitedDiscards;
             MaxPlayCards = Math.Min(maxPlayCards, handSize); MaxDiscardCards = Math.Min(maxDiscardCards, handSize);
         }
@@ -338,7 +341,7 @@ namespace PokerEngine
         internal TeamBattleTransition ExecuteObserved(TeamBattleState state, long revision, ParticipantId actor, ScoredDuelActionKind action,
             ScoreResult score = null, IEnumerable<ParticipantId> requestedTargets = null, HandAttackInfo hand = null,
             IEnumerable<DiscardCardSnapshot> discardedCards = null, BattleTargetBindings targetBindings = null,
-            BattleTimelineRecorder timeline = null)
+            BattleTimelineRecorder timeline = null, bool freeDiscard = false)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             if (!ReferenceEquals(state.Rules, Definition)) return new TeamBattleTransition(state, CardDuelError.InvalidState);
@@ -361,22 +364,35 @@ namespace PokerEngine
                 BattleActionCostResolution actionCost = null;
                 if (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard)
                 {
-                    try { actionCost = QueryActionCost(state, actor, action); }
+                    try {
+                        actionCost = QueryActionCost(state, actor, action);
+                        if (freeDiscard && action == ScoredDuelActionKind.Discard)
+                            actionCost = new BattleActionCostResolution(new BattleActionCostQuery(state, actor, action),
+                                new BattleRuleValueResolution(BattleRuleValueKey.DiscardEnergyCost, 0, Array.Empty<BattleRuleContribution>()));
+                    }
                     catch (ArgumentException) { return new TeamBattleTransition(state, CardDuelError.InvalidRuleModifier); }
                     if (!actionCost.CanAfford) return new TeamBattleTransition(state, CardDuelError.InsufficientEnergy);
                 }
                 var combat = state.Combat; var players = state.Players.ToArray(); var scores = state.Scores.ToArray();
+                IReadOnlyList<CombatRuleEvent> turnEvents = Array.Empty<CombatRuleEvent>();
+                if (enemy)
+                {
+                    var entering = ResolveBoundary(state, CombatTimingSignal.TurnStarted(BattleStatusTiming.RoundScope(state) + "/turn/" + actor, new[] { actor }));
+                    if (!entering.Accepted) return new TeamBattleTransition(state, entering.Error);
+                    combat = entering.State.Combat; turnEvents = entering.RuleEvents; timeline?.ObserveCombat(turnEvents);
+                }
+                bool diedAtStart = !combat.Get(actor).IsAlive;
                 var amountModifier = new RelicCombatAmountModifier(state, hand == null ? (ParticipantId?)null : actor, hand);
-                IReadOnlyList<CombatRuleEvent> events = Array.Empty<CombatRuleEvent>(); DamagePlan damagePlan = null; DiscardRewardResolution discardReward = null; BattleEffectPlan effectPlan = null;
-                if (skipPlayer || enemy && blocked)
+                IReadOnlyList<CombatRuleEvent> events = turnEvents; DamagePlan damagePlan = null; DiscardRewardResolution discardReward = null; BattleEffectPlan effectPlan = null;
+                if (skipPlayer || enemy && blocked && !diedAtStart)
                 {
                     var skipped = CombatStatusLifecycle.SkipActionWindow(combat, combat.Revision, actor, Definition.StatusCatalog);
                     if (!skipped.Accepted) return new TeamBattleTransition(state,
                         skipped.Error == CombatError.Overflow ? CardDuelError.Overflow : CardDuelError.InvalidState);
                     timeline?.ObserveCombat(skipped.RuleEvents);
-                    combat = skipped.State; events = skipped.RuleEvents;
+                    combat = skipped.State; events = events.Concat(skipped.RuleEvents).ToArray();
                 }
-                if (action == ScoredDuelActionKind.ScoredHand || enemy && !blocked)
+                if (action == ScoredDuelActionKind.ScoredHand || enemy && !blocked && !diedAtStart)
                 {
                     if (!enemy)
                     {
@@ -444,7 +460,7 @@ namespace PokerEngine
                     {
                         foreach (var effect in baseEffects)
                         {
-                            if (effect.Kind != CombatEffectKind.Damage) { effects.Add(effect); continue; }
+                            if (effect.Kind != CombatEffectKind.Damage || effect.TargetChain != null) { effects.Add(effect); continue; }
                             // Preserve the action-start outgoing snapshot and authority-owned hand facts for every target.
                             var modifier = state.DamageRulesFor(effect.Source).AttackDamage;
                             var adjusted = DamageModification.Validate(modifier.Modify(
@@ -482,7 +498,7 @@ namespace PokerEngine
                         new ActorIncomingDamageModifier(state), Definition.StatusCatalog, Definition.ReactionProvider, Definition.ReactionLimits, amountModifier, triggerRuntime);
                     if (!resolved.Accepted) return new TeamBattleTransition(state, EffectFailure(resolved.Error, action == ScoredDuelActionKind.Discard));
                     timeline?.ObserveCombat(resolved.RuleEvents, ((RelicReactionRuntime)resolved.ReactionRuntime)?.Activations);
-                    combat = resolved.State; events = resolved.RuleEvents;
+                    combat = resolved.State; events = events.Concat(resolved.RuleEvents).ToArray();
                     triggerRuntime = (RelicReactionRuntime)resolved.ReactionRuntime;
                 }
                 if (!enemy)
@@ -491,7 +507,7 @@ namespace PokerEngine
                     bool forceEnd = action == ScoredDuelActionKind.EndPlayerTurn || skipPlayer;
                     int energy = forceEnd ? 0 : players[index].Energy.Energy - actionCost.Cost;
                     // Zero energy is not the end of an action window while either kind of action is free.
-                    bool ended = forceEnd || energy == 0 && QueryActionCost(state, actor, ScoredDuelActionKind.ScoredHand).Cost > 0 &&
+                    bool ended = forceEnd || !players[index].Rules.Flow.ManualDraw && energy == 0 && QueryActionCost(state, actor, ScoredDuelActionKind.ScoredHand).Cost > 0 &&
                         QueryActionCost(state, actor, ScoredDuelActionKind.Discard).Cost > 0;
                     players[index] = new BattlePlayerTurn(actor, new PlayerTurnState(players[index].Energy.MaxEnergy, energy), ended,
                         players[index].Rules, players[index].DamageRules, players[index].TargetRules, players[index].Relics, players[index].Limits);
@@ -507,7 +523,7 @@ namespace PokerEngine
                 // Explicit end/skip commands are boundaries, not completed actions. A finished battle starts no new clock.
                 bool finished = IsFinished(combat, players, state.Enemies);
                 bool hasCompletion = RelicReactionRuntime.HandlesAction(state, actor, action);
-                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked) &&
+                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked && !diedAtStart) &&
                     (hasCompletion || HasPeriodic(combat, new[] { actor }, CombatTimingKind.ActionCompleted)))
                 {
                     if (hasCompletion) triggerRuntime = triggerRuntime.WithCompletion(new BattleActionCompletionContext(state, actor, action,
@@ -622,6 +638,13 @@ namespace PokerEngine
                     if (!entering.Accepted) return new TeamBattleTransition(state, entering.Error);
                     combat = entering.State.Combat; players = entering.State.Players.ToArray();
                     events = events.Concat(entering.RuleEvents).ToArray(); activations.AddRange(entering.RelicActivations);
+                    if (phase == ScoredDuelPhase.AwaitingPlayerHand && !IsFinished(combat, players, state.Enemies))
+                    {
+                        var turns = ResolveBoundary(WindowState(window, combat, players, phase, rounds, pending),
+                            CombatTimingSignal.TurnStarted(BattleStatusTiming.RoundScope(window) + "/turn/player", players.Select(p => p.Id)));
+                        if (!turns.Accepted) return new TeamBattleTransition(state, turns.Error);
+                        timeline?.ObserveCombat(turns.RuleEvents); combat = turns.State.Combat; events = events.Concat(turns.RuleEvents).ToArray();
+                    }
                     pending = pending.Where(id => combat.Get(id).IsAlive).ToArray();
                     if (IsFinished(combat, players, state.Enemies))
                     {
@@ -647,11 +670,12 @@ namespace PokerEngine
             {
                 var signals = new[] {
                     CombatTimingSignal.BattleStarted(state.Combat.Id + "/start", state.Players.Select(x => x.Id).Concat(state.Enemies.Select(x => x.Id))),
-                    BattleStatusTiming.PhaseStarted(state) };
+                    BattleStatusTiming.PhaseStarted(state),
+                    CombatTimingSignal.TurnStarted(BattleStatusTiming.RoundScope(state) + "/turn/player", state.Players.Select(p => p.Id)) };
                 foreach (var signal in signals)
                 {
                     timeline?.SetTeam(draft);
-                    timeline?.Add(signal.Kind == CombatTimingKind.BattleStarted ? BattleTimelineKind.BattleStarted : BattleTimelineKind.PhaseStarted,
+                    if (signal.Kind != CombatTimingKind.TurnStarted) timeline?.Add(signal.Kind == CombatTimingKind.BattleStarted ? BattleTimelineKind.BattleStarted : BattleTimelineKind.PhaseStarted,
                         signal.Kind == CombatTimingKind.PhaseStarted ? BattleTimelineRecorder.Phase(draft) : null);
                     var result = ResolveBoundary(draft, signal);
                     if (!result.Accepted) return new TeamBattleTransition(state, result.Error);
@@ -675,6 +699,39 @@ namespace PokerEngine
             catch (OverflowException) { return new TeamBattleTransition(state, CardDuelError.Overflow); }
         }
 
+        internal TeamBattleTransition ResolveAuxiliaryDiscard(TeamBattleState state, ParticipantId actor, IEnumerable<DiscardCardSnapshot> cards, BattleDiscardKind kind)
+        {
+            try
+            {
+                var context = new DiscardRewardContext(state, actor, cards, new[] { actor }, kind);
+                var combat = state.Combat; var events = new List<CombatRuleEvent>();
+                var runtime = RelicReactionRuntime.Create(state, actor, ScoredDuelActionKind.Discard, null, context.Cards.Count);
+                if (kind == BattleDiscardKind.Overflow && state.Player(actor).Rules.Flow.OverflowTriggersDefense)
+                {
+                    var rule = state.Player(actor).Rules.DiscardReward; var plan = rule.Resolve(context); plan.Validate(context, rule.Version);
+                    var reward = BattleEffectResolver.Resolve(combat, new BattleEffectPlan(plan.RuleVersion, plan.Explanation, plan.Effects),
+                        new ActorIncomingDamageModifier(state), Definition.StatusCatalog, Definition.ReactionProvider, Definition.ReactionLimits,
+                        new RelicCombatAmountModifier(state), runtime);
+                    if (!reward.Accepted) return new TeamBattleTransition(state, EffectFailure(reward.Error));
+                    combat = reward.State; events.AddRange(reward.RuleEvents); runtime = (RelicReactionRuntime)reward.ReactionRuntime;
+                }
+                var completion = new BattleActionCompletionContext(state, actor, ScoredDuelActionKind.Discard, null, context.Cards, null,
+                    state.Player(actor).Energy.Energy, kind);
+                runtime = runtime?.WithCompletion(completion);
+                var resolved = CombatEngine.ResolveTiming(combat, combat.Revision, completion.Signal, new ActorIncomingDamageModifier(state),
+                    Definition.StatusCatalog, Definition.ReactionLimits, new RelicCombatAmountModifier(state), runtime, Definition.ReactionProvider, suppressPeriodic: true);
+                if (!resolved.Accepted) return new TeamBattleTransition(state, EffectFailure(resolved.Error));
+                runtime = (RelicReactionRuntime)resolved.ReactionRuntime; events.AddRange(resolved.RuleEvents);
+                var players = ApplyRuntime(state.Players, runtime);
+                var phase = state.Enemies.All(e => !resolved.State.Get(e.Id).IsAlive) ? ScoredDuelPhase.Won :
+                    players.All(p => !resolved.State.Get(p.Id).IsAlive) ? ScoredDuelPhase.Lost : state.Phase;
+                return new TeamBattleTransition(new TeamBattleState(Definition, resolved.State, players, state.Enemies, phase, state.PendingEnemies,
+                    checked(state.Revision + 1), state.CompletedRounds, state.Scores, state.Actions), events: events,
+                    relicActivations: runtime?.Activations, actionCompletion: runtime?.Completion);
+            }
+            catch (OverflowException) { return new TeamBattleTransition(state, CardDuelError.Overflow); }
+            catch (ArgumentException) { return new TeamBattleTransition(state, CardDuelError.InvalidReaction); }
+        }
         private TeamBattleTransition ResolveBoundary(TeamBattleState state, CombatTimingSignal signal, ICombatAmountModifier amountModifier = null)
         {
             bool boundary = RelicReactionRuntime.Handles(state, signal);

@@ -6,8 +6,8 @@ namespace PokerEngine
 {
     internal partial class BattleContentBuildContext
     {
-        private static readonly string[] EffectAttributes = { "id", "kind", "amount", "amountKind", "target", "selection", "requestSlot", "statusRef", "stacks", "lifetime", "count", "phase" };
-        private static readonly string[] TargetAttributes = { "target", "selection", "requestSlot" };
+        private static readonly string[] EffectAttributes = { "id", "kind", "amount", "amountKind", "retargetChain", "target", "selection", "requestSlot", "statusRef", "stacks", "lifetime", "count", "phase" };
+        private static readonly string[] TargetAttributes = { "target", "selection", "requestSlot", "retargetChain" };
 
         internal Dictionary<string, CombatStatusDefinition> ReadStatuses(BattleContentNode section)
         {
@@ -43,9 +43,9 @@ namespace PokerEngine
                     Text(node, "ratio");
                     return new OverhealDamageSpec(Decimal(node, "ratio", 1), ReadCombatTarget(node, "Opponents"));
                 case "PeriodicDamage":
-                    Check(node, new[] { "timing", "amount", "target", "selection" }, new string[0]);
+                    Check(node, new[] { "timing", "amount", "target", "selection", "stackDecay" }, new string[0]);
                     Text(node, "timing"); Text(node, "amount");
-                    return new PeriodicDamageSpec(Enum(node, "timing", CombatTimingKind.ActionCompleted), Long(node, "amount", 0), ReadCombatTarget(node, "Self"));
+                    return new PeriodicDamageSpec(Enum(node, "timing", CombatTimingKind.ActionCompleted), Long(node, "amount", 0), ReadCombatTarget(node, "Self"), Int(node, "stackDecay", 0));
                 default: throw new ArgumentException("Unsupported status behavior: " + node.Name);
             }
         }
@@ -97,6 +97,7 @@ namespace PokerEngine
                 case CombatEffectKind.Damage: return BattleEffectSpec.Damage(amount);
                 case CombatEffectKind.Heal: return BattleEffectSpec.Heal(amount);
                 case CombatEffectKind.GainBlock: return BattleEffectSpec.GainBlock(amount);
+                case CombatEffectKind.DrawCards: return BattleEffectSpec.DrawCards(amount);
                 case CombatEffectKind.ApplyStatus: return BattleEffectSpec.ApplyStatus(ReadStatusApplication(node));
                 case CombatEffectKind.Cleanse: return BattleEffectSpec.Cleanse();
                 default: return BattleEffectSpec.Eliminate();
@@ -112,7 +113,7 @@ namespace PokerEngine
                 new[] { "amount", "amountKind", "statusRef", "stacks", "lifetime", "count", "phase" });
             return kind;
         }
-        private static bool IsNumeric(CombatEffectKind kind) => kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock;
+        private static bool IsNumeric(CombatEffectKind kind) => kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock || kind == CombatEffectKind.DrawCards;
         private EffectAmountSpec ReadAmount(BattleContentNode node, bool allowScore)
         {
             Text(node, "amount");
@@ -156,20 +157,24 @@ namespace PokerEngine
             string group = Text(node, "target", "Opponents");
             if (group == "Self")
             {
-                RejectAttributes(node, new[] { "requestSlot" });
+                RejectAttributes(node, new[] { "requestSlot", "retargetChain" });
                 if (Optional(node, "selection") != null && Text(node, "selection") != "AllLiving")
                     throw new ArgumentException("Self does not support target selection.");
                 return EffectTargetSpec.Self();
             }
             var selection = Enum(node, "selection", EffectTargetSelection.FirstLiving);
             string slot = Optional(node, "requestSlot");
-            if (group == "Opponents") return EffectTargetSpec.Opponents(selection, slot);
-            if (group == "Allies") return EffectTargetSpec.Allies(selection, slot);
+            if (group == "Opponents")
+            {
+                var target = EffectTargetSpec.Opponents(selection, slot);
+                return Optional(node, "retargetChain") == null ? target : target.WithRetargetChain(Text(node, "retargetChain"));
+            }
+            if (group == "Allies") { RejectAttributes(node, new[] { "retargetChain" }); return EffectTargetSpec.Allies(selection, slot); }
             throw new ArgumentException("Primary effects support Self, Opponents and Allies, without event targets.");
         }
         private CombatTargetSpec ReadCombatTarget(BattleContentNode node, string defaultGroup = "Self")
         {
-            RejectAttributes(node, new[] { "requestSlot" });
+            RejectAttributes(node, new[] { "requestSlot", "retargetChain" });
             string group = Text(node, "target", defaultGroup);
             var selection = Enum(node, "selection", CombatTargetSelection.FirstLiving);
             if (group == "Opponents") return CombatTargetSpec.Opponents(selection);

@@ -63,6 +63,9 @@ namespace PokerEngine
         internal BattleTimelineEntry InBatch(long sequence, int stepIndex) => new BattleTimelineEntry(sequence, stepIndex,
             Kind, Action, Actor, ActionId, State, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
             ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped);
+        internal BattleTimelineEntry WithState(CardDuelState state) => new BattleTimelineEntry(Sequence, StepIndex,
+            Kind, Action, Actor, ActionId, state, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
+            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped);
         internal BattleTimelineEntry WithSkippedAction() => new BattleTimelineEntry(Sequence, StepIndex,
             Kind, Action, Actor, ActionId, State, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
             ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, true);
@@ -91,10 +94,10 @@ namespace PokerEngine
         }
         internal void SetState(CardDuelState state) { State = state; }
         internal void SetTeam(TeamBattleState team) => State = new CardDuelState(State.Table, team, State.Random,
-            State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), State.HasStarted);
+            State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), State.HasStarted, State.CopyFlows());
         internal void SetCards(CardTableState table, RandomState random, IDictionary<ParticipantId, int> discards = null,
             bool? started = null) => State = new CardDuelState(table, State.Duel, random,
-                discards ?? State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), started ?? State.HasStarted);
+                discards ?? State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), started ?? State.HasStarted, State.CopyFlows());
         internal void Add(BattleTimelineKind kind, string phase = null, string reason = null,
             CombatRuleEvent ruleEvent = null, RelicTriggerActivation activation = null,
             BattleActionCostResolution cost = null, ScoreResult score = null, PokerHandClassification pattern = null,

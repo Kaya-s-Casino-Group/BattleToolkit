@@ -28,6 +28,19 @@ namespace PokerEngine.Tests
         {
             var result = session.Execute(session.State.Revision, actor, action, cards);
             Assert.IsTrue(result.Accepted, action + ": " + result.Error);
+            if (action == CardDuelAction.EndTurn && !session.State.Duel.IsFinished && session.State.FlowFor(actor).Window == BattlePlayerWindow.Ending)
+            {
+                var finish = session.Execute(session.State.Revision, actor, CardDuelAction.FinishTurn); Assert.IsTrue(finish.Accepted);
+                result = finish;
+            }
+            if (!session.State.Duel.IsFinished && (action == CardDuelAction.Start || action == CardDuelAction.EndTurn || action == CardDuelAction.Discard))
+                foreach (var player in session.State.Duel.Players.Where(p => session.State.Duel.HasPlayerWindow(p.Id)).ToArray())
+                    if (session.State.FlowFor(player.Id).Window == BattlePlayerWindow.Draw)
+                    {
+                        int count = session.Engine.DrawLimit(session.State, player.Id);
+                        var draw = session.Execute(session.State.Revision, player.Id, count == 0 ? CardDuelAction.SkipDraw : CardDuelAction.Draw, drawCount: count);
+                        Assert.IsTrue(draw.Accepted);
+                    }
             return result;
         }
         private static IEnumerable<CardInstanceId[]> Choose(CardInstanceId[] cards, int count, int start = 0)
@@ -81,20 +94,17 @@ namespace PokerEngine.Tests
             var session = Start("01_VenomStraight", "venom-straight");
             var result = Act(session, Player, CardDuelAction.Play, Hand(session, Player, HandCategory.Straight, 5));
             Assert.AreEqual(4, result.Steps[0].Transition.EffectPlan.Effects.Count);
-            Assert.AreEqual(4, session.State.Duel.Combat.Statuses.Count(x => x.DefinitionId.Value == "bleed"));
-            Assert.AreEqual(4, session.State.Duel.Combat.Statuses.Count(x => x.DefinitionId.Value == "poison"));
+            Assert.AreEqual(44, session.State.Duel.Combat.Statuses.Single().Stacks);
             long before = Health(session, "enemy-1");
             Act(session, Player, CardDuelAction.EndTurn);
             Assert.AreEqual(before - 44, Health(session, "enemy-1"));
-            Assert.IsTrue(session.State.Duel.Combat.Statuses.All(x => x.Duration.RemainingTriggers == 2));
+            Assert.AreEqual(43, session.State.Duel.Combat.Statuses.Single().Stacks);
         }
 
         [Test] public void DiscardThreeGainsFiftyBlockAndReflectsOnlyTheFiftyActuallyAbsorbed()
         {
             var session = Start("02_ThornBastion", "thorn-bastion");
-            Act(session, Player, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(3));
-            Assert.AreEqual(50, session.State.Duel.Combat.Get(Player).Block);
-            var result = Act(session, Player, CardDuelAction.EndTurn);
+            var result = Act(session, Player, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(3));
             Assert.AreEqual(238, Health(session, "player"));
             Assert.AreEqual(146, Health(session, "enemy-1")); Assert.AreEqual(104, Health(session, "enemy-2"));
             Assert.AreEqual(50, result.Steps.SelectMany(x => x.Transition.Events)
@@ -110,23 +120,23 @@ namespace PokerEngine.Tests
             long healing = (long)decimal.Floor(step.Score.Points * 1.5m);
             long overflow = Math.Max(0, initialHealth + healing - 240);
             Assert.AreEqual(Math.Min(240, initialHealth + healing), Health(session, "player"));
-            Assert.AreEqual(360 - (long)decimal.Floor(step.Score.Total * 0.5m) - overflow, Health(session, "enemy-1"));
-            Assert.AreEqual(160 - overflow, Health(session, "enemy-2"));
+            Assert.AreEqual(360 - overflow, Health(session, "enemy-1"));
+            Assert.AreEqual(160 - (long)decimal.Floor(step.Score.Total * 0.5m) - overflow, Health(session, "enemy-2"));
         }
 
         [Test] public void ChapelHighCardCleansesAndDiscardAntidoteStopsAfterTwoUses()
         {
             var session = Start("04_PlagueChapel", "plague-chapel");
             Act(session, Player, CardDuelAction.EndTurn);
-            Assert.IsTrue(session.State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
+            Assert.IsTrue(session.State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "bleed"));
             Act(session, Player, CardDuelAction.Play, Hand(session, Player, HandCategory.HighCard, 1));
             Assert.IsEmpty(session.State.Duel.Combat.Statuses);
+            Act(session, Player, CardDuelAction.EndTurn); // Reapply bleed before testing the two-charge cleanse.
             for (int i = 0; i < 3; i++)
             {
-                Act(session, Player, CardDuelAction.EndTurn);
-                Act(session, Player, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(2));
+                var discard = Act(session, Player, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(2));
                 Assert.AreEqual(Math.Max(0, 1 - i), session.State.Duel.Player(Player).Relics.Relics.Single().RemainingCharges);
-                Assert.AreEqual(i == 2, session.State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
+                Assert.AreEqual(i < 2, discard.Steps[0].Transition.RuleEvents.OfType<CombatStatusChangedEvent>().Any(e => e.Reason == CombatStatusChangeReason.Cleansed));
             }
         }
 
@@ -139,7 +149,7 @@ namespace PokerEngine.Tests
             Assert.AreEqual(185, Health(session, "player")); Assert.AreEqual(0, session.State.Duel.CompletedRounds);
             Act(session, Support, CardDuelAction.EndTurn);
             Assert.AreEqual(1, session.State.Duel.CompletedRounds);
-            Assert.AreEqual(2, session.State.Duel.Combat.Statuses.Count(x => x.DefinitionId.Value == "poison"));
+            Assert.AreEqual(2, session.State.Duel.Combat.Statuses.Count(x => x.DefinitionId.Value == "bleed"));
             Act(session, Support, CardDuelAction.Play, Hand(session, Support, HandCategory.TwoPair, 4));
             Assert.IsEmpty(session.State.Duel.Combat.Statuses);
             Assert.AreEqual(10, session.State.Duel.Combat.Get(Player).Block);

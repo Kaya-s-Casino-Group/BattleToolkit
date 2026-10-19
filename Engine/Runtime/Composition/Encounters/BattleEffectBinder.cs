@@ -16,6 +16,15 @@ namespace PokerEngine
     /// <summary>Binds every step before settlement. Source and attack facts are owned by the engine, never by a rule.</summary>
     internal static class BattleEffectBinder
     {
+        private static CombatEffect WithChain(TeamBattleState state, BattleEffectStep step, ParticipantId source, CombatEffect effect)
+        {
+            if (step.Target.RetargetChain == null) return effect;
+            if (effect.Kind != CombatEffectKind.Damage && effect.Kind != CombatEffectKind.ApplyStatus)
+                throw new ArgumentException("Only damage and its status can share a retarget chain.");
+            return effect.WithTargetChain(new CombatTargetChain(step.Target.RetargetChain,
+                state.Combat.Combatants.Where(u => u.TeamId != state.Combat.Get(source).TeamId).Select(u => u.Id),
+                state.DamageRulesFor(source).AttackDamage));
+        }
         internal static BattleEffectBinding Bind(TeamBattleState state, ParticipantId source, BattleEffectSequence sequence,
             IEnumerable<ParticipantId> requestedTargets, BattleTargetBindings bindings, HandAttackInfo hand, AttackOrigin? origin = null)
         {
@@ -50,6 +59,7 @@ namespace PokerEngine
                     if (step.Target.RequestSlot != null && bindings != null)
                         bindings.Slots.TryGetValue(step.Target.RequestSlot, out selected);
                     var targets = BattleTargetResolver.Resolve(state, source, step.Target, selected);
+                    if (step.Target.RetargetChain != null && targets.Count != 1) return new BattleEffectBinding(CardDuelError.InvalidTarget);
                     if (effects.Count + targets.Count > 64) return new BattleEffectBinding(CardDuelError.InvalidEffectPlan);
                     for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
                     {
@@ -63,13 +73,13 @@ namespace PokerEngine
                             // An earlier effect may defeat this target, in which case this status will be skipped.
                             var status = new StatusInstance(id, spec.Status.DefinitionId, EntityRef.Participant(source), EntityRef.Participant(target),
                                 spec.Status.Stacks, duration);
-                            effects.Add(CombatEffect.ApplyStatus(status));
+                            effects.Add(WithChain(state, step, source, CombatEffect.ApplyStatus(status)));
                         }
                         else
                         {
                             var attack = spec.Kind == CombatEffectKind.Damage ?
                                 new AttackContext(source, origin ?? (hand == null ? AttackOrigin.Other : AttackOrigin.ScoredHand), spec.Amount, hand) : null;
-                            effects.Add(new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack));
+                            effects.Add(WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack)));
                         }
                     }
                 }

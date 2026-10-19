@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CombatTimingKind { ActionCompleted = 1, PhaseEnding = 2, BattleStarted = 3, PhaseStarted = 4 }
+    public enum CombatTimingKind { ActionCompleted = 1, PhaseEnding = 2, BattleStarted = 3, PhaseStarted = 4, TurnStarted = 5 }
 
     /// <summary>Mode-neutral clock declaration. Composition owns which actions and phase rosters qualify.</summary>
     public sealed class CombatTimingSignal
@@ -23,6 +23,8 @@ namespace PokerEngine
                 throw new ArgumentException("A clock requires 1..64 distinct participant identities.");
             Participants = Guard.View(copy); ActionKey = actionKey; PhaseKey = phaseKey;
         }
+        public static CombatTimingSignal TurnStarted(string boundaryId, IEnumerable<ParticipantId> participants) =>
+            new CombatTimingSignal(CombatTimingKind.TurnStarted, boundaryId, participants);
         public static CombatTimingSignal ActionCompleted(string boundaryId, ParticipantId actor, string actionKey) =>
             new CombatTimingSignal(CombatTimingKind.ActionCompleted, boundaryId, new[] { actor },
                 actionKey: Guard.Text(actionKey, nameof(actionKey)));
@@ -40,15 +42,16 @@ namespace PokerEngine
     {
         public CombatTimingKind Timing { get; }
         public long DamagePerStack { get; }
+        public int StackDecay { get; }
         public CombatTargetSpec Target { get; }
-        public PeriodicDamageSpec(CombatTimingKind timing, long damagePerStack, CombatTargetSpec target = null)
+        public PeriodicDamageSpec(CombatTimingKind timing, long damagePerStack, CombatTargetSpec target = null, int stackDecay = 0)
         {
-            if ((timing != CombatTimingKind.ActionCompleted && timing != CombatTimingKind.PhaseEnding) || damagePerStack < 0)
+            if ((timing != CombatTimingKind.ActionCompleted && timing != CombatTimingKind.PhaseEnding && timing != CombatTimingKind.TurnStarted) || damagePerStack < 0 || stackDecay < 0)
                 throw new ArgumentException("Periodic damage requires a supported clock and nonnegative strength.");
             Target = target ?? CombatTargetSpec.Self();
             if (Target.Group == CombatTargetGroup.EventSource || Target.Group == CombatTargetGroup.EventTarget || Target.Group == CombatTargetGroup.EventActor)
                 throw new ArgumentException("A clock has no settled effect endpoints; select relative to the status holder.");
-            Timing = timing; DamagePerStack = damagePerStack;
+            Timing = timing; DamagePerStack = damagePerStack; StackDecay = stackDecay;
         }
     }
 

@@ -29,7 +29,7 @@ namespace PokerEngine
                 var deck = loadout?.DeckId == null ? null : Find(content.Decks, loadout.DeckId, "deck");
                 var id = new ParticipantId(slot.Id);
                 return new BattlePlayerSetup(id, template.Definition, deck, slot.InitialHealth,
-                    WithHandLevels(template.Rules, loadout?.HandLevels ?? template.Rules.HandLevels), template.DamageRules, template.TargetRules,
+                    WithHandLevels(template.Rules, loadout?.HandLevels ?? template.Rules.HandLevels, scoring), template.DamageRules, template.TargetRules,
                     (loadout?.Relics ?? Array.Empty<BattleRelicSetup>()).Select(relic => InstantiateRelic(id, relic)));
             }).ToArray();
             var enemies = encounter.Enemies.Select(slot =>
@@ -42,11 +42,11 @@ namespace PokerEngine
             return new BattleSession(engine, engine.Create(request.BattleId, request.Random, players, enemies));
         }
 
-        private static BattlePlayerRules WithHandLevels(BattlePlayerRules rules, BattleHandLevels levels) =>
+        private static BattlePlayerRules WithHandLevels(BattlePlayerRules rules, BattleHandLevels levels, ScoreProfile scoring) =>
             new BattlePlayerRules(rules.MaxEnergy, rules.InitialEnergy, rules.PlayEnergyCost, rules.DiscardEnergyCost,
                 rules.HandSize, rules.Discards, rules.DealPolicy, rules.UnlimitedDiscards, rules.MaxPlayCards, rules.MaxDiscardCards,
-                rules.DiscardReward, rules.EffectRule == null ? rules.DamagePolicy : null,
-                new BattleHandLevels(levels.Levels), rules.EffectRule);
+                rules.DiscardReward is ChipBlockRewardRule chips ? new ChipBlockRewardRule(chips.Ratio, scoring.CardPoints) : rules.DiscardReward, rules.EffectRule == null ? rules.DamagePolicy : null,
+                new BattleHandLevels(levels.Levels), rules.EffectRule, rules.Flow);
 
         private static BattleRelicSetup InstantiateRelic(ParticipantId owner, BattleRelicSetup setup)
         {

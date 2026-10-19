@@ -11,8 +11,13 @@ namespace PokerEngine
             return ReadDefinitions(section, "Relic", node =>
             {
                 Check(node, new[] { "id", "name", "version", "charges", "maxCopies", "maxLevel", "slots", "sellPrice", "upgradeCost", "growthPerScoredRound" },
-                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger" });
-                var definition = new RelicDefinition(Text(node, "id"), Array.Empty<ScoreEffect>(),
+                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score" });
+                var definition = new RelicDefinition(Text(node, "id"), node.Children.Where(item => item.Name == "Score").Select(item => {
+                    Check(item, new[] { "operation", "amount", "hand" }, new string[0]);
+                    Text(item, "amount");
+                    return new ScoreEffect(ScoreTiming.AfterCards, ReadRequiredEnum<ScoreOperation>(item, "operation"), Decimal(item, "amount", 0),
+                        category: Optional(item, "hand") == null ? (HandCategory?)null : ReadRequiredEnum<HandCategory>(item, "hand"));
+                }),
                     Long(node, "sellPrice", 1), Long(node, "upgradeCost", 5), Int(node, "slots", 1), Int(node, "maxCopies", 1),
                     Int(node, "maxLevel", 1), Long(node, "growthPerScoredRound", 0), charges: OptionalInt(node, "charges"));
                 var budgets = node.Children.Where(item => item.Name == "Budget").ToArray();
@@ -131,10 +136,11 @@ namespace PokerEngine
         }
         private RelicActionTriggerSpec ReadActionTrigger(BattleContentNode node)
         {
-            Check(node, new[] { "id", "timing", "relation", "priority", "chain", "sourcePolicy" }, new[] { "Conditions", "Effect" });
+            Check(node, new[] { "id", "timing", "relation", "priority", "chain", "sourcePolicy", "discardKind" }, new[] { "Conditions", "Effect" });
             return new RelicActionTriggerSpec(Text(node, "id"), ReadRequiredEnum<RelicActionTiming>(node, "timing"), ReadTriggeredEffects(node),
                 Enum(node, "relation", RelicActionRelation.OwnerIsActor), ReadConditions(node), Int(node, "priority", 0), Bool(node, "chain", false),
-                Enum(node, "sourcePolicy", CombatReactionSourcePolicy.RequireLiving));
+                Enum(node, "sourcePolicy", CombatReactionSourcePolicy.RequireLiving),
+                Optional(node, "discardKind") == "Any" ? (BattleDiscardKind?)null : Enum(node, "discardKind", BattleDiscardKind.Defense));
         }
         private RelicTriggeredEffectSpec[] ReadTriggeredEffects(BattleContentNode node) =>
             node.Children.Where(item => item.Name == "Effect").Select(item => Capture(item, () =>

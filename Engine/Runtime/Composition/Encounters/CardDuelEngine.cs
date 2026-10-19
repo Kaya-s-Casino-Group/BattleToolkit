@@ -4,10 +4,10 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CardDuelAction { Play = 1, Discard, EnemyAction, EndTurn, CollectPlayed, Start, SkipPlayerTurn }
+    public enum CardDuelAction { Play = 1, Discard, EnemyAction, EndTurn, CollectPlayed, Start, SkipPlayerTurn, Draw, SkipDraw, DiscardForDraw, ConfirmOverflow, FinishTurn }
     public enum CardDuelError { None, StaleRevision, InvalidPhase, InvalidSelection, NoDiscards, InsufficientEnergy, Overflow, InvalidTarget, InvalidState, InvalidDamagePlan, InvalidDamageModifier, InvalidDiscardReward, InvalidEffectPlan, ActionBlocked, InvalidReaction, ReactionLimitExceeded, InvalidRelicState, InvalidAmountModifier, InvalidHandEffectModifier, InvalidRuleModifier, InvalidDealPlan }
     public enum CardDuelRefillTiming { NextPlayerTurn = 0, AfterAction = 1 }
-    public enum CardDuelDealTrigger { OpeningTurn, AfterPlay, AfterDiscard, PlayerTurnStart }
+    public enum CardDuelDealTrigger { OpeningTurn, AfterPlay, AfterDiscard, PlayerTurnStart, ManualDraw, EffectDraw }
 
     /// <summary>Read-only input to a pure draw policy. It decides how many cards, never moves or creates cards.</summary>
     public sealed class CardDuelDealContext
@@ -57,12 +57,21 @@ namespace PokerEngine
         public int DiscardsFor(ParticipantId player) => discards[player];
         public int? RemainingDiscardBudgetFor(ParticipantId player) => Duel.Player(player).Rules.UnlimitedDiscards ? (int?)null : discards[player];
         public bool HasDiscardBudgetFor(ParticipantId player) => Duel.Player(player).Rules.UnlimitedDiscards || discards[player] > 0;
+        private readonly Dictionary<ParticipantId, BattlePlayerFlow> flows;
+        public BattlePlayerFlow FlowFor(ParticipantId player) => flows[player];
+        internal Dictionary<ParticipantId, BattlePlayerFlow> CopyFlows() => new Dictionary<ParticipantId, BattlePlayerFlow>(flows);
         public bool HasStarted { get; }
         public long Revision => Table.Revision;
         public CardZone Zone(string kind) => Zone(kind, Duel.PlayerId);
         public CardZone Zone(string kind, ParticipantId player) => Table.Zones.Single(zone => zone.Kind == kind && zone.ControllerId == player);
-        internal CardDuelState(CardTableState table, TeamBattleState duel, RandomState random, IDictionary<ParticipantId, int> discards, bool hasStarted)
-        { Table = table; Duel = duel; Random = random; this.discards = new Dictionary<ParticipantId, int>(discards); HasStarted = hasStarted; }
+        internal CardDuelState(CardTableState table, TeamBattleState duel, RandomState random, IDictionary<ParticipantId, int> discards, bool hasStarted, IDictionary<ParticipantId, BattlePlayerFlow> flows = null)
+        {
+            Table = table; Duel = duel; Random = random; this.discards = new Dictionary<ParticipantId, int>(discards); HasStarted = hasStarted;
+            this.flows = flows == null ? duel.Players.ToDictionary(p => p.Id, p => NewFlow(p)) : new Dictionary<ParticipantId, BattlePlayerFlow>(flows);
+        }
+        internal static BattlePlayerFlow NewFlow(BattlePlayerTurn player) => new BattlePlayerFlow(
+            player.Rules.Flow.ManualDraw && BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DrawUses).Value > 0 ? BattlePlayerWindow.Draw : BattlePlayerWindow.Action,
+            BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DrawUses).Value, actionsRemaining: BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.ActionsPerTurn).Value);
     }
 
     public sealed class CardDuelTransition
@@ -102,7 +111,7 @@ namespace PokerEngine
     /// Card/health coordinator for both rosters: independent player decks and costs, then ordered enemy actions.
     /// No Draw target-score victory, AbilityWorld, Run rewards or Unity dependency.
     /// </summary>
-    public sealed class CardDuelEngine
+    public sealed partial class CardDuelEngine
     {
         private readonly Dictionary<CardDefinitionId, CardDefinition> faces = StandardDeck.Cards().ToDictionary(card => card.Id);
         private readonly HmacDeckShuffler shuffler = new HmacDeckShuffler();
@@ -151,7 +160,7 @@ namespace PokerEngine
             {
                 var player = roster[seat];
                 var entries = Guard.Copy(player.Deck ?? StandardDeck.Cards().Select((card, i) => new DeckEntry("standard/" + i, card.Id)).ToArray(), "deck");
-                if (entries.Length < duel.Player(player.Id).Limits.HandLimit.Value || entries.Length > 512 || entries.Any(entry => entry == null || !faces.ContainsKey(entry.DefinitionId)) ||
+                if (entries.Length < (player.Rules.Flow.ManualDraw ? 1 : duel.Player(player.Id).Limits.HandLimit.Value) || entries.Length > 512 || entries.Any(entry => entry == null || !faces.ContainsKey(entry.DefinitionId)) ||
                     entries.Select(entry => entry.Id).Distinct(StringComparer.Ordinal).Count() != entries.Length)
                     throw new ArgumentException("Each player needs a playable deck of standard faces with unique origins, at least the hand size.");
                 var owned = entries.Select((entry, i) => new CardInstance(new CardInstanceId(id + "/player/" + seat + "/card/" + i), entry.DefinitionId, entry.Id, entry.Effects, entry.IsDisabled)).ToArray();
@@ -176,7 +185,7 @@ namespace PokerEngine
             {
                 var table = new CardTableState(state.Table.MatchId, state.Table.Cards, state.Table.Zones, checked(state.Revision + 1));
                 var discards = state.Duel.Players.ToDictionary(player => player.Id, player => state.DiscardsFor(player.Id));
-                return new CardDuelTransition(new CardDuelState(table, result.State, state.Random, discards, state.HasStarted));
+                return new CardDuelTransition(new CardDuelState(table, result.State, state.Random, discards, state.HasStarted, state.CopyFlows()));
             }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
@@ -199,16 +208,20 @@ namespace PokerEngine
             if (!state.HasStarted || !state.Duel.Players.Any(player => player.Id == actor)) return new CardDuelTransition(state, CardDuelError.InvalidPhase);
             var ids = (selected ?? new CardInstanceId[0]).ToArray();
             var hand = state.Zone(CardZoneKinds.Hand, actor);
-            if (ids.Length < 1 || ids.Length > state.Duel.Player(actor).Rules.MaxPlayCards || ids.Distinct().Count() != ids.Length ||
+            if (ids.Length < PlayLimit(state, actor, true) || ids.Length > PlayLimit(state, actor, false) || ids.Distinct().Count() != ids.Length ||
                 ids.Any(id => !hand.Cards.Contains(id) || state.Table.GetCard(id).IsDisabled))
                 return new CardDuelTransition(state, CardDuelError.InvalidSelection);
             try
             {
                 var ordered = hand.Cards.Where(ids.Contains).Select(state.Table.GetCard).ToArray();
-                var pattern = PokerHandClassifier.Classify(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)));
+                var pattern = PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)));
                 var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
-                var score = ScoreEngine.EvaluatePattern(Duel.NextScoreId(state.Duel), Scoring, pattern, level,
-                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects)), new ScoringRelic[0]);
+                var player = state.Duel.Player(actor); var flow = player.Rules.Flow;
+                var relics = player.Relics.Relics.Select(r => new ScoringRelic(r.InstanceId, r.Level, r.Growth, player.Relics.Definition(r.InstanceId).ScoreEffects));
+                var kicker = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.AllCardsScore).Value > 0 ? KickerScoring.AllCards : flow.KickerScoring;
+                var score = ScoreEngine.EvaluateBattle(Duel.NextScoreId(state.Duel), Scoring, pattern, level,
+                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects)),
+                    flow.ManualDraw || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor);
                 return new CardDuelTransition(state, score: score, pattern: pattern);
             }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
@@ -220,7 +233,11 @@ namespace PokerEngine
             Execute(state, expectedRevision, action == CardDuelAction.EnemyAction ? state.Duel.NextEnemy : state.Duel.PlayerId,
                 action, selected, targetBindings: targetBindings);
         public CardDuelTransition Execute(CardDuelState state, long expectedRevision, ParticipantId actor, CardDuelAction action,
-            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null)
+            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, int drawCount = 0) =>
+            ExecuteFlow(state, expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
+
+        private CardDuelTransition ExecuteCore(CardDuelState state, long expectedRevision, ParticipantId actor, CardDuelAction action,
+            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, bool freeDiscard = false)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             if (expectedRevision != state.Revision) return new CardDuelTransition(state, CardDuelError.StaleRevision);
@@ -247,7 +264,7 @@ namespace PokerEngine
                 return new CardDuelTransition(state, CardDuelError.InvalidPhase);
             var ids = (selected ?? new CardInstanceId[0]).ToArray();
             if (action != CardDuelAction.Play && action != CardDuelAction.Discard ? ids.Length != 0 : ids.Length < 1 ||
-                ids.Length > (action == CardDuelAction.Play ? state.Duel.Player(actor).Rules.MaxPlayCards : state.Duel.Player(actor).Rules.MaxDiscardCards) ||
+                ids.Length > (action == CardDuelAction.Play ? PlayLimit(state, actor, false) : state.Duel.Player(actor).Rules.MaxDiscardCards) ||
                 ids.Distinct().Count() != ids.Length || ids.Any(id => !state.Zone(CardZoneKinds.Hand, actor).Cards.Contains(id) || state.Table.GetCard(id).IsDisabled))
                 return new CardDuelTransition(state, CardDuelError.InvalidSelection);
             if (action == CardDuelAction.Discard && !state.HasDiscardBudgetFor(actor)) return new CardDuelTransition(state, CardDuelError.NoDiscards);
@@ -259,7 +276,7 @@ namespace PokerEngine
                     try { actionCost = Duel.QueryActionCost(state.Duel, actor,
                         action == CardDuelAction.Play ? ScoredDuelActionKind.ScoredHand : ScoredDuelActionKind.Discard); }
                     catch (ArgumentException) { return new CardDuelTransition(state, CardDuelError.InvalidRuleModifier); }
-                    if (!actionCost.CanAfford) return new CardDuelTransition(state, CardDuelError.InsufficientEnergy);
+                    if (!actionCost.CanAfford && !freeDiscard) return new CardDuelTransition(state, CardDuelError.InsufficientEnergy);
                 }
                 var requestedTargets = targets == null ? null : targets.ToArray();
                 var timeline = new BattleTimelineRecorder(state, action, actor, ids, requestedTargets);
@@ -311,7 +328,7 @@ namespace PokerEngine
                     var cards = state.Zone(CardZoneKinds.Hand, actor).Cards.Where(ids.Contains).Select(state.Table.GetCard)
                         .Select(card => new DiscardCardSnapshot(card, new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit))).ToArray();
                     var spent = Duel.ExecuteObserved(duel, duel.Revision, actor, ScoredDuelActionKind.Discard,
-                        requestedTargets: requestedTargets, discardedCards: cards, timeline: timeline);
+                        requestedTargets: requestedTargets, discardedCards: cards, timeline: timeline, freeDiscard: freeDiscard);
                     if (!spent.Accepted) return new CardDuelTransition(state, spent.Error);
                     actionCost = spent.ActionCost;
                     relicActivations = spent.RelicActivations; actionCompletion = spent.ActionCompletion;
@@ -369,8 +386,18 @@ namespace PokerEngine
                         }
                     }
                 }
+                if (!duel.IsFinished)
+                    foreach (var drawn in events.OfType<CombatEvent>().Where(e => e.Effect.Kind == CombatEffectKind.DrawCards))
+                    {
+                        var recipient = duel.Players.FirstOrDefault(p => p.Id == drawn.Effect.Target);
+                        if (recipient == null) return new CardDuelTransition(state, CardDuelError.InvalidEffectPlan);
+                        int held = zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == recipient.Id).Cards.Count;
+                        int capacity = recipient.Rules.Flow.EffectDrawOverflow ? 512 : recipient.Limits.HandLimit.Value;
+                        DealExplicit(state.Table, zones, recipient, (int)Math.Min(drawn.Effect.Amount, Math.Max(0, capacity - held)),
+                            CardDuelDealTrigger.EffectDraw, ref random, draws, timeline);
+                    }
                 var table = new CardTableState(state.Table.MatchId, state.Table.Cards, zones, checked(state.Revision + 1));
-                var final = new CardDuelState(table, duel, random, discards, true);
+                var final = new CardDuelState(table, duel, random, discards, true, state.CopyFlows());
                 timeline.SetState(final);
                 timeline.Add(BattleTimelineKind.ActionResolved);
                 if (duel.IsFinished)
@@ -402,6 +429,8 @@ namespace PokerEngine
             try { plan = new BattleRuleResolver().ResolveDeal(new BattleDealQuery(context, playerTurn.Rules.DealPolicy, playerTurn.Relics)); }
             catch (ArgumentException) { return CardDuelError.InvalidDealPlan; }
             int remaining = plan.Count;
+            if (playerTurn.Rules.Flow.ManualDraw && !(trigger == CardDuelDealTrigger.OpeningTurn && playerTurn.Rules.Flow.OpeningDeal)) remaining = 0;
+            int requestedCount = remaining;
             int d = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Deck && zone.ControllerId == player), h = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Hand && zone.ControllerId == player),
                 x = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Discard && zone.ControllerId == player);
             while (remaining > 0)
@@ -423,7 +452,7 @@ namespace PokerEngine
                     to: CardZoneKinds.Hand, cardOwner: player, trigger: trigger);
                 remaining -= count;
             }
-            draws.Add(new BattleDrawRecord(plan, plan.Count - remaining));
+            draws.Add(new BattleDrawRecord(plan, requestedCount - remaining));
             return CardDuelError.None;
         }
     }

@@ -33,9 +33,16 @@ const base = process.env.EDITOR_URL || 'http://127.0.0.1:18765';
   const clickRequest = async (selector, op, action) => {
     const response = responseFor(op, action);
     await page.locator(selector).click();
-    const result = await (await response).json();
+    let result = await (await response).json();
     if (result.battle) sessions.add(result.battle.sessionId);
     await page.waitForFunction(() => !document.querySelector('#playtest-seed').disabled, {}, {timeout:30000});
+    if(op==='start'&&result.success&&result.battle.players[0].manualDraw){
+      assert.equal(await page.locator('#playtest-hand [data-card-id]').count(),0);
+      await page.locator('#playtest-draw-count').fill(String(result.battle.players[0].drawLimit));
+      result=await clickRequest('#playtest-draw','command','Draw');
+    }
+    if(action==='EndTurn'&&result.success&&result.battle.players[0].window==='Ending')
+      result=await clickRequest('#playtest-end-turn','command','FinishTurn');
     return result;
   };
   const handIds = () => page.locator('#playtest-hand [data-card-id]').evaluateAll(cards => cards.map(card => card.dataset.cardId));
@@ -82,28 +89,30 @@ const base = process.env.EDITOR_URL || 'http://127.0.0.1:18765';
       assert.equal(await page.locator('#playtest-hand [aria-pressed="true"]').count(), 1);
       assert.match(await page.locator('#playtest-preview').innerText(), /高牌/);
     });
-    await test('网页出牌扣能量、结算伤害并补回手牌', async () => {
+    await test('网页出牌扣能量、结算伤害并保留剩余手牌', async () => {
       const result = await clickRequest('#playtest-play', 'command', 'Play');
       assert.equal(result.success, true, JSON.stringify(result)); current = result.battle;
       assert.equal(current.players[0].energy, 2);
       assert.ok(Number(current.enemies[0].health) < 1200);
-      assert.equal(await page.locator('#playtest-hand [data-card-id]').count(), 8);
+      assert.equal(await page.locator('#playtest-hand [data-card-id]').count(), 7);
       assert.equal(await page.locator('#playtest-hand [aria-pressed="true"]').count(), 0);
       assert.match(await page.locator('#playtest-log').textContent(), /伤害/);
     });
-    await test('网页弃牌获得护盾并展示消耗后的次数', async () => {
+    await test('网页防御弃牌自动推进回合并保留手牌', async () => {
       await choose(0);
       const result = await clickRequest('#playtest-discard', 'command', 'Discard');
       assert.equal(result.success, true, JSON.stringify(result)); current = result.battle;
-      assert.equal(current.players[0].block, '8');
-      assert.equal(current.players[0].energy, 1);
-      assert.equal(current.players[0].discardsRemaining, 2);
-      assert.equal(await page.locator('#playtest-hand [data-card-id]').count(), 8);
+      assert.equal(current.players[0].block, '0');
+      assert.equal(current.players[0].health, '568');
+      assert.equal(current.players[0].energy, 3);
+      assert.equal(current.players[0].discardsRemaining, null);
+      assert.equal(current.players[0].window, 'Draw');
+      assert.equal(await page.locator('#playtest-hand [data-card-id]').count(), 6);
     });
     await test('结束回合自动执行敌方与下一回合并记录结算', async () => {
       const result = await clickRequest('#playtest-end-turn', 'command', 'EndTurn');
       assert.equal(result.success, true, JSON.stringify(result)); current = result.battle;
-      assert.equal(current.players[0].health, '568');
+      assert.equal(current.players[0].health, '328');
       assert.equal(current.players[0].energy, 3);
       assert.ok(current.round > opening.round);
       assert.ok(result.steps.some(step => step.actor === 'enemy'));
@@ -166,8 +175,8 @@ const base = process.env.EDITOR_URL || 'http://127.0.0.1:18765';
     });
     await test('遗物修改后的手动选敌要求在网页可选择并生效', async () => {
       const xml = scene.replace('</Relics>', '<Relic id="manual-target"><HandModifier id="target" category="HighCard" operation="ChangeTarget" stepId="damage/1" target="Opponents" selection="Requested" requestSlot="attack"/></Relic></Relics>')
-        .replace('<Loadout id="baseline" name="默认·无遗物" deckRef="standard-deck"/>', '<Loadout id="baseline" deckRef="standard-deck"><Relic instanceId="manual-target" ref="manual-target"/></Loadout>')
-        .replace('<Enemy id="enemy" ref="guardian"/></Encounter>', '<Enemy id="enemy" ref="guardian"/><Enemy id="enemy-2" ref="guardian"/></Encounter>');
+        .replace(/<Loadout id="baseline" name="默认·无遗物" deckRef="standard-deck"\s*\/>/, '<Loadout id="baseline" deckRef="standard-deck"><Relic instanceId="manual-target" ref="manual-target"/></Loadout>')
+        .replace(/<Enemy id="enemy" ref="guardian"\s*\/>\s*<\/Encounter>/, '<Enemy id="enemy" ref="guardian"/><Enemy id="enemy-2" ref="guardian"/></Encounter>');
       await load(xml); await page.locator('#playtest-tab').click();
       const started = await clickRequest('#playtest-restart', 'start');
       assert.equal(started.success, true, JSON.stringify(started));

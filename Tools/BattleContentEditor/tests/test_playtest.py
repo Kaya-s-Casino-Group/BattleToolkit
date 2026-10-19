@@ -64,7 +64,7 @@ class PlaytestTests(unittest.TestCase):
             self.sessions[result['battle']['sessionId']] = result['battle']
         return response.status, result
 
-    def start(self, xml=None, encounter='single-battle-new', seed='104729', battle=None):
+    def start(self, xml=None, encounter='single-battle-new', seed='104729', battle=None, draw=True):
         data = {'op': 'start', 'sessionId': battle['sessionId'] if battle else str(uuid.uuid4()),
                 'xml': xml if xml is not None else self.scene, 'encounterId': encounter, 'seed': seed}
         if battle:
@@ -72,6 +72,11 @@ class PlaytestTests(unittest.TestCase):
         status, result = self.request(data)
         self.assertEqual(200, status, result)
         self.assertTrue(result['success'], result)
+        if draw:
+            for player in result['battle']['players']:
+                if player.get('manualDraw') and player['window'] == 'Draw':
+                    result = self.action(result['battle'], 'Draw', actor=player['id'], drawCount=player['drawLimit'])
+                    self.assertTrue(result['success'], result)
         return result
 
     def action(self, battle, action, selected=None, op='command', actor=None, bindings=None, **extra):
@@ -81,6 +86,10 @@ class PlaytestTests(unittest.TestCase):
         data.update(extra)
         status, result = self.request(data)
         self.assertEqual(200, status, result)
+        if op == 'command' and action == 'EndTurn' and result.get('success'):
+            next_player = next((p for p in result['battle']['players'] if p['id'] == data['actor']), None)
+            if next_player and next_player.get('manualDraw') and next_player['window'] == 'Ending' and next_player['canAct']:
+                result = self.action(result['battle'], 'FinishTurn', actor=data['actor'])
         return result
 
     def state(self, battle):
@@ -100,6 +109,36 @@ class PlaytestTests(unittest.TestCase):
         result.pop('runId', None)
         return result
 
+    def test_manual_draw_skip_and_overflow_commands_are_transactional(self):
+        def edit(root):
+            hand = root.find("HandRules/HandRule/Hand[@category='HighCard']")
+            for effect in list(hand):
+                hand.remove(effect)
+            ET.SubElement(hand, 'Effect', {'id': 'draw', 'kind': 'DrawCards', 'amount': '10', 'target': 'Self'})
+        battle = self.start(changed_xml(self.scene, edit), draw=False)['battle']
+        player = battle['players'][0]
+        self.assertEqual([], player['hand'])
+        self.assertEqual('Draw', player['window'])
+        drawn = self.assert_success(self.action(battle, 'Draw', drawCount=5))
+        self.assertEqual(5, len(drawn['players'][0]['hand']))
+        selected = [drawn['players'][0]['hand'][0]['id']]
+        played = self.assert_success(self.action(drawn, 'Play', selected))
+        self.assertEqual(14, len(played['players'][0]['hand']))
+        forced = self.assert_success(self.action(played, 'EndTurn'))
+        self.assertEqual('ForcedDiscard', forced['players'][0]['window'])
+        self.assertEqual(6, forced['players'][0]['requiredDiscards'])
+        ids = [card['id'] for card in forced['players'][0]['hand']]
+        invalid = self.action(forced, 'ConfirmOverflow', ids[:5])
+        self.assertFalse(invalid['success'])
+        self.assertEqual(forced, self.state(forced))
+        confirmed = self.assert_success(self.action(forced, 'ConfirmOverflow', ids[:6]))
+        self.assertEqual('Ending', confirmed['players'][0]['window'])
+        self.assertEqual('0', confirmed['players'][0]['block'])
+        ended = self.assert_success(self.action(confirmed, 'FinishTurn'))
+        skipped = self.assert_success(self.action(ended, 'SkipDraw'))
+        self.assertEqual(8, len(skipped['players'][0]['hand']))
+        self.assertEqual('Action', skipped['players'][0]['window'])
+
     def test_scene_opening_uses_xml_and_authoritative_state(self):
         result = self.start()
         battle = result['battle']
@@ -108,7 +147,7 @@ class PlaytestTests(unittest.TestCase):
         self.assertEqual('104729', battle['seed'])
         self.assertTrue(battle['fingerprint'])
         self.assertIsInstance(battle['revision'], str)
-        self.assertEqual(('800', 3, 8, 3), (player['health'], player['energy'], len(player['hand']), player['discardsRemaining']))
+        self.assertEqual(('800', 3, 8, None), (player['health'], player['energy'], len(player['hand']), player['discardsRemaining']))
         self.assertEqual('1200', enemy['health'])
         self.assertEqual(44, player['deckCount'])
         self.assertTrue(player['canAct'])
@@ -132,7 +171,7 @@ class PlaytestTests(unittest.TestCase):
         expected_damage = int(first['preview']['hand']['total'])
         self.assertEqual(1200 - expected_damage, int(played['enemies'][0]['health']))
         self.assertEqual(2, played['players'][0]['energy'])
-        self.assertEqual(8, len(played['players'][0]['hand']))
+        self.assertEqual(7, len(played['players'][0]['hand']))
 
     def test_discard_preview_does_not_consume_relic_charges(self):
         battle = self.start(self.example, 'example-fight')['battle']
@@ -151,15 +190,11 @@ class PlaytestTests(unittest.TestCase):
         battle = self.start()['battle']
         played = self.assert_success(self.action(battle, 'Play', [battle['players'][0]['hand'][0]['id']]))
         discarded = self.assert_success(self.action(played, 'Discard', [played['players'][0]['hand'][0]['id']]))
-        self.assertEqual(('8', 1, 2), (discarded['players'][0]['block'], discarded['players'][0]['energy'], discarded['players'][0]['discardsRemaining']))
-        ended = self.action(discarded, 'EndTurn')
-        state = self.assert_success(ended)
-        player = state['players'][0]
-        self.assertGreater(state['round'], battle['round'])
-        self.assertEqual(('568', '0', 3, 8, 2), (player['health'], player['block'], player['energy'], len(player['hand']), player['discardsRemaining']))
+        player = discarded['players'][0]
+        self.assertGreater(discarded['round'], battle['round'])
+        self.assertEqual(('568', '0', 3, 6, None), (player['health'], player['block'], player['energy'], len(player['hand']), player['discardsRemaining']))
+        self.assertEqual('Draw', player['window'])
         self.assertTrue(player['canAct'])
-        self.assertTrue(any(step['actor'] == 'enemy' for step in ended['steps']))
-        self.assertGreater(len(ended['steps']), 1)
 
     def test_fixed_seed_restart_repeats_cards_results_and_logs(self):
         original = self.start(seed='9007199254740993')['battle']

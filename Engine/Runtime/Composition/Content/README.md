@@ -53,24 +53,46 @@ else
 
 - `Scoring preset="Default"` 使用现有 ScoreProfile.Default，不能同时填写自定义版本/子项。自定义 Scoring 必须有十类 Hand（category、points、multiplier 必填；pointsPerLevel 默认 10、multiplierPerLevel 默认 1）。可选 CardPoints 内需要十三个 Rank（rank/points），可追加 Face（rank/suit/points）覆盖；缺省整个表沿用既有单牌分值。
 - `Rules`：scoringRef 必填；roundLimit 默认 20，blockExpiry 默认 Retain；maxReactionEffects 默认 256、maxReactionDepth 默认 16。可选 version 默认继承包版本。
-- `Player`：maxHealth=100、initialBlock=0、maxEnergy=3、initialEnergy=3、playEnergyCost=1、discardEnergyCost=1、handSize=8、discards=3、unlimitedDiscards=false、maxPlayCards=5、maxDiscardCards=5。playRefill=NextPlayerTurn、discardRefill=AfterAction。缺省弃牌收益为空；显式 discardBlockPerCard 启用既有按张护盾。未设置 handRuleRef 时仍为 EqualScoreDamageRule；可选 pointsPerDamage 使用旧除法伤害规则，不能与 handRuleRef 同时配置。现有引擎的手牌选择上限/初始能量处理语义不变。
+- `Player`：maxHealth=100、initialBlock=0、maxEnergy=3、initialEnergy=3、playEnergyCost=1、discardEnergyCost=1、handSize=8、discards=3、unlimitedDiscards=false、maxPlayCards=5、maxDiscardCards=5。playRefill=NextPlayerTurn、discardRefill=AfterAction。缺省弃牌收益为空；显式 discardBlockPerCard 启用既有按张护盾。未设置 handRuleRef 时仍为 EqualScoreDamageRule；可选 pointsPerDamage 使用旧除法伤害规则，不能与 handRuleRef 同时配置。可选 discardBlockPerPoint 按弃牌筹码总和计算护盾，与 discardBlockPerCard 互斥。新流程字段见下节。
 - 双方模板可配 attackMultiplier/attackFlat、incomingMultiplier/incomingFlat、attackTarget/allowRequestedTargets；未填写时使用现有默认策略。单步目标仍由效果自己配置；ActorPolicy 才委托给角色目标策略。本期 XML 未开放独立 supportTarget 字段，沿用现有默认友方策略；需要自动选定友方时可直接配置效果的 Allies/selection。
 - `Enemy`：maxHealth=100、initialBlock=0；缺省 damage=0。damage 与子项 Effects 互斥，Effects 内每个 Effect 必须有稳定 id。敌人序列只支持常量，不支持手动 Requested 目标。
-- `Deck/Card`：id 是来源 ID，face 是现有标准牌面 ID（例如 standard:1:2，梅花 2），effects 为 CardEffects 的枚举名称或逗号组合，disabled 默认 false。来源 ID 不同可以引用同一牌面。目录验证 1–512 张和来源 ID 唯一；实际编成还验证有效手牌上限所需牌数。
+- `Deck/Card`：id 是来源 ID，face 是现有标准牌面 ID（例如 standard:1:2，梅花 2），effects 为 CardEffects 的枚举名称或逗号组合，disabled 默认 false。来源 ID 不同可以引用同一牌面。目录验证 1–512 张和来源 ID 唯一；自动发牌流程还验证有效手牌上限所需牌数；手动摸牌流程允许短牌库。
 - `Loadout`：deckRef 省略时使用既有标准 52 张牌组。HandLevel 要求 category/level，省略类别默认 1 级。Relic 要求 instanceId/ref，level=1、growth=0、cooldownRounds=0；charges 省略继承遗物定义，未限次遗物不能填有限 charges。实例参数不能越过定义的等级/拷贝约束。
 - `Encounter`：rulesRef 必填。Player 子项要求 id/ref，可选 loadoutRef、initialHealth；Enemy 子项要求 id/ref。参与者数量、重复 ID 和初始血量通过现有组装检查。
+
+## 手动摸牌与弃牌窗口
+
+标准文件显式启用以下 Player 字段；直接 C# 组装和未声明 manualDraw 的已有内容仍可选择原补牌策略。标准与主题 XML 已原地更新。
+
+| 字段 | 缺省值 | 说明 |
+| --- | --- | --- |
+| manualDraw / openingDeal | false / false | 启用新窗口；是否开局额外按手牌上限发牌 |
+| drawCount / drawUses / drawWarningThreshold | 5 / 1 / 3 | 单次手动张数、每回合次数、已有手牌提示阈值 |
+| minPlayCards / actionsPerTurn | 1 / 3 | 出牌下限、独立于能量费用的行动上限 |
+| effectDrawOverflow | true | 效果摸牌可超过手牌上限，结束出牌时强制弃置 |
+| discardEndsTurn / discardCostsAction | true / true | 行动内防御弃牌后结束、消耗一次行动及其费用 |
+| endDefense / overflowTriggersDefense | true / false | 结束出牌后可免费防御一次；超限弃牌是否带防御基础收益及默认防御触发 |
+| kickerScoring / layeredScoreRelics | None / false | 标准显式 ChipsOnly / true；可选 AllCards 或 None |
+
+`PlayLimit`/`DrawLimit`/`RequiredDiscards`/`RequiresDrawWarning` 返回当前遗物修正后的约束。MinPlayCards/MaxPlayCards 为 1–10（超过 5 张时识别最佳五张并保留其余筹码）；DrawCount/DrawWarningThreshold 为 0–512、DrawUses 为 0–64、ActionsPerTurn 为 1–64。RuleValue 修改新参数后钳制到范围，AllCardsScore 为 0/1。
+
+窗口依次为 Draw → Action → ForcedDiscard（超限时）→ Ending。Draw 的 0 张等于 SkipDraw；满手尝试正数摸牌拒绝且保留次数。DiscardForDraw 只允许提示分支，未确认选择时宿主不提交命令。ConfirmOverflow 必须恰好选择超限张数，默认没有防御收益；可用 discardKind=Overflow/Any 明确订阅强制弃牌。辅助弃牌不推进旧 ActionCompleted 周期伤害。普通 Discard 是防御弃牌，结束窗口中的一次防御不扣行动/能量；FinishTurn 才真正结束此玩家回合。
+
+计分分成乘倍率的 Points 和不乘倍率的 UnmultipliedPoints；Total 向下取整后相加。ScorePointsScale 读取两部分筹码之和。`<Score operation="AddMultiplier" amount="2"/>` 为遗物加倍率；`<Score operation="MultiplyMultiplier" amount="1.5"/>` 乘倍率。同层按获得顺序；Score 改筹码/倍率，Numeric 继续按获得顺序修改最终伤害等量，两者用途不同。
 
 ## 效果、目标和状态
 
 HandRule 中每类 Hand 必须覆盖且不能重叠。同花顺可用单个 Any 分支统一行为，或分别配置 Ordinary/Royal；其他类别只允许 Any。每个分支有 1–64 个步骤，id 只需在本分支唯一，效果顺序影响结算。
 
-Effect.kind 仅允许 Damage、Heal、GainBlock、ApplyStatus、Cleanse、Eliminate。前三者必须显式填写 amount：默认 amountKind=Constant（非负整数），牌型效果另外支持 ScoreTotalScale / ScorePointsScale（非负十进制系数，乘以权威总分/Points 后向下取整、检查溢出）。这是封闭表达式集合，不执行自由公式或代码。ApplyStatus 要求 statusRef，可填 stacks（默认 1）及期限覆盖；Cleanse / Eliminate 不接受数值/状态字段。Cleanse 移除目标的 Negative 或 Control 状态实例，保留增益。当前类型无关的字段会报错，而不是读取后忽略。
+Effect.kind 允许 Damage、Heal、GainBlock、DrawCards、ApplyStatus、Cleanse、Eliminate。前四者必须显式填写 amount：默认 amountKind=Constant（非负整数），牌型效果另外支持 ScoreTotalScale / ScorePointsScale（乘以权威总分/全部筹码后向下取整），葫芦另支持 ThreeOfAKindTotalScale / OnePairTotalScale（分别使用三条和一对的筹码、倍率及等级）。系数非负且检查溢出。DrawCards 每次最多 512 张，只允许玩家接收，按牌库/弃牌堆实际剩余量摸取，不消耗手动摸牌次数。这是封闭表达式集合，不执行自由公式或代码。ApplyStatus 要求 statusRef，可填 stacks（默认 1）及期限覆盖；Cleanse / Eliminate 不接受数值/状态字段。Cleanse 移除目标的 Negative 或 Control 状态实例，保留增益。当前类型无关的字段会报错，而不是读取后忽略。
 
 主效果目标默认 Opponents/FirstLiving；可选 Self、Opponents、Allies，selection 可选 FirstLiving、LowestHealth、HighestHealth、AllLiving、Requested、ActorPolicy（组合限制复用 EffectTargetSpec）。Requested 可配 requestSlot。AOE 是 selection=AllLiving，与能力类型解耦；Heal 若要治疗自己须明确 target=Self，不按效果类型推测目标。
 
+主伤害/状态步骤可配 `retargetChain="straight"`，仅限单体敌方目标。同链后续伤害在前目标死亡时改选最低生命存活敌人（同血量按阵容顺序），附加状态跟随最近一击且跳过尸体；反击、遗物等实际结算变化也会参与下一击选择。
+
 自动触发使用 CombatTargetSpec，可配置 Self、Opponents、Allies、EventSource、EventTarget、EventActor；后面三者仅在相应事实存在的入口使用。EventActor 仅供行动完成触发；边界没有事件来源/目标，不允许借用。自动触发不接收 Requested/requestSlot。遗物触发目标默认 Self；盾反默认 EventSource、吸血默认 Self、溢出治疗转伤默认 Opponents、周期伤害默认 Self。
 
-Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 为 ActionCompleted（流血）或 PhaseEnding（中毒）。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances。控制免疫是 PreventStatusApplication 的提前状态；事后移除使用 Cleanse。Status.tags 支持 None、Control、Negative 及逗号组合；未标记 Negative/Control 的状态不会被净化。
+Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 支持 ActionCompleted、PhaseEnding、TurnStarted。stackDecay 默认 0；大于 0 时每次触发后扣除对应层数，层数归零移除。标准流血使用 TurnStarted/amount=1/stackDecay=1。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances 和 AddStacks。AddStacks 对同目标同定义合并层数，保留原期限；stackDecay 与 TriggerCount 不能同时使用。控制免疫是 PreventStatusApplication 的提前状态；事后移除使用 Cleanse。Status.tags 支持 None、Control、Negative 及逗号组合；未标记 Negative/Control 的状态不会被净化。
 
 ## 遗物四类能力
 
@@ -80,11 +102,12 @@ Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDa
 | --- | --- |
 | Numeric | id/stat/operation/value；stat 为伤害、治疗、护盾的施加方/接收方；operation 为 AddFlat/AddRate；origins 默认 Primary，可填逗号列表；可选 hand 限定牌型 |
 | HandModifier | id/category/operation；AppendEffect 追加一个含目标的 Effect；ReplaceEffect 用 stepId 替换无目标 Effect；AddHits 用 stepId/hits；ChangeTarget 用 stepId/target/selection/requestSlot |
-| RuleValue | id/key/delta：能量上限、初始能量、出牌/弃牌费用、手牌上限的整数修正 |
+| Score | operation/amount，可选 hand；AddPoints、AddMultiplier、MultiplyMultiplier，按层次再按获得顺序计算 |
+| RuleValue | id/key/delta：能量上限、初始能量、出牌/弃牌费用、手牌上限，以及 MinPlayCards、MaxPlayCards、DrawCount、DrawUses、DrawWarningThreshold、ActionsPerTurn、AllCardsScore 的整数修正 |
 | Refill | id/timing，及可选 mode/fixedCount/delta：沿用既有补牌修正规则 |
 | FactTrigger | id/timing；可选 relation/occurrence/origins/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
 | BoundaryTrigger | id/timing；可选 phase/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
-| ActionTrigger | id/timing；可选 relation/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
+| ActionTrigger | id/timing；可选 relation/priority/chain/sourcePolicy，弃牌触发可加 discardKind=Defense（默认）/BeforeDraw/Overflow/Any；子项 Conditions 与 Effect |
 | Budget | 共享 maxUsesPerAction/maxUsesPerRound/maxUsesPerBoundary，chargeCost 默认 1、cooldownRounds 默认 0；每件遗物最多一个 |
 
 Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasStatus、EventStatus、HandIs、SubmittedCardsAtLeast、DiscardedCardsAtLeast。事实时机/行动种类不可提供的条件会拒绝。触发 Effect 不填步骤 id，由触发条目标识；这里仅接受常量。Numeric 按 Loadout 中遗物的获得顺序、同件内配置顺序逐条计算 `floor(max(0, 当前量 × max(0, 1 + rate) + flat))`，前一步结果参与下一步。触发先按玩家阵容和遗物获得顺序，同件内再按 priority 升序、同优先级按配置顺序；priority 不跨遗物抢占。
@@ -99,4 +122,4 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
 
-当前规则契约为 battle-content.2（XML schemaVersion 仍为 1），包含净化与获得顺序结算；旧绑定/规则快照不自动迁移。
+当前规则契约为 battle-content.3、Combat 为 combat.10（XML schemaVersion 仍为 1），包含手动摸牌/分阶段弃牌、计分遗物、葫芦分项、叠层流血和逐段转火。旧绑定/规则快照不自动迁移。

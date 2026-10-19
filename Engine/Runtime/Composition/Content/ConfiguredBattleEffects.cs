@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum EffectAmountKind { Constant = 1, ScoreTotalScale, ScorePointsScale }
+    public enum EffectAmountKind { Constant = 1, ScoreTotalScale, ScorePointsScale, ThreeOfAKindTotalScale, OnePairTotalScale }
     public enum HandEffectVariant { Any = 1, Ordinary, Royal }
 
     /// <summary>Restricted content expression evaluated from authoritative score facts.</summary>
@@ -24,7 +24,8 @@ namespace PokerEngine
             if (Kind != EffectAmountKind.Constant && score == null)
                 throw new ArgumentException("The amount source requires an authoritative score.");
             return checked((long)decimal.Floor(checked(Value * (Kind == EffectAmountKind.Constant ? 1 :
-                Kind == EffectAmountKind.ScoreTotalScale ? score.Total : score.Points))));
+                Kind == EffectAmountKind.ScoreTotalScale ? score.Total : Kind == EffectAmountKind.ScorePointsScale ? score.AllPoints :
+                score.Components.Single(c => c.Category == (Kind == EffectAmountKind.ThreeOfAKindTotalScale ? HandCategory.ThreeOfAKind : HandCategory.OnePair)).Total))));
         }
     }
 
@@ -39,7 +40,7 @@ namespace PokerEngine
             EffectAmountSpec amount = null, StatusApplicationSpec status = null)
         {
             Id = Guard.Text(id, nameof(id)); Target = target ?? throw new ArgumentNullException(nameof(target));
-            bool numeric = kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock;
+            bool numeric = kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock || kind == CombatEffectKind.DrawCards;
             if (!numeric && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate && kind != CombatEffectKind.Cleanse ||
                 numeric != (amount != null) || (kind == CombatEffectKind.ApplyStatus) != (status != null))
                 throw new ArgumentException("Effect payload does not match its kind.");
@@ -54,6 +55,7 @@ namespace PokerEngine
             var effect = Kind == CombatEffectKind.Damage ? BattleEffectSpec.Damage(Amount.Resolve(score)) :
                 Kind == CombatEffectKind.Heal ? BattleEffectSpec.Heal(Amount.Resolve(score)) :
                 Kind == CombatEffectKind.GainBlock ? BattleEffectSpec.GainBlock(Amount.Resolve(score)) :
+                Kind == CombatEffectKind.DrawCards ? BattleEffectSpec.DrawCards(Amount.Resolve(score)) :
                 Kind == CombatEffectKind.ApplyStatus ? BattleEffectSpec.ApplyStatus(Status) :
                 Kind == CombatEffectKind.Cleanse ? BattleEffectSpec.Cleanse() : BattleEffectSpec.Eliminate();
             return new BattleEffectStep(Id, effect, Target);
@@ -72,6 +74,9 @@ namespace PokerEngine
                 category != HandCategory.StraightFlush && variant != HandEffectVariant.Any || copy.Length < 1 || copy.Length > 64 ||
                 copy.Any(item => item == null) || copy.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != copy.Length)
                 throw new ArgumentException("Invalid hand match or duplicate effect step IDs.");
+            if (category != HandCategory.FullHouse && copy.Any(step => step.Amount != null &&
+                (step.Amount.Kind == EffectAmountKind.ThreeOfAKindTotalScale || step.Amount.Kind == EffectAmountKind.OnePairTotalScale)))
+                throw new ArgumentException("Component score amounts require a full house.");
             Category = category; Variant = variant; Effects = Guard.View(copy);
         }
     }

@@ -16,13 +16,20 @@ internal static partial class PlaytestBridge
             "phase", duel.Phase.ToString(), "round", Math.Min(duel.CompletedRounds + 1, entry.Session.Engine.Duel.Definition.RoundLimit),
             "completedRounds", duel.CompletedRounds, "finished", duel.IsFinished,
             "outcome", duel.Phase == ScoredDuelPhase.Won ? "胜利" : duel.Phase == ScoredDuelPhase.Lost ? "失败" : "进行中",
-            "actors", duel.Players.Where(player => duel.CanAct(player.Id)).Select(player => player.Id.Value).ToArray(),
+            "actors", duel.Players.Where(player => duel.HasPlayerWindow(player.Id)).Select(player => player.Id.Value).ToArray(),
             "players", duel.Players.Select(player => {
                 var unit = Unit(duel, player.Id, catalog);
                 unit["energy"] = player.Energy.Energy; unit["maxEnergy"] = player.Energy.MaxEnergy;
                 unit["handLimit"] = player.Limits.HandLimit.Value; unit["discardsRemaining"] = state.RemainingDiscardBudgetFor(player.Id);
-                unit["maxPlayCards"] = player.Rules.MaxPlayCards; unit["maxDiscardCards"] = player.Rules.MaxDiscardCards;
-                unit["canAct"] = duel.CanAct(player.Id); unit["hasEnded"] = player.HasEnded;
+                unit["manualDraw"] = player.Rules.Flow.ManualDraw;
+                unit["window"] = state.FlowFor(player.Id).Window.ToString();
+                unit["drawLimit"] = entry.Session.Engine.DrawLimit(state, player.Id);
+                unit["drawWarning"] = entry.Session.Engine.RequiresDrawWarning(state, player.Id);
+                unit["requiredDiscards"] = entry.Session.Engine.RequiredDiscards(state, player.Id);
+                unit["actionsRemaining"] = state.FlowFor(player.Id).ActionsRemaining;
+                unit["drawUses"] = state.FlowFor(player.Id).DrawUsesRemaining;
+                unit["maxPlayCards"] = entry.Session.Engine.PlayLimit(state, player.Id, false); unit["maxDiscardCards"] = player.Rules.MaxDiscardCards;
+                unit["canAct"] = duel.HasPlayerWindow(player.Id); unit["hasEnded"] = player.HasEnded;
                 unit["costs"] = D("play", entry.Session.Engine.Duel.QueryActionCost(duel, player.Id, ScoredDuelActionKind.ScoredHand).Cost,
                     "discard", entry.Session.Engine.Duel.QueryActionCost(duel, player.Id, ScoredDuelActionKind.Discard).Cost);
                 unit["relics"] = player.Relics.Relics.Select(relic => D("id", relic.InstanceId, "name", relic.DefinitionId,
@@ -55,7 +62,7 @@ internal static partial class PlaytestBridge
     }
 
     private static object Hand(ScoreResult score) => D("category", score.Category.ToString(), "label", HandName(score.Category),
-        "points", Number(score.Points), "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
+        "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints), "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
 
     private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog) => result.Steps.Select(step => {
         var transition = step.Transition; var lines = new List<string>();
@@ -176,6 +183,11 @@ internal static partial class PlaytestBridge
     {
         switch (action)
         {
+            case CardDuelAction.Draw: return "主动摸牌";
+            case CardDuelAction.SkipDraw: return "跳过摸牌";
+            case CardDuelAction.DiscardForDraw: return "摸牌前弃牌";
+            case CardDuelAction.ConfirmOverflow: return "强制弃牌";
+            case CardDuelAction.FinishTurn: return "确认结束回合";
             case CardDuelAction.Play: return "出牌";
             case CardDuelAction.Discard: return "弃牌";
             case CardDuelAction.EndTurn: return "结束回合";

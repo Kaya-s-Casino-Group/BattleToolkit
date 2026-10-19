@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PokerEngine
 {
@@ -61,17 +62,18 @@ namespace PokerEngine
         }
 
         public BattleSessionResult Execute(long expectedRevision, ParticipantId actor, CardDuelAction action,
-            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null)
+            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, int drawCount = 0)
         {
             var before = State;
             if (expectedRevision != before.Revision) return Reject(before, CardDuelError.StaleRevision);
             if (action != CardDuelAction.Start && action != CardDuelAction.Play &&
-                action != CardDuelAction.Discard && action != CardDuelAction.EndTurn)
+                action != CardDuelAction.Discard && action != CardDuelAction.EndTurn && action != CardDuelAction.Draw &&
+                action != CardDuelAction.SkipDraw && action != CardDuelAction.DiscardForDraw && action != CardDuelAction.ConfirmOverflow && action != CardDuelAction.FinishTurn)
                 return Reject(before, CardDuelError.InvalidPhase);
 
             var steps = new List<BattleSessionStep>();
             var cards = new List<CardInstanceId>(selected ?? Array.Empty<CardInstanceId>()).ToArray();
-            var result = Engine.Execute(before, expectedRevision, actor, action, cards, targets, targetBindings);
+            var result = Engine.Execute(before, expectedRevision, actor, action, cards, targets, targetBindings, drawCount);
             if (!result.Accepted) return Reject(before, result.Error);
             steps.Add(new BattleSessionStep(action, actor, before, result, cards));
             var next = result.State;
@@ -82,15 +84,31 @@ namespace PokerEngine
             {
                 ParticipantId automaticActor;
                 CardDuelAction automaticAction;
-                if (next.Duel.Phase == ScoredDuelPhase.AwaitingEnemyAction)
+                var uncollected = next.Duel.Players.FirstOrDefault(p => p.Rules.Flow.ManualDraw && next.Zone(CardZoneKinds.Played, p.Id).Cards.Count > 0);
+                if (uncollected != null)
+                {
+                    automaticActor = uncollected.Id; automaticAction = CardDuelAction.CollectPlayed;
+                }
+                else if (next.Duel.Phase == ScoredDuelPhase.AwaitingEnemyAction)
                 {
                     automaticActor = next.Duel.NextEnemy;
                     automaticAction = CardDuelAction.EnemyAction;
                 }
-                else if (next.Duel.Phase == ScoredDuelPhase.AwaitingPlayerHand && next.Duel.NextBlockedPlayer.IsValid)
+                else if (next.Duel.Phase == ScoredDuelPhase.AwaitingPlayerHand)
                 {
-                    automaticActor = next.Duel.NextBlockedPlayer;
-                    automaticAction = CardDuelAction.SkipPlayerTurn;
+                    var pending = next.Duel.Players.FirstOrDefault(p => next.Duel.HasPlayerWindow(p.Id) && p.Rules.Flow.ManualDraw &&
+                        (next.FlowFor(p.Id).Window == BattlePlayerWindow.Ending && (next.FlowFor(p.Id).FinishAfterOverflow || !p.Rules.Flow.EndDefense ||
+                            next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 || next.Duel.IsActionBlocked(p.Id)) ||
+                        next.FlowFor(p.Id).Window == BattlePlayerWindow.Action && (next.Duel.IsActionBlocked(p.Id) ||
+                            next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 && next.Zone(CardZoneKinds.Deck, p.Id).Cards.Count == 0 && next.Zone(CardZoneKinds.Discard, p.Id).Cards.Count == 0)));
+                    if (pending != null)
+                    {
+                        automaticActor = pending.Id;
+                        automaticAction = next.FlowFor(pending.Id).Window == BattlePlayerWindow.Ending ? CardDuelAction.FinishTurn : CardDuelAction.EndTurn;
+                    }
+                    else if (next.Duel.NextBlockedPlayer.IsValid && !next.Duel.Player(next.Duel.NextBlockedPlayer).Rules.Flow.ManualDraw)
+                    { automaticActor = next.Duel.NextBlockedPlayer; automaticAction = CardDuelAction.SkipPlayerTurn; }
+                    else break;
                 }
                 else break;
 

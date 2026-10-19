@@ -14,6 +14,7 @@ namespace PokerEngine
         public string Id { get; }
         public RelicActionTiming Timing { get; }
         public RelicActionRelation Relation { get; }
+        public BattleDiscardKind? DiscardKind { get; }
         public IReadOnlyList<RelicTriggeredEffectSpec> Effects { get; }
         public IReadOnlyList<RelicTriggerConditionSpec> Conditions { get; }
         public int Priority { get; }
@@ -21,7 +22,7 @@ namespace PokerEngine
         public CombatReactionSourcePolicy SourcePolicy { get; }
         public RelicActionTriggerSpec(string id, RelicActionTiming timing, IEnumerable<RelicTriggeredEffectSpec> effects,
             RelicActionRelation relation = RelicActionRelation.OwnerIsActor, IEnumerable<RelicTriggerConditionSpec> conditions = null,
-            int priority = 0, bool canTriggerReactions = false, CombatReactionSourcePolicy sourcePolicy = CombatReactionSourcePolicy.RequireLiving)
+            int priority = 0, bool canTriggerReactions = false, CombatReactionSourcePolicy sourcePolicy = CombatReactionSourcePolicy.RequireLiving, BattleDiscardKind? discardKind = BattleDiscardKind.Defense)
         {
             Id = Guard.Text(id, nameof(id));
             var steps = Guard.Copy(effects, nameof(effects));
@@ -31,7 +32,7 @@ namespace PokerEngine
                 steps.Any(step => step.Target.Group == CombatTargetGroup.EventSource || step.Target.Group == CombatTargetGroup.EventTarget) ||
                 predicates.Any(item => !Supports(timing, item.Kind)))
                 throw new ArgumentException("Invalid relic action trigger or unavailable completion facts.");
-            Timing = timing; Relation = relation; Effects = Guard.View(steps); Conditions = Guard.View(predicates);
+            DiscardKind = discardKind; Timing = timing; Relation = relation; Effects = Guard.View(steps); Conditions = Guard.View(predicates);
             Priority = priority; CanTriggerReactions = canTriggerReactions; SourcePolicy = sourcePolicy;
         }
         private static bool Supports(RelicActionTiming timing, RelicTriggerConditionKind kind) =>
@@ -51,6 +52,8 @@ namespace PokerEngine
             }
         }
         internal bool MatchesConditions(CombatState combat, ParticipantId owner, BattleActionCompletionContext context) =>
+            (Timing != RelicActionTiming.DiscardCompleted || !DiscardKind.HasValue || DiscardKind == context.DiscardKind ||
+                DiscardKind == BattleDiscardKind.Defense && context.DefenseEligible) &&
             Conditions.All(condition => condition.Kind == RelicTriggerConditionKind.HandCategory ? context.Hand?.Pattern.Category == condition.Category :
                 condition.Kind == RelicTriggerConditionKind.SubmittedCardsAtLeast ? context.Hand != null && context.Hand.SubmittedCards.Count >= condition.Threshold :
                 condition.Kind == RelicTriggerConditionKind.DiscardedCardsAtLeast ? context.DiscardedCards != null && context.DiscardedCards.Count >= condition.Threshold :
@@ -58,6 +61,7 @@ namespace PokerEngine
 
         internal void Write(BinaryWriter writer)
         {
+            writer.Write(DiscardKind.HasValue); if (DiscardKind.HasValue) writer.Write((int)DiscardKind.Value);
             writer.Write(Id); writer.Write((int)Timing); writer.Write((int)Relation); writer.Write(Priority);
             writer.Write(CanTriggerReactions); writer.Write((int)SourcePolicy);
             writer.Write(Conditions.Count); foreach (var condition in Conditions) condition.Write(writer);
@@ -80,11 +84,15 @@ namespace PokerEngine
         public BattleActionCostResolution ActionCost { get; }
         public int EnergyBefore { get; }
         public int EnergyAfter { get; }
+        public BattleDiscardKind DiscardKind { get; }
+        public bool DefenseEligible { get; }
         internal BattleActionCompletionContext(TeamBattleState start, ParticipantId actor, ScoredDuelActionKind action,
-            HandAttackInfo hand, IEnumerable<DiscardCardSnapshot> discardedCards, BattleActionCostResolution cost, int energyAfter)
+            HandAttackInfo hand, IEnumerable<DiscardCardSnapshot> discardedCards, BattleActionCostResolution cost, int energyAfter, BattleDiscardKind discardKind = BattleDiscardKind.Defense)
         {
             if (action != ScoredDuelActionKind.ScoredHand && action != ScoredDuelActionKind.Discard)
                 throw new ArgumentException("Only play and discard operations have completion facts.");
+            DiscardKind = discardKind; DefenseEligible = discardKind == BattleDiscardKind.Defense ||
+                discardKind == BattleDiscardKind.Overflow && start.Player(actor).Rules.Flow.OverflowTriggersDefense;
             Signal = BattleStatusTiming.ActionCompleted(start, actor, action); Actor = actor;
             Timing = action == ScoredDuelActionKind.ScoredHand ? RelicActionTiming.PlayCompleted : RelicActionTiming.DiscardCompleted;
             RoundScope = BattleStatusTiming.RoundScope(start); Phase = start.Phase;

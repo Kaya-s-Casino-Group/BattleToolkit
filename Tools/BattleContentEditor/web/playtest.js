@@ -31,7 +31,11 @@ export function createPlaytest(root,{getConfig,getToken}) {
  refs.actor.setAttribute('aria-label','当前操作角色');
  live.append(put('hand',node('div','playtest-hand')),put('targets',node('div','playtest-targets')));
  const actionBar=node('div','playtest-action-bar');actionBar.append(put('play',button('出牌',()=>command('Play'),'primary')),put('discard',button('弃牌',()=>command('Discard'))),put('end-turn',button('结束回合',()=>command('EndTurn'))),put('clear',button('取消选牌',()=>{selected.clear();bindings={};queuePreview();render();})));
- live.append(actionBar,put('preview',node('div','playtest-preview')));
+ const drawBar=node('div','playtest-action-bar');
+ const count=node('input');count.type='number';count.min='1';count.value='5';count.setAttribute('aria-label','主动摸牌张数');put('draw-count',count);
+ drawBar.append(put('flow-hint',node('span','muted')),count,put('draw',button('摸牌',()=>command('Draw'))),put('skip-draw',button('跳过摸牌',()=>command('SkipDraw'))),
+ put('replace-draw',button('先弃掉所选手牌',()=>command('DiscardForDraw'))),put('overflow',button('确认强制弃牌',()=>command('ConfirmOverflow'))));
+ live.append(drawBar,actionBar,put('preview',node('div','playtest-preview')));
  const logSection=node('section','playtest-log-section');logSection.append(node('h3','','结算记录'),node('p','muted','按实际结算顺序记录；选牌预览不会写入这里。'),put('log',node('div','playtest-log')));live.append(logSection);
  refs.encounter.addEventListener('change',()=>{encounterValue=refs.encounter.value;updateConfig();});
  refs.actor.addEventListener('change',()=>{actor=refs.actor.value;selected.clear();bindings={};queuePreview();render();});
@@ -54,7 +58,7 @@ export function createPlaytest(root,{getConfig,getToken}) {
   finally{clearTimeout(timeout);}
  }
  function currentPlayer(){return battle?.players.find(p=>p.id===actor);}
- function actionPayload(action){return {runId:battle.runId,revision:battle.revision,actor,action,selected:action==='EndTurn'?[]:[...selected],targetBindings:action==='Play'?bindings:{}};}
+ function actionPayload(action){return {runId:battle.runId,revision:battle.revision,actor,action,selected:['Play','Discard','DiscardForDraw','ConfirmOverflow'].includes(action)?[...selected]:[],drawCount:action==='Draw'?Number(refs['draw-count'].value):0,targetBindings:action==='Play'?bindings:{}};}
  function invalidatePreviews(){clearTimeout(previewTimer);previewSequence++;previews={};previewBusy=false;}
  function adopt(next){
   if(!next)return;
@@ -110,7 +114,8 @@ export function createPlaytest(root,{getConfig,getToken}) {
  }
  async function command(action){
   const player=currentPlayer();if(busy||uncertain||!battle||battle.finished||!player?.canAct)return;
-  if(action!=='EndTurn'&&(previewBusy||!previews[action]?.legal))return;
+  if(['Play','Discard'].includes(action)&&(previewBusy||!previews[action]?.legal))return;
+  if(action==='EndTurn'&&player.manualDraw&&player.window==='Ending')action='FinishTurn';
   const payload=actionPayload(action);busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
   try{
    const data=await request('command',payload);adopt(data.battle);
@@ -179,7 +184,7 @@ export function createPlaytest(root,{getConfig,getToken}) {
   for(const card of player?.hand||[]){
    const chosen=selected.has(card.id),red=/Heart|Diamond/i.test(card.suit);
    const cardButton=button('',()=>{if(selected.has(card.id))selected.delete(card.id);else selected.add(card.id);bindings={};queuePreview();render();},'playtest-card'+(chosen?' selected':'')+(red?' red-suit':''));
-   cardButton.dataset.cardId=card.id;cardButton.setAttribute('aria-pressed',String(chosen));cardButton.setAttribute('aria-label',card.label||card.id);cardButton.title=[card.label,card.effects].filter(Boolean).join(' · ');cardButton.disabled=busy||uncertain||battle.finished||!player.canAct||card.disabled;
+   cardButton.dataset.cardId=card.id;cardButton.setAttribute('aria-pressed',String(chosen));cardButton.setAttribute('aria-label',card.label||card.id);cardButton.title=[card.label,card.effects].filter(Boolean).join(' · ');cardButton.disabled=busy||uncertain||battle.finished||!player.canAct||(card.disabled&&!['Draw','ForcedDiscard'].includes(player.window));
    cardButton.append(node('span','playtest-card-rank',rankNames[card.rank]||card.rank),node('span','playtest-card-suit',suitNames[card.suit]||card.suit),node('small','',card.disabled?'不可使用':chosen?'已选择':card.effects&&card.effects!=='None'?'附有效果':''));refs.hand.append(cardButton);
   }
   refs.targets.replaceChildren();
@@ -191,6 +196,15 @@ export function createPlaytest(root,{getConfig,getToken}) {
   refs.play.textContent='出牌 · '+(player?.costs.play??'—')+' 能量';refs.discard.textContent='弃牌 · '+(player?.costs.discard??'—')+' 能量';
   const unavailable=busy||uncertain||battle.finished||!player?.canAct;
   refs.play.disabled=unavailable||previewBusy||!previews.Play?.legal;refs.discard.disabled=unavailable||previewBusy||!previews.Discard?.legal;refs['end-turn'].disabled=unavailable;refs.clear.disabled=busy||!selected.size;
+  const drawing=player?.manualDraw&&player.window==='Draw',forced=player?.manualDraw&&player.window==='ForcedDiscard';
+  refs.draw.hidden=refs['skip-draw'].hidden=refs['replace-draw'].hidden=refs['draw-count'].hidden=!drawing;
+  refs.overflow.hidden=!forced;refs.draw.disabled=unavailable||player?.drawLimit===0;refs['skip-draw'].disabled=unavailable;
+  refs['replace-draw'].disabled=unavailable||!selected.size||!player.drawWarning;refs.overflow.disabled=unavailable||selected.size!==player?.requiredDiscards;
+  refs['draw-count'].max=String(player?.drawLimit??5);
+  if(drawing)refs['draw-count'].value=String(Math.max(player.drawLimit?1:0,Math.min(Number(refs['draw-count'].value)||5,player.drawLimit)));
+  refs['end-turn'].disabled=unavailable||forced;refs['end-turn'].textContent=player?.window==='Ending'?'确认结束回合':'结束出牌阶段';
+  refs['flow-hint'].textContent=forced?'必须恰好弃掉 '+player.requiredDiscards+' 张；本次默认不获得护盾。':drawing?
+   (player.drawWarning?'手牌较多：可以少摸，或先选择手牌弃置，再摸牌。':'先选择摸牌张数，或跳过。'):'剩余行动 '+(player?.actionsRemaining??'—');
   renderPreview();
  }
  function renderPreview(){

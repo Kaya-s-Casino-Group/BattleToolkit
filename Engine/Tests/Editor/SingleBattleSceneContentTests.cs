@@ -31,7 +31,22 @@ namespace PokerEngine.Tests
         private static BattleSessionResult Act(BattleSession session, CardDuelAction action, CardInstanceId[] cards = null)
         {
             var result = session.Execute(session.State.Revision, Player, action, cards);
-            Assert.IsTrue(result.Accepted, action + ": " + result.Error); return result;
+            Assert.IsTrue(result.Accepted, action + ": " + result.Error);
+            if (action == CardDuelAction.Start) Draw(session);
+            if (action == CardDuelAction.EndTurn && !session.State.Duel.IsFinished && session.State.FlowFor(Player).Window == BattlePlayerWindow.Ending)
+            {
+                var finish = session.Execute(session.State.Revision, Player, CardDuelAction.FinishTurn); Assert.IsTrue(finish.Accepted);
+                result = finish;
+            }
+            if (action == CardDuelAction.EndTurn || action == CardDuelAction.Discard) Draw(session);
+            return result;
+        }
+        private static void Draw(BattleSession session)
+        {
+            if (session.State.Duel.IsFinished || session.State.FlowFor(Player).Window != BattlePlayerWindow.Draw) return;
+            int count = session.Engine.DrawLimit(session.State, Player);
+            var result = session.Execute(session.State.Revision, Player, count == 0 ? CardDuelAction.SkipDraw : CardDuelAction.Draw, drawCount: count);
+            Assert.IsTrue(result.Accepted, result.Error.ToString());
         }
         private static BattleSession Start(string encounter = "single-battle-new")
         {
@@ -88,13 +103,13 @@ namespace PokerEngine.Tests
             session.State.Table.GetCard(id).OriginId.StartsWith("selected/", StringComparison.Ordinal)).ToArray();
         private static CardDuelTransition Play(BattleSession session) => Act(session, CardDuelAction.Play, Selected(session)).Steps[0].Transition;
 
-        [Test] public void RealFullHouseCleansesDotsBeforeTheirActionClockAndPreservesBuffsInPreviewAndTimeline()
+        [Test] public void RealFullHouseCleansesStackedBleedAndPreservesBuffsInPreviewAndTimeline()
         {
             var session = Fixture(6, configure: document => {
                 var relic = document.CreateElement("Relic"); relic.SetAttribute("id", "starting-statuses");
                 relic.InnerXml = "<BoundaryTrigger id='open' timing='BattleStarted'>" +
                     "<Effect kind='ApplyStatus' statusRef='bleed' target='Self'/>" +
-                    "<Effect kind='ApplyStatus' statusRef='poison' target='Self'/>" +
+                    "<Effect kind='ApplyStatus' statusRef='bleed' target='Self' stacks='2'/>" +
                     "<Effect kind='ApplyStatus' statusRef='shield-reflect' target='Self'/></BoundaryTrigger>";
                 document.SelectSingleNode("/BattleContent/Relics").AppendChild(relic);
                 var binding = document.CreateElement("Relic"); binding.SetAttribute("instanceId", "open"); binding.SetAttribute("ref", "starting-statuses");
@@ -103,18 +118,18 @@ namespace PokerEngine.Tests
             var before = session.State;
             var preview = session.Engine.PreviewPlay(before, before.Revision, Player, Selected(session));
             Assert.IsTrue(preview.Accepted, preview.Error.ToString()); Assert.AreSame(before, session.State);
-            Assert.AreEqual(3, before.Duel.Combat.Statuses.Count);
+            Assert.AreEqual(2, before.Duel.Combat.Statuses.Count);
+            Assert.AreEqual(2, before.Duel.Combat.Statuses.Single(x => x.DefinitionId.Value == "bleed").Stacks);
             var result = Act(session, CardDuelAction.Play, Selected(session));
             var cleansed = result.Steps.SelectMany(step => step.Transition.RuleEvents).OfType<CombatStatusChangedEvent>().Where(x => x.Reason == CombatStatusChangeReason.Cleansed).ToArray();
-            CollectionAssert.AreEqual(new[] { "bleed", "poison" }, cleansed.Select(x => x.StatusBefore.DefinitionId.Value));
-            Assert.AreEqual(700, session.State.Duel.Combat.Get(Player).Health);
+            CollectionAssert.AreEqual(new[] { "bleed" }, cleansed.Select(x => x.StatusBefore.DefinitionId.Value));
+            Assert.AreEqual(697, session.State.Duel.Combat.Get(Player).Health);
             CollectionAssert.AreEquivalent(new[] { "shield-reflect", "stun", "control-immunity" }, session.State.Duel.Combat.Statuses.Select(x => x.DefinitionId.Value));
             CollectionAssert.AreEqual(preview.State.Duel.Combat.Statuses.Select(x => x.Id), session.State.Duel.Combat.Statuses.Select(x => x.Id));
             var facts = result.Timeline.Where(x => x.RuleEvent is CombatStatusChangedEvent change && change.Reason == CombatStatusChangeReason.Cleansed).ToArray();
-            Assert.AreEqual(2, facts.Length);
+            Assert.AreEqual(1, facts.Length);
             Assert.IsFalse(facts[0].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "bleed"));
-            Assert.IsTrue(facts[0].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
-            Assert.IsFalse(facts[1].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
+            Assert.IsTrue(facts[0].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "shield-reflect"));
         }
 
         [Test] public void RealSceneContentCompilesAndCreatesAnUnstartedIndependentBaseline()
@@ -131,29 +146,21 @@ namespace PokerEngine.Tests
             Act(first, CardDuelAction.Start); Assert.IsFalse(second.State.HasStarted); Assert.AreEqual(8, first.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
         }
 
-        [Test] public void SharedEnergyImmediateRefillAndDiscardShieldUseTheActualSceneConfiguration()
+        [Test] public void SharedSceneUsesManualDrawAndDefenseEndsTheTurn()
         {
             var session = Start(); var rules = session.State.Duel.Player(Player).Rules;
-            Assert.AreEqual(3, rules.MaxEnergy); Assert.AreEqual(3, rules.InitialEnergy); Assert.IsFalse(rules.UnlimitedDiscards);
-            Assert.AreEqual(1, rules.PlayEnergyCost); Assert.AreEqual(1, rules.DiscardEnergyCost); Assert.AreEqual(3, session.State.DiscardsFor(Player));
-            var selected = session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(2).ToArray();
-            Act(session, CardDuelAction.Discard, selected);
-            Assert.AreEqual(16, session.State.Duel.Combat.Get(Player).Block); Assert.AreEqual(2, session.State.Duel.Player(Player).Energy.Energy);
-            Assert.AreEqual(2, session.State.DiscardsFor(Player)); Assert.AreEqual(8, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
-            Act(session, CardDuelAction.Play, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1).ToArray());
-            Assert.AreEqual(1, session.State.Duel.Player(Player).Energy.Energy); Assert.AreEqual(8, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
-            Act(session, CardDuelAction.EndTurn);
-            Assert.AreEqual(576, session.State.Duel.Combat.Get(Player).Health); Assert.AreEqual(0, session.State.Duel.Combat.Get(Player).Block);
-            Assert.AreEqual(2, session.State.DiscardsFor(Player)); Assert.AreEqual(3, session.State.Duel.Player(Player).Energy.Energy);
+            Assert.IsTrue(rules.Flow.ManualDraw); Assert.IsTrue(rules.UnlimitedDiscards);
+            var result = Act(session, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(2).ToArray());
+            Assert.AreEqual(16, result.Steps[0].Transition.Events.Single(e => e.Effect.Kind == CombatEffectKind.GainBlock).SettledAmount);
+            Assert.AreEqual(1, session.State.Duel.CompletedRounds); Assert.AreEqual(3, session.State.Duel.Player(Player).Energy.Energy);
+            Assert.AreEqual(576, session.State.Duel.Combat.Get(Player).Health);
         }
-
-        [Test] public void DiscardLimitIsForTheWholeBattleAndIsNotRefreshedWithEnergy()
+        [Test] public void DefenseCanBeUsedAgainOnTheNextTurnWithoutWholeBattleBudget()
         {
             var session = Start();
-            for (int i = 0; i < 3; i++) Act(session, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1).ToArray());
-            Assert.AreEqual(0, session.State.DiscardsFor(Player)); Assert.AreEqual(3, session.State.Duel.Player(Player).Energy.Energy);
-            var before = session.State; var rejected = session.Execute(before.Revision, Player, CardDuelAction.Discard, before.Zone(CardZoneKinds.Hand, Player).Cards.Take(1));
-            Assert.IsFalse(rejected.Accepted); Assert.AreSame(before, session.State);
+            for (int i = 0; i < 3 && !session.State.Duel.IsFinished; i++)
+                Act(session, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1).ToArray());
+            Assert.IsNull(session.State.RemainingDiscardBudgetFor(Player)); Assert.AreEqual(3, session.State.Duel.CompletedRounds);
         }
 
         [TestCase(0, HandCategory.HighCard)] [TestCase(1, HandCategory.OnePair)] [TestCase(2, HandCategory.TwoPair)]
@@ -218,22 +225,21 @@ namespace PokerEngine.Tests
             foreach (var id in new[] { Enemy, Other }) Assert.AreEqual(2000000000, session.State.Duel.Combat.Get(id).Block);
         }
 
-        [Test] public void OptionalStraightRelicAttachesOneBleedAndPoisonPerHitThenUsesSeparateClocks()
+        [Test] public void OptionalStraightRelicAddsStackingBleedAtHolderTurnStart()
         {
-            var session = Fixture(4, "single-battle-dot"); var result = Play(session); var statuses = session.State.Duel.Combat.Statuses;
-            Assert.AreEqual(3, statuses.Count(status => status.DefinitionId.Value == "bleed")); Assert.AreEqual(3, statuses.Count(status => status.DefinitionId.Value == "poison"));
-            Assert.IsTrue(statuses.All(status => status.Duration.RemainingTriggers == 2)); Assert.AreEqual(6, result.RelicActivations.Count);
+            var session = Fixture(4, "single-battle-dot"); var result = Play(session);
+            Assert.AreEqual(12, session.State.Duel.Combat.Statuses.Single().Stacks); Assert.AreEqual(6, result.RelicActivations.Count);
             long afterPlay = session.State.Duel.Combat.Get(Enemy).Health; Act(session, CardDuelAction.EndTurn);
-            Assert.AreEqual(afterPlay - 12, session.State.Duel.Combat.Get(Enemy).Health); Assert.IsTrue(session.State.Duel.Combat.Statuses.All(status => status.Duration.RemainingTriggers == 1));
-            Act(session, CardDuelAction.EndTurn); Assert.AreEqual(afterPlay - 24, session.State.Duel.Combat.Get(Enemy).Health); Assert.IsEmpty(session.State.Duel.Combat.Statuses);
+            Assert.AreEqual(afterPlay - 12, session.State.Duel.Combat.Get(Enemy).Health); Assert.AreEqual(11, session.State.Duel.Combat.Statuses.Single().Stacks);
+            Act(session, CardDuelAction.EndTurn); Assert.AreEqual(afterPlay - 23, session.State.Duel.Combat.Get(Enemy).Health);
+            Assert.AreEqual(10, session.State.Duel.Combat.Statuses.Single().Stacks);
         }
 
         [Test] public void OptionalReflectionRelicAddsNoFreeShieldAndReflectsTheActualDiscardShield()
         {
             var session = Start("single-battle-reflect"); Assert.AreEqual(0, session.State.Duel.Combat.Get(Player).Block);
             Assert.AreEqual("shield-reflect", session.State.Duel.Combat.Statuses.Single().DefinitionId.Value);
-            Act(session, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1).ToArray());
-            var round = Act(session, CardDuelAction.EndTurn); Assert.AreEqual(568, session.State.Duel.Combat.Get(Player).Health);
+            var round = Act(session, CardDuelAction.Discard, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1).ToArray()); Assert.AreEqual(568, session.State.Duel.Combat.Get(Player).Health);
             Assert.AreEqual(1192, session.State.Duel.Combat.Get(Enemy).Health); Assert.AreEqual(0, session.State.Duel.Combat.Get(Player).Block);
             Assert.AreEqual(8, round.Steps.SelectMany(step => step.Transition.Events).Single(effect => effect.Provenance.Origin == CombatEffectOrigin.Reflection).DamageToHealth);
         }

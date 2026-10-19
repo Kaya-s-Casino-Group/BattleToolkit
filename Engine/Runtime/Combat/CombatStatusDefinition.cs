@@ -7,7 +7,7 @@ namespace PokerEngine
 {
     [Flags] public enum StatusTags { None = 0, Control = 1, Negative = 2 }
     public enum StatusLifetimeKind { UntilRemoved = 1, TriggerCount, ThroughNextPhase, ThroughCurrentRound }
-    public enum StatusReapplyPolicy { KeepLonger = 1, IndependentInstances = 2 }
+    public enum StatusReapplyPolicy { KeepLonger = 1, IndependentInstances = 2, AddStacks = 3 }
 
     /// <summary>Relative lifetime declaration. The mode binds phase and round lifetimes to StatusDuration.</summary>
     public sealed class StatusLifetimeSpec
@@ -65,6 +65,8 @@ namespace PokerEngine
         }
         internal void ValidateTriggerBudget(bool hasTriggerBudget)
         {
+            if (hasTriggerBudget && Behaviors.OfType<PeriodicDamageSpec>().Any(p => p.StackDecay > 0))
+                throw new ArgumentException("Choose stack decay or a trigger budget for periodic damage, not both.");
             if (hasTriggerBudget && Behaviors.Count > 1)
                 throw new ArgumentException("A trigger budget cannot be shared by different consuming behaviors.");
         }

@@ -14,6 +14,13 @@ namespace PokerEngine
         public EffectTargetGroup Group { get; }
         public EffectTargetSelection Selection { get; }
         public string RequestSlot { get; }
+        public string RetargetChain { get; private set; }
+        public EffectTargetSpec WithRetargetChain(string chain)
+        {
+            if (Group != EffectTargetGroup.Opponents || Selection == EffectTargetSelection.AllLiving)
+                throw new ArgumentException("Retarget chains require a single opponent.");
+            return new EffectTargetSpec(Group, Selection, RequestSlot) { RetargetChain = Guard.Text(chain, nameof(chain)) };
+        }
 
         private EffectTargetSpec(EffectTargetGroup group, EffectTargetSelection selection, string requestSlot)
         {

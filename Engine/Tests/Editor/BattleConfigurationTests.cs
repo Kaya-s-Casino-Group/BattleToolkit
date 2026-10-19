@@ -44,7 +44,7 @@ namespace PokerEngine.Tests
             Assert.AreEqual(8, discarded.State.Zone(CardZoneKinds.Hand).Cards.Count);
             Assert.AreEqual(2, discarded.State.DiscardsRemaining); Assert.IsEmpty(discarded.Events);
         }
-        [TestCase(0, 5)] [TestCase(6, 5)] [TestCase(5, 0)] [TestCase(5, 53)]
+        [TestCase(0, 5)] [TestCase(11, 5)] [TestCase(5, 0)] [TestCase(5, 53)]
         public void InvalidLimitsAreRejected(int play, int discard) =>
             Assert.Throws<ArgumentException>(() => new BattlePlayerRules(maxPlayCards: play, maxDiscardCards: discard));
         [Test] public void InvalidRewardAndExpiryAreRejected()

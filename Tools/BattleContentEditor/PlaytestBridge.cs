@@ -73,8 +73,8 @@ internal static partial class PlaytestBridge
         if (!state.Duel.Players.Any(player => player.Id == actor)) return Fail("InvalidActor", "只能操作本局的玩家。", entry);
         CardDuelAction action;
         string actionName = Text(request, "action", 16);
-        if ((actionName != "Play" && actionName != "Discard" && actionName != "EndTurn") || !Enum.TryParse(actionName, false, out action))
-            return Fail("InvalidAction", "只能出牌、弃牌或结束回合。", entry);
+        if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn" }.Contains(actionName) || !Enum.TryParse(actionName, false, out action))
+            return Fail("InvalidAction", "此动作不属于玩家可提交的战斗输入。", entry);
         var cards = Strings(request, "selected", 52, 2048).Select(id => new CardInstanceId(id)).ToArray();
         var bindings = ReadBindings(request);
         // Old damage-only content accepts the default opponent request, but not named effect bindings.
@@ -86,7 +86,10 @@ internal static partial class PlaytestBridge
             legacyTargets = bindings.Slots[BattleTargetBindings.DefaultSlot]; bindings = null;
         }
         var candidate = new BattleSession(entry.Session.Engine, state);
-        var result = candidate.Execute(revision, actor, action, cards, legacyTargets, bindings);
+        int drawCount = 0;
+        if (request.ContainsKey("drawCount") && (!int.TryParse(Convert.ToString(request["drawCount"], CultureInfo.InvariantCulture), out drawCount) || drawCount < 0 || drawCount > 512))
+            return Fail("InvalidSelection", "摸牌张数无效。", entry);
+        var result = candidate.Execute(revision, actor, action, cards, legacyTargets, bindings, drawCount);
         if (op == "preview")
         {
             var hand = entry.Session.Engine.PreviewHand(state, actor, cards);

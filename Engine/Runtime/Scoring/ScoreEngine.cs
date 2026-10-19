@@ -6,7 +6,8 @@ using System.Runtime.Serialization;
 namespace PokerEngine
 {
     public enum ScoreTiming { BeforeCards = 1, PerCard, AfterCards }
-    public enum ScoreOperation { AddPoints = 1, AddMultiplier, MultiplyMultiplier }
+    public enum ScoreOperation { AddPoints = 1, AddMultiplier, MultiplyMultiplier, AddUnmultipliedPoints }
+    public enum KickerScoring { None = 0, ChipsOnly, AllCards }
 
     public sealed class ScoreEffect
     {
@@ -21,7 +22,7 @@ namespace PokerEngine
         public ScoreEffect(ScoreTiming timing, ScoreOperation operation, decimal amount, decimal perLevel = 0, decimal perGrowth = 0,
             HandCategory? category = null, Suit? suit = null, Rank? rank = null)
         {
-            if (!Enum.IsDefined(typeof(ScoreTiming), timing) || !Enum.IsDefined(typeof(ScoreOperation), operation) || amount < 0 || perLevel < 0 || perGrowth < 0 ||
+            if (!Enum.IsDefined(typeof(ScoreTiming), timing) || (!Enum.IsDefined(typeof(ScoreOperation), operation) || operation == ScoreOperation.AddUnmultipliedPoints) || amount < 0 || perLevel < 0 || perGrowth < 0 ||
                 category.HasValue && !Enum.IsDefined(typeof(HandCategory), category.Value) || suit.HasValue && !Enum.IsDefined(typeof(Suit), suit.Value) ||
                 rank.HasValue && !Enum.IsDefined(typeof(Rank), rank.Value) || timing != ScoreTiming.PerCard && (suit.HasValue || rank.HasValue) ||
                 operation == ScoreOperation.AddPoints && (amount != decimal.Truncate(amount) || perLevel != decimal.Truncate(perLevel) || perGrowth != decimal.Truncate(perGrowth)))
@@ -54,10 +55,16 @@ namespace PokerEngine
         [DataMember(Order = 7, IsRequired = true)] public long Total { get; private set; }
         [DataMember(Name = "Steps", Order = 8, IsRequired = true)] private ScoreStep[] steps;
         public IReadOnlyList<ScoreStep> Steps => Guard.View(steps);
-        internal ScoreResult(string id, HandCategory category, long basePoints, decimal baseMultiplier, long points, decimal multiplier, IEnumerable<ScoreStep> steps)
+        [DataMember(Order = 9, EmitDefaultValue = false)] public long UnmultipliedPoints { get; private set; }
+        [DataMember(Order = 10, EmitDefaultValue = false)] private ScoreResult[] components;
+        public IReadOnlyList<ScoreResult> Components => Guard.View(components ?? Array.Empty<ScoreResult>());
+        public long AllPoints => checked(Points + UnmultipliedPoints);
+        internal ScoreResult(string id, HandCategory category, long basePoints, decimal baseMultiplier, long points, decimal multiplier, IEnumerable<ScoreStep> steps, long unmultipliedPoints = 0, IEnumerable<ScoreResult> components = null)
         {
             Id = Guard.Text(id, nameof(id)); Category = category; BasePoints = basePoints; BaseMultiplier = baseMultiplier; Points = points; Multiplier = multiplier;
-            Total = checked((long)decimal.Floor(checked(points * multiplier))); this.steps = Guard.Copy(steps, nameof(steps));
+            UnmultipliedPoints = unmultipliedPoints;
+            Total = checked((long)decimal.Floor(checked(points * multiplier)) + unmultipliedPoints);
+            this.steps = Guard.Copy(steps, nameof(steps)); this.components = components == null || !components.Any() ? null : components.ToArray();
         }
     }
     public sealed class ScoringCard
@@ -104,7 +111,7 @@ namespace PokerEngine
     {
         public const int MaxSteps = 1024;
         public static ScoreResult Evaluate(string id, ScoreProfile profile, HandCategory category, int handLevel,
-            IEnumerable<ScoringCard> scoringCards, IEnumerable<ScoringRelic> orderedRelics)
+            IEnumerable<ScoringCard> scoringCards, IEnumerable<ScoringRelic> orderedRelics, bool layeredRelics = false)
         {
             if (profile == null || handLevel < 1) throw new ArgumentException("Invalid score input.");
             var cards = Guard.Copy(scoringCards, nameof(scoringCards)); var relics = Guard.Copy(orderedRelics, nameof(orderedRelics));
@@ -122,10 +129,11 @@ namespace PokerEngine
                 steps.Add(new ScoreStep(source, card, op, amount, points, multiplier));
             };
             Action<ScoreTiming, ScoringCard> modifiers = (timing, card) => {
-                foreach (var relic in relics)
-                foreach (var effect in relic.Effects.Where(e => e.Timing == timing && (!e.Category.HasValue || e.Category == category) &&
-                    (!e.Suit.HasValue || e.Suit == card?.Face.Suit) && (!e.Rank.HasValue || e.Rank == card?.Face.Rank)))
-                    apply(relic.Id, card?.Id, effect.Operation, checked(effect.Amount + effect.PerLevel * (relic.Level - 1) + effect.PerGrowth * relic.Growth));
+                var entries = relics.SelectMany(relic => relic.Effects.Where(e => e.Timing == timing && (!e.Category.HasValue || e.Category == category) &&
+                    (!e.Suit.HasValue || e.Suit == card?.Face.Suit) && (!e.Rank.HasValue || e.Rank == card?.Face.Rank)).Select(effect => new { relic, effect }));
+                if (layeredRelics) entries = entries.OrderBy(item => item.effect.Operation);
+                foreach (var item in entries)
+                    apply(item.relic.Id, card?.Id, item.effect.Operation, checked(item.effect.Amount + item.effect.PerLevel * (item.relic.Level - 1) + item.effect.PerGrowth * item.relic.Growth));
             };
             modifiers(ScoreTiming.BeforeCards, null);
             // Ineffective cards still participate in classification and the hand's base score.
@@ -156,6 +164,36 @@ namespace PokerEngine
             var byId = cards.ToDictionary(c => c.Id, StringComparer.Ordinal);
             return Evaluate(id, profile, pattern.Category, handLevel, pattern.ScoringCards.Select(c => byId[c.Value]), orderedRelics);
         }
+        /// <summary>Battle scoring policy: kickers add chips after multiplication; component scores retain their own category multipliers.</summary>
+        public static ScoreResult EvaluateBattle(string id, ScoreProfile profile, PokerHandClassification pattern, int handLevel,
+            IEnumerable<ScoringCard> submitted, IEnumerable<ScoringRelic> relics, KickerScoring kickerMode, bool layered,
+            Func<HandCategory, int> levelFor = null)
+        {
+            if (pattern == null) throw new ArgumentNullException(nameof(pattern));
+            if (!Enum.IsDefined(typeof(KickerScoring), kickerMode)) throw new ArgumentException("Unknown kicker scoring policy.");
+            var cards = Guard.Copy(submitted, nameof(submitted)); var ordered = Guard.Copy(relics, nameof(relics));
+            if (cards.Any(c => c == null) || cards.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != cards.Length ||
+                !new HashSet<string>(cards.Select(c => c.Id), StringComparer.Ordinal).SetEquals(pattern.SubmittedCards.Select(c => c.Value)))
+                throw new ArgumentException("Scoring input must contain exactly the submitted instances.");
+            var scoring = new HashSet<string>(pattern.ScoringCards.Select(c => c.Value));
+            var result = Evaluate(id, profile, pattern.Category, handLevel,
+                cards.Where(c => kickerMode == KickerScoring.AllCards || scoring.Contains(c.Id)), ordered, layered);
+            long extra = 0; var steps = result.Steps.ToList();
+            if (kickerMode == KickerScoring.ChipsOnly)
+                foreach (var card in cards.Where(c => !scoring.Contains(c.Id) && c.CanScore))
+                {
+                    long value = card.GetPointsPerTrigger(profile.CardPoints); extra = checked(extra + value);
+                    steps.Add(new ScoreStep(card.Id, card.Id, ScoreOperation.AddUnmultipliedPoints, value, result.Points, result.Multiplier));
+                }
+            var parts = new List<ScoreResult>();
+            if (pattern.Category == HandCategory.FullHouse)
+                foreach (var group in cards.Where(c => scoring.Contains(c.Id)).GroupBy(c => c.Face.Rank))
+                {
+                    var category = group.Count() == 3 ? HandCategory.ThreeOfAKind : HandCategory.OnePair;
+                    parts.Add(Evaluate(id + "/" + category, profile, category, levelFor == null ? 1 : levelFor(category), group, ordered, layered));
+                }
+            return new ScoreResult(id, result.Category, result.BasePoints, result.BaseMultiplier, result.Points, result.Multiplier, steps, extra, parts);
+        }
         public static ScoreResult Fixed(string id, long points)
         {
             if (points < 0) throw new ArgumentOutOfRangeException(nameof(points));
@@ -167,12 +205,17 @@ namespace PokerEngine
         {
             if (score == null || string.IsNullOrWhiteSpace(score.Id) || !Enum.IsDefined(typeof(HandCategory), score.Category) ||
                 score.BasePoints < 0 || score.BaseMultiplier < 0 || score.Steps.Count > MaxSteps) throw new ArgumentException("Invalid score trace.");
-            long points = score.BasePoints; decimal multiplier = score.BaseMultiplier;
+            long points = score.BasePoints, extra = 0; decimal multiplier = score.BaseMultiplier;
             foreach (var step in score.Steps)
             {
                 if (step == null || string.IsNullOrWhiteSpace(step.SourceId) || step.CardId != null && string.IsNullOrWhiteSpace(step.CardId) ||
                     step.Amount < 0 || !Enum.IsDefined(typeof(ScoreOperation), step.Operation)) throw new ArgumentException("Invalid score step.");
-                if (step.Operation == ScoreOperation.AddPoints)
+                if (step.Operation == ScoreOperation.AddUnmultipliedPoints)
+                {
+                    if (step.Amount != decimal.Truncate(step.Amount)) throw new ArgumentException("Kicker points must be integral.");
+                    extra = checked(extra + checked((long)step.Amount));
+                }
+                else if (step.Operation == ScoreOperation.AddPoints)
                 {
                     if (step.Amount != decimal.Truncate(step.Amount)) throw new ArgumentException("Card points must be integral.");
                     points = checked(points + checked((long)step.Amount));
@@ -181,8 +224,12 @@ namespace PokerEngine
                 else multiplier = checked(multiplier * step.Amount);
                 if (step.PointsAfter != points || step.MultiplierAfter != multiplier) throw new ArgumentException("Score trace arithmetic disagrees.");
             }
-            if (score.Points != points || score.Multiplier != multiplier || score.Total != checked((long)decimal.Floor(checked(points * multiplier))))
+            if (score.Points != points || score.Multiplier != multiplier || score.UnmultipliedPoints != extra || score.Total != checked((long)decimal.Floor(checked(points * multiplier)) + extra))
                 throw new ArgumentException("Score total disagrees with its trace.");
+            if (score.Components.Count > 2 || score.Components.Any(c => c == null || c.Components.Count != 0) ||
+                score.Components.Select(c => c.Category).Distinct().Count() != score.Components.Count)
+                throw new ArgumentException("Invalid component scores.");
+            foreach (var component in score.Components) Validate(component);
         }
     }
 }

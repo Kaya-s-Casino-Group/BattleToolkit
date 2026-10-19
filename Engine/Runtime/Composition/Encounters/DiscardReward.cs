@@ -27,13 +27,16 @@ namespace PokerEngine
         public CombatState Combat => State.Combat;
         public ParticipantId Source { get; }
         public IReadOnlyList<DiscardCardSnapshot> Cards { get; }
+        public BattleDiscardKind Kind { get; }
         public IReadOnlyList<ParticipantId> Targets { get; }
-        public DiscardRewardContext(TeamBattleState state, ParticipantId source, IEnumerable<DiscardCardSnapshot> cards, IEnumerable<ParticipantId> targets)
+        public DiscardRewardContext(TeamBattleState state, ParticipantId source, IEnumerable<DiscardCardSnapshot> cards, IEnumerable<ParticipantId> targets, BattleDiscardKind kind = BattleDiscardKind.Defense)
         {
             State = state ?? throw new ArgumentNullException(nameof(state)); Source = source;
             var copy = Guard.Copy(cards, nameof(cards)); var allies = Guard.Copy(targets, nameof(targets));
-            if (!state.CanAct(source) || copy.Length < 1 || copy.Length > state.Player(source).Rules.MaxDiscardCards ||
-                copy.Any(card => card == null || !card.Card.CanDiscard) || copy.Select(card => card.Id).Distinct().Count() != copy.Length ||
+            Kind = kind;
+            if (!(kind == BattleDiscardKind.Defense ? state.CanAct(source) : state.HasPlayerWindow(source)) || copy.Length < 1 ||
+                copy.Length > (kind == BattleDiscardKind.Defense ? state.Player(source).Rules.MaxDiscardCards : 512) ||
+                copy.Any(card => card == null || kind == BattleDiscardKind.Defense && !card.Card.CanDiscard) || copy.Select(card => card.Id).Distinct().Count() != copy.Length ||
                 allies.Length < 1 || allies.Length > 64 || allies.Distinct().Count() != allies.Length ||
                 allies.Any(id => !Combat.Get(id).IsAlive || Combat.Get(id).TeamId != Combat.Get(source).TeamId))
                 throw new ArgumentException("Discard rewards require legal cards and living allies.");

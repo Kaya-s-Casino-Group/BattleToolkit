@@ -251,14 +251,14 @@ namespace PokerEngine.Tests
             {
                 serializer.WriteObject(stream, result.State); json = Encoding.UTF8.GetString(stream.ToArray()); stream.Position = 0;
                 var restored = (CombatState)serializer.ReadObject(stream); CombatEngine.Validate(restored);
-                Assert.AreEqual(result.State.Revision, restored.Revision); Assert.AreEqual("combat.9", restored.RulesVersion);
+                Assert.AreEqual(result.State.Revision, restored.Revision); Assert.AreEqual("combat.10", restored.RulesVersion);
                 Assert.AreEqual(0, restored.Get(Enemy).Health); Assert.AreEqual(3, restored.Get(Enemy).Block);
                 Assert.AreEqual(status.Id, restored.Statuses.Single().Id); Assert.AreEqual(status.DefinitionId, restored.Statuses[0].DefinitionId);
                 Assert.AreEqual(status.Source.Kind, restored.Statuses[0].Source.Kind); Assert.AreEqual(status.Source.Id, restored.Statuses[0].Source.Id);
                 Assert.AreEqual(status.Target.Id, restored.Statuses[0].Target.Id); Assert.AreEqual(3, restored.Statuses[0].Stacks);
                 Assert.AreEqual(DurationKind.TriggerCount, restored.Statuses[0].Duration.Kind); Assert.AreEqual(2, restored.Statuses[0].Duration.RemainingTriggers);
             }
-            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json.Replace("combat.9", oldVersion))))
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json.Replace(CombatEngine.RulesVersion, oldVersion))))
             {
                 var old = (CombatState)serializer.ReadObject(stream);
                 Assert.Throws<ArgumentException>(() => CombatEngine.Validate(old));

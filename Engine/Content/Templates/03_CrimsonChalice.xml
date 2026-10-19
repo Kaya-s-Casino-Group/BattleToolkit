@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="crimson-chalice-content" name="猩红圣杯" version="crimson-chalice.1">
-  <!--玩法：同花治疗增幅后，溢出部分转为全体伤害。满血与受伤两个编成用于比较溢疗的进攻/防御取舍。 所有数值为玩法实验值，可直接修改；不代表策划定案。-->
+<BattleContent schemaVersion="1" id="crimson-chalice-content" name="猩红圣杯" version="crimson-chalice.1.1563">
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -40,11 +39,8 @@
     <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
       <PreventStatusApplication tags="Control" />
     </Status>
-    <Status id="bleed" tags="Negative" name="流血·行动后2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances">
-      <PeriodicDamage timing="ActionCompleted" amount="2" target="Self" />
-    </Status>
-    <Status id="poison" tags="Negative" name="中毒·己方阶段末2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances">
-      <PeriodicDamage timing="PhaseEnding" amount="2" target="Self" />
+    <Status id="bleed" tags="Negative" name="流血·回合开始按层数伤害并减一层" lifetime="UntilRemoved" reapply="AddStacks">
+      <PeriodicDamage timing="TurnStarted" amount="1" target="Self" stackDecay="1" />
     </Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
       <ReflectBlockedDamage ratio="1" target="EventSource" />
@@ -59,28 +55,28 @@
   <HandRules>
     <HandRule id="document-hands" name="猩红圣杯·牌型技能" version="crimson-chalice.hands.1">
       <Hand category="HighCard">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="OnePair">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="TwoPair">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="ThreeOfAKind">
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="Straight">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
-        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
-        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
       </Hand>
       <Hand category="Flush">
-        <Effect kind="Damage" id="damage/1" amountKind="ScoreTotalScale" amount="0.5" target="Opponents" selection="FirstLiving" />
+        <Effect kind="Damage" id="damage/1" amountKind="ScoreTotalScale" amount="0.5" target="Opponents" selection="ActorPolicy" />
         <Effect kind="Heal" id="heal" amountKind="ScorePointsScale" amount="1" target="Self" />
       </Hand>
       <Hand category="FullHouse">
-        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving" />
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="ActorPolicy" />
         <Effect id="cleanse" kind="Cleanse" target="Self" />
         <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
       </Hand>
@@ -88,13 +84,13 @@
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="StraightFlush" variant="Ordinary">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="StraightFlush" variant="Royal">
         <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="FiveOfAKind">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
     </HandRule>
   </HandRules>
@@ -109,7 +105,7 @@
     </Relic>
   </Relics>
   <Players>
-    <Player id="hero" name="猩红圣杯·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="6" unlimitedDiscards="false" maxPlayCards="5" maxDiscardCards="5" playRefill="AfterAction" discardRefill="AfterAction" discardBlockPerCard="6" />
+    <Player id="hero" name="猩红圣杯·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="6" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" discardBlockPerCard="6" manualDraw="true" openingDeal="false" drawCount="8" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="true" overflowTriggersDefense="false" kickerScoring="ChipsOnly" layeredScoreRelics="true" attackTarget="LowestHealth" />
   </Players>
   <Enemies>
     <Enemy id="duelist" name="决斗者" maxHealth="360" damage="40" />

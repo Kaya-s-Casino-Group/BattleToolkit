@@ -29,14 +29,15 @@ namespace PokerEngine
         /// <summary>Submits a local input against the current authority revision. Explicit revision callers use Execute.</summary>
         public BattleSessionResult Submit(ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, bool animate = true,
-            BattleTargetBindings targetBindings = null) =>
-            Execute(Session.State.Revision, actor, action, selected, targets, animate, targetBindings);
+            BattleTargetBindings targetBindings = null, int drawCount = 0) =>
+            Execute(Session.State.Revision, actor, action, selected, targets, animate, targetBindings, drawCount);
 
         public bool CanAct(ParticipantId actor)
         {
             var state = Session.State;
             return !Presentation.IsPresenting && state.HasStarted && !state.Duel.IsFinished &&
-                state.Duel.CanAct(actor) && state.Zone(CardZoneKinds.Played, actor).Cards.Count == 0;
+                state.Duel.HasPlayerWindow(actor) && (state.Duel.CanAct(actor) || state.Duel.Player(actor).Rules.Flow.ManualDraw &&
+                    (state.FlowFor(actor).Window == BattlePlayerWindow.Draw || state.FlowFor(actor).Window == BattlePlayerWindow.ForcedDiscard || state.FlowFor(actor).Window == BattlePlayerWindow.Ending)) && state.Zone(CardZoneKinds.Played, actor).Cards.Count == 0;
         }
 
         public bool CanPlay(ParticipantId actor, IEnumerable<CardInstanceId> selected) => CanSelect(actor, selected, false);
@@ -49,10 +50,14 @@ namespace PokerEngine
             var state = Session.State;
             var player = state.Duel.Player(actor);
             var rules = player.Rules;
-            if (discard && !state.HasDiscardBudgetFor(actor) ||
+            if (!state.Duel.CanAct(actor)) return false;
+            bool freeDefense = discard && rules.Flow.ManualDraw && (!rules.Flow.DiscardCostsAction || state.FlowFor(actor).Window == BattlePlayerWindow.Ending);
+            if (discard && !state.HasDiscardBudgetFor(actor) || !freeDefense &&
                 !Session.Engine.Duel.QueryActionCost(state.Duel, actor,
                     discard ? ScoredDuelActionKind.Discard : ScoredDuelActionKind.ScoredHand).CanAfford) return false;
-            int limit = discard ? rules.MaxDiscardCards : rules.MaxPlayCards;
+            if (rules.Flow.ManualDraw && (discard ? state.FlowFor(actor).Window != BattlePlayerWindow.Action && state.FlowFor(actor).Window != BattlePlayerWindow.Ending :
+                state.FlowFor(actor).Window != BattlePlayerWindow.Action)) return false;
+            int limit = discard ? rules.MaxDiscardCards : Session.Engine.PlayLimit(state, actor, false);
             var hand = new HashSet<CardInstanceId>(state.Zone(CardZoneKinds.Hand, actor).Cards);
             var seen = new HashSet<CardInstanceId>();
             foreach (var id in selected)
@@ -61,7 +66,9 @@ namespace PokerEngine
                 var card = state.Table.GetCard(id);
                 if (discard ? !card.CanDiscard : !card.CanPlay) return false;
             }
-            return seen.Count > 0;
+            if (rules.Flow.ManualDraw && (discard && (state.FlowFor(actor).DefenseUsed || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
+                !discard && state.FlowFor(actor).ActionsRemaining == 0)) return false;
+            return seen.Count >= (discard ? 1 : Session.Engine.PlayLimit(state, actor, true));
         }
 
         public CardDuelTransition PreviewPlay(ParticipantId actor, IEnumerable<CardInstanceId> selected,
@@ -82,12 +89,12 @@ namespace PokerEngine
 
         public BattleSessionResult Execute(long expectedRevision, ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, bool animate = true,
-            BattleTargetBindings targetBindings = null)
+            BattleTargetBindings targetBindings = null, int drawCount = 0)
         {
             if (Presentation.IsPresenting)
                 return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
 
-            var result = Session.Execute(expectedRevision, actor, action, selected, targets, targetBindings);
+            var result = Session.Execute(expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
             if (!result.Accepted) return result;
             try { Presentation.Present(result, animate); }
             catch

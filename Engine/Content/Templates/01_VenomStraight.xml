@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="venom-straight-content" name="蛇牙连击" version="venom-straight.1">
-  <!--玩法：用顺子多段叠加流血和中毒，穿插回合推进让负面结算。开局已装备蛇牙和分叉刃。 所有数值为玩法实验值，可直接修改；不代表策划定案。-->
+<BattleContent schemaVersion="1" id="venom-straight-content" name="蛇牙连击" version="venom-straight.1.1563">
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -40,11 +39,8 @@
     <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
       <PreventStatusApplication tags="Control" />
     </Status>
-    <Status id="bleed" tags="Negative" name="流血·行动后6伤共3次" lifetime="TriggerCount" count="3" reapply="IndependentInstances">
-      <PeriodicDamage timing="ActionCompleted" amount="6" target="Self" />
-    </Status>
-    <Status id="poison" tags="Negative" name="中毒·阶段末5伤共3次" lifetime="TriggerCount" count="3" reapply="IndependentInstances">
-      <PeriodicDamage timing="PhaseEnding" amount="5" target="Self" />
+    <Status id="bleed" tags="Negative" name="流血·回合开始按层数伤害并减一层" lifetime="UntilRemoved" reapply="AddStacks">
+      <PeriodicDamage timing="TurnStarted" amount="1" target="Self" stackDecay="1" />
     </Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
       <ReflectBlockedDamage ratio="1" target="EventSource" />
@@ -59,28 +55,28 @@
   <HandRules>
     <HandRule id="document-hands" name="蛇牙连击·牌型技能" version="venom-straight.hands.1">
       <Hand category="HighCard">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="OnePair">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="TwoPair">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="ThreeOfAKind">
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="Straight">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
-        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
-        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="0.35" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
       </Hand>
       <Hand category="Flush">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
         <Effect id="heal" kind="Heal" amountKind="ScorePointsScale" amount="0.2" target="Self" />
       </Hand>
       <Hand category="FullHouse">
-        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving" />
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="ActorPolicy" />
         <Effect id="cleanse" kind="Cleanse" target="Self" />
         <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
       </Hand>
@@ -88,13 +84,13 @@
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="StraightFlush" variant="Ordinary">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="StraightFlush" variant="Royal">
         <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="FiveOfAKind">
-        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving" />
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
     </HandRule>
   </HandRules>
@@ -104,13 +100,13 @@
         <Conditions>
           <HandIs category="Straight" />
         </Conditions>
-        <Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget" />
+        <Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget" stacks="6" />
       </FactTrigger>
-      <FactTrigger id="poison-per-hit" timing="DamageSettled" relation="OwnerIsSource" origins="Primary" occurrence="PerEvent">
+      <FactTrigger id="bleed-extra-per-hit" timing="DamageSettled" relation="OwnerIsSource" origins="Primary" occurrence="PerEvent">
         <Conditions>
           <HandIs category="Straight" />
         </Conditions>
-        <Effect kind="ApplyStatus" statusRef="poison" target="EventTarget" />
+        <Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget" stacks="5" />
       </FactTrigger>
     </Relic>
     <Relic id="forked-blade" name="分叉刃·顺子第一段额外命中一次" version="forked-blade.1">
@@ -118,7 +114,7 @@
     </Relic>
   </Relics>
   <Players>
-    <Player id="hero" name="蛇牙连击·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="10" discards="6" unlimitedDiscards="false" maxPlayCards="5" maxDiscardCards="5" playRefill="AfterAction" discardRefill="AfterAction" discardBlockPerCard="6" />
+    <Player id="hero" name="蛇牙连击·玩家" maxHealth="240" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="10" discards="6" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" discardBlockPerCard="6" manualDraw="true" openingDeal="false" drawCount="10" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="true" overflowTriggersDefense="false" kickerScoring="ChipsOnly" layeredScoreRelics="true" attackTarget="LowestHealth" />
   </Players>
   <Enemies>
     <Enemy id="iron-beast" name="铁甲兽" maxHealth="700" initialBlock="80" damage="32" />

@@ -16,7 +16,7 @@ internal static class CompilerBridge
             object output;
             if (args.Length == 1 && args[0] == "--metadata")
             {
-                var types = new[] { typeof(HandCategory), typeof(CombatEffectKind), typeof(EffectAmountKind), typeof(HandEffectVariant),
+                var types = new[] { typeof(KickerScoring), typeof(ScoreOperation), typeof(BattleDiscardKind), typeof(HandCategory), typeof(CombatEffectKind), typeof(EffectAmountKind), typeof(HandEffectVariant),
                     typeof(StatusTags), typeof(StatusLifetimeKind), typeof(StatusReapplyPolicy), typeof(CombatTimingKind),
                     typeof(CombatReactionSourcePolicy), typeof(EffectTargetSelection), typeof(CombatTargetSelection),
                     typeof(BattleNumericStat), typeof(RelicNumericOperation), typeof(CombatEffectOrigin), typeof(RelicHandEffectOperation),

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum BattleRuleValueKey { MaxEnergy = 1, InitialEnergy, PlayEnergyCost, DiscardEnergyCost, HandLimit }
+    public enum BattleRuleValueKey { MaxEnergy = 1, InitialEnergy, PlayEnergyCost, DiscardEnergyCost, HandLimit, MinPlayCards, MaxPlayCards, DrawCount, DrawUses, DrawWarningThreshold, AllCardsScore, ActionsPerTurn }
     public enum BattleRefillMode { Skip = 1, FillToLimit, FixedCount }
 
     /// <summary>Passive integer adjustment, independent of effect amounts and relic runtime counters.</summary>
@@ -66,6 +66,13 @@ namespace PokerEngine
             var items = contributions.ToArray();
             long delta = 0; foreach (var item in items) delta = checked(delta + item.Delta);
             long value = checked(baseValue + delta);
+            if (key >= BattleRuleValueKey.MinPlayCards)
+            {
+                int minimum = key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards || key == BattleRuleValueKey.ActionsPerTurn ? 1 : 0;
+                int maximum = key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards ? 10 :
+                    key == BattleRuleValueKey.DrawUses || key == BattleRuleValueKey.ActionsPerTurn ? 64 : key == BattleRuleValueKey.AllCardsScore ? 1 : 512;
+                Value = (int)Math.Min(maximum, Math.Max(minimum, value)); Key = key; BaseValue = baseValue; Delta = delta; Contributions = Guard.View(items); return;
+            }
             if (key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost) value = Math.Max(0, value);
             if (value < (key == BattleRuleValueKey.InitialEnergy || key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost ? 0 : 1) ||
                 key == BattleRuleValueKey.HandLimit && value > 52) throw new ArgumentException("Modified battle rule is outside its supported range.");
@@ -213,6 +220,13 @@ namespace PokerEngine
                 case BattleRuleValueKey.PlayEnergyCost: value = rules.PlayEnergyCost; break;
                 case BattleRuleValueKey.DiscardEnergyCost: value = rules.DiscardEnergyCost; break;
                 case BattleRuleValueKey.HandLimit: value = rules.HandSize; break;
+                case BattleRuleValueKey.MinPlayCards: value = rules.Flow.MinPlayCards; break;
+                case BattleRuleValueKey.MaxPlayCards: value = rules.MaxPlayCards; break;
+                case BattleRuleValueKey.DrawCount: value = rules.Flow.DrawCount; break;
+                case BattleRuleValueKey.ActionsPerTurn: value = rules.Flow.ActionsPerTurn; break;
+                case BattleRuleValueKey.DrawUses: value = rules.Flow.DrawUses; break;
+                case BattleRuleValueKey.DrawWarningThreshold: value = rules.Flow.DrawWarningThreshold; break;
+                case BattleRuleValueKey.AllCardsScore: value = rules.Flow.KickerScoring == KickerScoring.AllCards ? 1 : 0; break;
                 default: throw new ArgumentException("Unknown battle rule value.");
             }
             return new BattleRuleValueResolution(key, value, loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).RuleValues

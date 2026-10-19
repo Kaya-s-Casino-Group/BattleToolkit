@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CombatEffectKind { Damage = 1, Heal = 2, GainBlock = 3, ClearBlock = 4, ApplyStatus = 5, Eliminate = 6, Cleanse = 7 }
+    public enum CombatEffectKind { Damage = 1, Heal = 2, GainBlock = 3, ClearBlock = 4, ApplyStatus = 5, Eliminate = 6, Cleanse = 7, DrawCards = 8 }
     public enum CombatError { None, InvalidState, StaleRevision, InvalidEffect, Overflow, InvalidDamageModifier, InvalidReaction, ReactionLimitExceeded, InvalidAmountModifier }
 
     /// <summary>Authority-resolved effect, not a player command. The mode validates action costs, targets and amounts first.</summary>
@@ -18,7 +18,9 @@ namespace PokerEngine
         public AttackContext Attack { get; }
         /// <summary>Required only for ApplyStatus. Identity, attribution, stacks and duration are authority-resolved.</summary>
         public StatusInstance Status { get; }
-        public CombatEffect(CombatEffectKind kind, ParticipantId source, ParticipantId target, long amount = 0, DamageModification attackModification = null, AttackContext attack = null, StatusInstance status = null)
+        public CombatTargetChain TargetChain { get; }
+        public CombatEffect WithTargetChain(CombatTargetChain chain) => new CombatEffect(Kind, Source, Target, Amount, AttackModification, Attack, Status, chain);
+        public CombatEffect(CombatEffectKind kind, ParticipantId source, ParticipantId target, long amount = 0, DamageModification attackModification = null, AttackContext attack = null, StatusInstance status = null, CombatTargetChain targetChain = null)
         {
             if (!Enum.IsDefined(typeof(CombatEffectKind), kind) || !source.IsValid || !target.IsValid || amount < 0 ||
                 (kind == CombatEffectKind.ClearBlock || kind == CombatEffectKind.ApplyStatus || kind == CombatEffectKind.Eliminate || kind == CombatEffectKind.Cleanse) && amount != 0)
@@ -36,7 +38,7 @@ namespace PokerEngine
             if (Attack != null && (Attack.Source != source || Attack.BaseDamage != (attackModification?.InputAmount ?? amount)))
                 throw new ArgumentException("Attack facts must match the original damage request.");
             if (attackModification != null) DamageModification.Validate(attackModification, Attack.BaseDamage, Attack);
-            Kind = kind; Source = source; Target = target; Amount = amount; AttackModification = attackModification; Status = status;
+            Kind = kind; Source = source; Target = target; Amount = amount; AttackModification = attackModification; Status = status; TargetChain = targetChain;
         }
         public static CombatEffect ApplyStatus(StatusInstance status)
         {
@@ -103,7 +105,7 @@ namespace PokerEngine
     /// <summary>Shared deterministic authority resolver. No turn, AI, card score, faction targeting or reward policy.</summary>
     public static class CombatEngine
     {
-        public const string RulesVersion = "combat.9";
+        public const string RulesVersion = "combat.10";
         public static CombatTransition Resolve(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects, IIncomingDamageModifier incomingDamage = null,
             CombatStatusCatalog statusCatalog = null, ICombatReactionProvider reactionProvider = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null)
@@ -115,16 +117,16 @@ namespace PokerEngine
         /// <summary>Resolve one authority-owned boundary atomically. Periodic damage is a leaf and never re-enters reaction rules.</summary>
         public static CombatTransition ResolveTiming(CombatState state, long expectedRevision, CombatTimingSignal signal,
             IIncomingDamageModifier incomingDamage = null, CombatStatusCatalog statusCatalog = null, CombatReactionLimits reactionLimits = null,
-            ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null, ICombatReactionProvider reactionProvider = null)
+            ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null, ICombatReactionProvider reactionProvider = null, bool suppressPeriodic = false)
         {
             if (state == null || signal == null) throw new ArgumentNullException();
-            return ResolveCore(state, expectedRevision, Array.Empty<CombatEffect>(), signal, incomingDamage, statusCatalog, reactionProvider, reactionLimits, amountModifier, reactionRuntime);
+            return ResolveCore(state, expectedRevision, Array.Empty<CombatEffect>(), signal, incomingDamage, statusCatalog, reactionProvider, reactionLimits, amountModifier, reactionRuntime, suppressPeriodic);
         }
 
         private static CombatTransition ResolveCore(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects,
             CombatTimingSignal signal, IIncomingDamageModifier incomingDamage, CombatStatusCatalog statusCatalog,
             ICombatReactionProvider reactionProvider, CombatReactionLimits reactionLimits, ICombatAmountModifier amountModifier,
-            ICombatReactionRuntime reactionRuntime)
+            ICombatReactionRuntime reactionRuntime, bool suppressPeriodic = false)
         {
             try { Validate(state); CombatStatusRules.ValidateCatalog(state, statusCatalog); }
             catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidState); }
@@ -150,6 +152,7 @@ namespace PokerEngine
                     if (effect == null || !units.ContainsKey(effect.Source) || !units.ContainsKey(effect.Target) || !units[effect.Source].IsAlive)
                         throw new ArgumentException("Primary effects require known units and an initially living source.");
                 long revision = checked(state.Revision + 1);
+                var chainTargets = new Dictionary<string, ParticipantId>(StringComparer.Ordinal);
                 var queue = new Stack<QueuedEffect>();
                 CombatTimingEvent clock = null;
                 if (signal != null)
@@ -161,7 +164,7 @@ namespace PokerEngine
                         queue.Push(new QueuedEffect(clock));
                     // Eligibility/targets are evaluated when each status reaches the head, so an earlier
                     // tick can kill a later holder. Snapshot only identities, in stable stored order.
-                    if (statusCatalog != null)
+                    if (statusCatalog != null && !suppressPeriodic)
                         for (int index = statuses.Count - 1; index >= 0; index--)
                             if (statuses[index].Target.Kind == EntityKind.Participant &&
                                 signal.Participants.Contains(new ParticipantId(statuses[index].Target.Id)) &&
@@ -202,7 +205,17 @@ namespace PokerEngine
                         {
                             // Unlike reactive rewards, a periodic opportunity is spent even for zero or
                             // fully absorbed damage. Consume after all siblings, including the final tick.
-                            CombatStatusRules.Consume(statuses, status, revision, -1, null, events, queued.Provenance);
+                            var decay = statusCatalog.Get(status.DefinitionId).Behaviors.OfType<PeriodicDamageSpec>().Single(b => b.Timing == signal.Kind).StackDecay;
+                            if (decay > 0)
+                            {
+                                int stacks = Math.Max(0, status.Stacks - decay);
+                                var after = stacks == 0 ? null : new StatusInstance(status.Id, status.DefinitionId, status.Source, status.Target, stacks, status.Duration);
+                                int position = statuses.IndexOf(status);
+                                if (after == null) statuses.RemoveAt(position); else statuses[position] = after;
+                                events.Add(new CombatStatusChangedEvent(revision, -1, events.Count, null, status, after,
+                                    CombatStatusChangeReason.Consumed, provenance: queued.Provenance));
+                            }
+                            else CombatStatusRules.Consume(statuses, status, revision, -1, null, events, queued.Provenance);
                             continue;
                         }
                         var holder = new ParticipantId(status.Target.Id);
@@ -232,6 +245,32 @@ namespace PokerEngine
                     int effectIndex = provenance.RootEffectIndex;
                     // Identities are checked before enqueueing. Death is a normal settlement result, not an error.
                     if (!units[effect.Source].IsAlive && provenance.SourcePolicy == CombatReactionSourcePolicy.RequireLiving) continue;
+                    if (effect.TargetChain != null)
+                    {
+                        var chain = effect.TargetChain;
+                        if (chain.Candidates.Any(id => !units.ContainsKey(id) || units[id].TeamId == units[effect.Source].TeamId))
+                            return new CombatTransition(state, CombatError.InvalidEffect);
+                        string key = effect.Source.Value + "/" + chain.Id;
+                        ParticipantId target;
+                        if (!chainTargets.TryGetValue(key, out target)) target = effect.Target;
+                        // Only the next damage hit switches targets. Its following status stays on the struck target and skips corpses.
+                        if (!units[target].IsAlive && effect.Kind == CombatEffectKind.Damage)
+                            target = chain.Candidates.Where(id => units[id].IsAlive).OrderBy(id => units[id].Health).FirstOrDefault();
+                        if (!target.IsValid) continue;
+                        chainTargets[key] = target;
+                        if (!units[target].IsAlive) continue;
+                        var status = effect.Status == null ? null : new StatusInstance(effect.Status.Id, effect.Status.DefinitionId,
+                            effect.Status.Source, EntityRef.Participant(target), effect.Status.Stacks, effect.Status.Duration);
+                        DamageModification outgoing = null;
+                        if (effect.Kind == CombatEffectKind.Damage && chain.Outgoing != null)
+                        {
+                            var currentTarget = new CombatState(state.Id, state.Revision, state.Combatants.Select(unit => units[unit.Id]), statuses);
+                            outgoing = DamageModification.Validate(chain.Outgoing.Modify(new DamageModifierContext(currentTarget, effect.Source, target,
+                                effect.Amount, effect.Attack)), effect.Amount, effect.Attack);
+                        }
+                        effect = new CombatEffect(effect.Kind, effect.Source, target, outgoing?.OutputAmount ?? effect.Amount,
+                            outgoing ?? effect.AttackModification, effect.Attack, status);
+                    }
                     if (!units[effect.Target].IsAlive) continue;
                     int firstEvent = events.Count;
                     var before = units[effect.Target]; int health = before.Health, block = before.Block, absorbed = 0; long overkill = 0;
@@ -277,6 +316,7 @@ namespace PokerEngine
                             case CombatEffectKind.Heal: health += (int)Math.Min(settledAmount, before.MaxHealth - health); break;
                             case CombatEffectKind.GainBlock: block = checked(block + checked((int)settledAmount)); break;
                             case CombatEffectKind.ClearBlock: block = 0; break;
+                            case CombatEffectKind.DrawCards: if (effect.Amount > 512) throw new ArgumentException("Draw count exceeds card capacity."); break;
                             case CombatEffectKind.ApplyStatus:
                                 ValidateStatus(effect.Status, state, unitIds);
                                 CombatStatusRules.Apply(state, statuses, effect, statusCatalog, revision, effectIndex, events, provenance);

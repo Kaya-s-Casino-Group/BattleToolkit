@@ -83,7 +83,7 @@ namespace PokerEngine
                 if (definition.Behaviors.Any(item => item is PeriodicDamageSpec) && status.Source.Kind != EntityKind.Participant)
                     throw new ArgumentException("Periodic damage requires a participant applier.");
             }
-            if (state.Statuses.Where(status => catalog.Get(status.DefinitionId).ReapplyPolicy == StatusReapplyPolicy.KeepLonger)
+            if (state.Statuses.Where(status => catalog.Get(status.DefinitionId).ReapplyPolicy != StatusReapplyPolicy.IndependentInstances)
                 .GroupBy(status => new { status.DefinitionId, status.Target.Kind, status.Target.Id }).Any(group => group.Count() > 1))
                 throw new ArgumentException("KeepLonger status definitions require one instance per target.");
         }
@@ -122,15 +122,15 @@ namespace PokerEngine
                     return;
                 }
             }
-            var existing = definition != null && definition.ReapplyPolicy == StatusReapplyPolicy.KeepLonger
+            var existing = definition != null && definition.ReapplyPolicy != StatusReapplyPolicy.IndependentInstances
                 ? statuses.FirstOrDefault(status => status.DefinitionId == incoming.DefinitionId && Targets(status, effect.Target)) : null;
             if (statuses.Any(status => status.Id == incoming.Id && !ReferenceEquals(status, existing)))
                 throw new ArgumentException("Status instance ID is already present.");
             if (existing != null)
             {
-                var duration = Longer(state.Id, existing.Duration, incoming.Duration);
+                var duration = definition.ReapplyPolicy == StatusReapplyPolicy.AddStacks ? existing.Duration : Longer(state.Id, existing.Duration, incoming.Duration);
                 var refreshed = new StatusInstance(existing.Id, existing.DefinitionId, incoming.Source, existing.Target,
-                    Math.Max(existing.Stacks, incoming.Stacks), duration);
+                    definition.ReapplyPolicy == StatusReapplyPolicy.AddStacks ? checked(existing.Stacks + incoming.Stacks) : Math.Max(existing.Stacks, incoming.Stacks), duration);
                 statuses[statuses.IndexOf(existing)] = refreshed;
                 events.Add(new CombatStatusChangedEvent(revision, effectIndex, events.Count, effect, existing, refreshed, CombatStatusChangeReason.Refreshed,
                     provenance: provenance));
