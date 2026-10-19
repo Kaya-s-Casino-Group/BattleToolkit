@@ -115,6 +115,22 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
   }
   await load(example);await clean();
  });
+ await test('塞牌区域和插入位置表单支持修改、校验与 XML 导出',async()=>{
+  const xml=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/Templates/09_GluttonyBoss.xml'),'utf8');
+  await load(xml);await clean();await nav('敌人模板');await page.locator('.definition-button[title="gluttony"]').click();
+  await page.locator('#editor details').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
+  const zone=page.locator('[data-key="zone"]').first(),position=page.locator('[data-key="position"]').first();
+  for(const [destination,mode] of [['deck','Shuffle'],['deck','Top'],['deck','Bottom'],['hand','Default'],['discard','Default']]){
+   await zone.selectOption(destination);await position.selectOption(mode);await clean();
+   const event=page.waitForEvent('download');await page.locator('#export').click();
+   const saved=await fs.readFile(await (await event).path(),'utf8');
+   assert.match(saved,new RegExp('<AddCards[^>]*zone="'+destination+'"[^>]*position="'+mode+'"'));
+  }
+  await zone.selectOption('hand');await position.selectOption('Top');await settle();
+  assert.match(await page.locator('#validation-state').innerText(),/^[1-9]/);
+  await position.selectOption('Default');await clean();
+  await load(example);await clean();
+ });
  await open('牌型效果','example-hands');await page.screenshot({path:process.env.EDITOR_SCREENSHOT||path.join(os.tmpdir(),'battle-content-editor-form.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log(`Browser: ${passes} passed, 0 failed.`);
  }finally{await context.close();await browser.close();}

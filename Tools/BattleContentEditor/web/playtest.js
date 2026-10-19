@@ -101,7 +101,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
  }
  function addSteps(steps){
   const units=[...(battle?.players||[]),...(battle?.enemies||[])];const name=id=>unitName(units.find(unit=>unit.id===id)||{id});
-  creationNotice=(steps||[]).flatMap(step=>step.cardCreations||[]).filter(event=>event.count>0).map(event=>name(event.actor)+' 塞入'+(event.unplayableCount===event.count?'废牌':'卡牌')+' × '+event.count+' → '+name(event.owner)+'的'+(event.zone==='discard'?'弃牌堆（洗回牌库后可能摸到）':event.zone==='deck'?'牌库':event.zone)).join('；');
+  creationNotice=(steps||[]).flatMap(step=>step.cardCreations||[]).filter(event=>event.count>0).map(event=>name(event.actor)+' 塞入'+(event.unplayableCount===event.count?'废牌':'卡牌')+' × '+event.count+' → '+name(event.owner)+'的'+(event.zone==='discard'?'弃牌堆（洗回牌库后可能摸到）':event.zone==='deck'?(event.position==='Top'?'牌顶（下次优先摸到）':event.position==='Bottom'?'牌底':'牌库（随机洗入）'):event.zone==='hand'?'手牌':event.zone)).join('；');
   logs.push(...(steps||[]));if(logs.length>500)logs=logs.slice(-500);for(const step of steps||[])if(['Play','EnemyAction'].includes(step.action)){const fx=effects.get(step.actor)||[];fx.push({kind:'act',text:''});effects.set(step.actor,fx);}}
  function forgetExpired(data){if(data.error!=='SessionNotFound')return false;battle=null;actor='';selected.clear();bindings={};invalidatePreviews();startXml=null;logs=[];uncertain=false;return true;}
  function setResponseError(data){forgetExpired(data);message=data.message||data.error||'操作未完成，请检查配置与当前对局。';diagnostics=data.diagnostics||[];}

@@ -59,12 +59,12 @@ internal static partial class PlaytestBridge
                     "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,
                     "worldEffects", (active ? planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>() : Array.Empty<EnemyWorldEffect>())
                         .Select(effect => D("kind", effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
-                            "enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone)).ToArray());
+                            "enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone, "position", effect.EnemyRef == null ? effect.Position.ToString() : null)).ToArray());
                 unit["intent"] = intent == null ? new string[0] : intent.Accepted ? EventLines(intent.RuleEvents, duel, catalog).ToArray() : new[] { "意图暂不可预览：" + Error(intent.Error) };
                 if (enemy.Behavior != null && intent != null && intent.Accepted && !intent.IsSkipped)
                 {
                     unit["intent"] = new[] { planned?.Name ?? "等待" }.Concat((string[])unit["intent"])
-                        .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + e.Zone)).ToArray();
+                        .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + InsertionLabel(e.Zone, e.Position))).ToArray();
                 }
                 return unit;
             }).ToArray());
@@ -164,7 +164,7 @@ internal static partial class PlaytestBridge
         return (object)D("action", step.Action.ToString(), "actor", step.Actor.Value, "title", Name(step.Before.Duel, step.Actor) + " · " + ActionName(step.Action),
             "revision", Number(transition.State.Revision), "lines", lines.ToArray(),
             "cardCreations", transition.Timeline.Where(fact => fact.Kind == BattleTimelineKind.CardsCreated)
-                .Select(fact => D("actor", fact.Actor.Value, "owner", fact.CardOwner.Value, "zone", fact.ToZone,
+                .Select(fact => D("actor", fact.Actor.Value, "owner", fact.CardOwner.Value, "zone", fact.ToZone, "position", fact.InsertionPosition?.ToString(),
                     "count", fact.Cards.Count, "unplayableCount", fact.Cards.Count(id => !fact.State.Table.GetCard(id).CanPlay))).ToArray());
     }).ToArray();
 
@@ -189,11 +189,20 @@ internal static partial class PlaytestBridge
             else
             {
                 bool unplayable = fact.Cards.All(id => (fact.State.Table.GetCard(id).Effects & CardEffects.Unplayable) != 0);
-                string zone = fact.ToZone == CardZoneKinds.Deck ? "牌堆" : fact.ToZone == CardZoneKinds.Discard ? "弃牌堆" : fact.ToZone;
+                string zone = InsertionLabel(fact.ToZone, fact.InsertionPosition);
                 yield return owner + "：生成" + (unplayable ? "废牌" : "卡牌") + " × " + fact.Cards.Count + "，塞入 " +
                     DisplayName(entry, fact.State.Duel, fact.CardOwner) + " 的" + zone;
             }
         }
+    }
+
+    private static string InsertionLabel(string zone, CardInsertionPosition? position)
+    {
+        if (zone == CardZoneKinds.Hand) return "手牌";
+        if (zone == CardZoneKinds.Discard) return "弃牌堆";
+        if (zone == CardZoneKinds.Deck) return position == CardInsertionPosition.Top ? "抽牌堆牌顶" :
+            position == CardInsertionPosition.Bottom ? "抽牌堆牌底" : "抽牌堆（随机洗入）";
+        return zone;
     }
 
     private static string DisplayName(Entry entry, TeamBattleState state, ParticipantId id) => ContentName(entry,

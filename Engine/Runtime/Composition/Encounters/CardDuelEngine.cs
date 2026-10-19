@@ -372,7 +372,7 @@ namespace PokerEngine
                 {
                     var response = Duel.ExecuteObserved(duel, duel.Revision, actor, ScoredDuelActionKind.EnemyAction,
                         requestedTargets: requestedTargets, timeline: timeline, worldObserver: (effect, team) => {
-                            workingTable = GenerateEnemyCards(workingTable, zones, random, team, actor, effect, timeline);
+                            workingTable = GenerateEnemyCards(workingTable, zones, ref random, team, actor, effect, timeline);
                         });
                     if (!response.Accepted) return new CardDuelTransition(state, response.Error);
                     duel = response.State; events = response.RuleEvents; effectPlan = response.EffectPlan;
@@ -409,7 +409,7 @@ namespace PokerEngine
             }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
-        private static CardTableState GenerateEnemyCards(CardTableState table, CardZone[] zones, RandomState random,
+        private CardTableState GenerateEnemyCards(CardTableState table, CardZone[] zones, ref RandomState random,
             TeamBattleState team, ParticipantId actor, EnemyWorldEffect effect, BattleTimelineRecorder timeline)
         {
             timeline.SetTeam(team);
@@ -429,10 +429,20 @@ namespace PokerEngine
                 if (created.Count == 0) continue;
                 int index = Array.FindIndex(zones, z => z.ControllerId == recipient.Id && z.Kind == effect.Zone);
                 var zone = zones[index];
-                zones[index] = new CardZone(zone.Id, zone.Kind, zone.ControllerId, zone.Cards.Concat(created.Select(c => c.Id)));
+                var ids = created.Select(c => c.Id).ToArray();
+                // CardZone draws from the end. Reverse each new batch so generation order is draw order.
+                var inserted = effect.Zone != CardZoneKinds.Deck ? zone.Cards.Concat(ids).ToArray() :
+                    effect.Position == CardInsertionPosition.Bottom ? ids.Reverse().Concat(zone.Cards).ToArray() :
+                    zone.Cards.Concat(ids.Reverse()).ToArray();
+                if (effect.Position == CardInsertionPosition.Shuffle)
+                {
+                    // Insertion shuffling is not discard recycling: it does not emit OnReshuffle.
+                    var shuffled = shuffler.Shuffle(inserted, random); inserted = shuffled.Cards.ToArray(); random = shuffled.Random;
+                }
+                zones[index] = new CardZone(zone.Id, zone.Kind, zone.ControllerId, inserted);
                 table = new CardTableState(table.MatchId, table.Cards.Concat(created), zones, table.Revision);
                 timeline.SetCards(table, random);
-                timeline.Add(BattleTimelineKind.CardsCreated, reason: actor.Value, cards: created.Select(c => c.Id), to: effect.Zone, cardOwner: recipient.Id);
+                timeline.Add(BattleTimelineKind.CardsCreated, reason: actor.Value, cards: ids, to: effect.Zone, cardOwner: recipient.Id, insertionPosition: effect.Position);
             }
             return table;
         }

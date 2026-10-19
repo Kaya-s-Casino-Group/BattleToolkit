@@ -150,15 +150,50 @@ class PlaytestTests(unittest.TestCase):
         result = self.action(battle, 'EndTurn')
         after = self.assert_success(result)
         self.assertEqual(battle['players'][0]['deckCount'] + 3, after['players'][0]['deckCount'])
-        self.assertIn('暴食Boss：生成废牌 × 3，塞入 玩家 的牌堆',
+        self.assertIn('暴食Boss：生成废牌 × 3，塞入 玩家 的抽牌堆（随机洗入）',
                       [line for step in result['steps'] for line in step['lines']])
         pile = after['players'][0]['piles']['deck']
         self.assertEqual(after['players'][0]['deckCount'], pile['count'])
         self.assertEqual(3, pile['unplayableCount'])
         self.assertEqual([3], [card['count'] for card in pile['cards'] if not card['canPlay']])
         self.assertEqual([{'actor': battle['enemies'][0]['id'], 'owner': battle['players'][0]['id'],
-                           'zone': 'deck', 'count': 3, 'unplayableCount': 3}],
+                           'zone': 'deck', 'position': 'Shuffle', 'count': 3, 'unplayableCount': 3}],
                          [fact for step in result['steps'] for fact in step['cardCreations']])
+
+    def test_configurable_insertion_preview_and_actual_hand(self):
+        template = (server_module.ROOT / 'Engine/Content/Templates/09_GluttonyBoss.xml').read_text(encoding='utf-8')
+        for zone, position in [('deck', 'Shuffle'), ('deck', 'Top'), ('deck', 'Bottom'), ('hand', 'Default')]:
+            with self.subTest(zone=zone, position=position):
+                def edit(root):
+                    for effect in root.findall('.//AddCards'):
+                        effect.set('zone', zone)
+                        effect.set('position', position)
+                        effect.set('count', '3')
+                battle = self.start(changed_xml(template, edit), encounter='09_GluttonyBoss', draw=False)['battle']
+                effect = battle['enemies'][0]['intentMeta']['worldEffects'][0]
+                resolved = 'Bottom' if position == 'Default' else position
+                self.assertEqual((zone, resolved), (effect['zone'], effect['position']))
+                preview = self.action(battle, 'EndTurn', op='preview')
+                self.assertTrue(preview['preview']['legal'])
+                self.assertEqual(battle, self.state(battle))
+                result = self.action(battle, 'EndTurn')
+                after = self.assert_success(result)
+                self.assertEqual([{'actor': 'enemy', 'owner': 'player', 'zone': zone, 'position': resolved,
+                                   'count': 3, 'unplayableCount': 3}],
+                                 [fact for step in result['steps'] for fact in step['cardCreations']])
+                self.assertEqual(0, after['players'][0]['discardCount'])
+                if zone == 'hand':
+                    self.assertEqual(3, len(after['players'][0]['hand']))
+                    self.assertTrue(all(not card['canPlay'] and card['canDiscard'] for card in after['players'][0]['hand']))
+                    self.assertEqual(52, after['players'][0]['deckCount'])
+                else:
+                    self.assertEqual(55, after['players'][0]['deckCount'])
+                    after = self.assert_success(self.action(after, 'Draw', drawCount=3))
+                    junk = sum(not card['canPlay'] for card in after['players'][0]['hand'])
+                    if position == 'Top':
+                        self.assertEqual(3, junk)
+                    elif position == 'Bottom':
+                        self.assertEqual(0, junk)
 
     def test_standard_boss_piles_aggregate_junk_and_report_committed_creations(self):
         xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
@@ -184,7 +219,7 @@ class PlaytestTests(unittest.TestCase):
             self.assertNotIn('id', junk)
             self.assertEqual(0, player['piles']['deck']['unplayableCount'])
             self.assertEqual([{'actor': battle['enemies'][0]['id'], 'owner': player['id'],
-                               'zone': 'discard', 'count': 1, 'unplayableCount': 1}],
+                               'zone': 'discard', 'position': 'Bottom', 'count': 1, 'unplayableCount': 1}],
                              [fact for step in result['steps'] for fact in step['cardCreations']])
             battle = after
 
@@ -212,7 +247,7 @@ class PlaytestTests(unittest.TestCase):
         preview = self.action(ending, 'FinishTurn', op='preview')
         self.assertTrue(preview['preview']['legal'])
         self.assertEqual([{'actor': ending['enemies'][0]['id'], 'owner': ending['players'][0]['id'],
-                           'zone': 'discard', 'count': 1, 'unplayableCount': 1}],
+                           'zone': 'discard', 'position': 'Bottom', 'count': 1, 'unplayableCount': 1}],
                          [fact for step in preview['preview']['steps'] for fact in step['cardCreations']])
         self.assertEqual(ending, preview['battle'])
         self.assertEqual(ending, self.state(ending))

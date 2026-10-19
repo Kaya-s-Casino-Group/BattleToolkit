@@ -6,6 +6,7 @@ namespace PokerEngine
 {
     public enum EnemyDeadTargetPolicy { Retarget, Skip }
     public enum EnemySelectionMode { Sequence, Priority, Weighted }
+    public enum CardInsertionPosition { Default, Shuffle, Top, Bottom }
     public enum EnemyConditionKind { Always, All, Any, Not, HealthAtMost, RoundAtLeast, AlliesBelow, HasStatus }
     /// <summary>Conditions are evaluated only when committing the next intent.</summary>
     public sealed class EnemyCondition
@@ -48,21 +49,29 @@ namespace PokerEngine
         public int Count { get; }
         public int LivingLimit { get; }
         public string Zone { get; }
+        public CardInsertionPosition Position { get; }
         public bool Disabled { get; }
         public CardEffects CardEffects { get; }
-        private EnemyWorldEffect(string enemyRef, string face, int count, int limit, string zone, bool disabled, CardEffects effects)
+        private EnemyWorldEffect(string enemyRef, string face, int count, int limit, string zone, bool disabled, CardEffects effects, CardInsertionPosition position = CardInsertionPosition.Bottom)
         {
             if (count < 1 || count > 64 || limit < 1 || limit > 63) throw new ArgumentException("Invalid world effect capacity.");
             CardEffectRules.Validate(effects);
             EnemyRef = enemyRef; CardFace = face; Count = count; LivingLimit = limit; Zone = zone; Disabled = disabled; CardEffects = effects;
+            Position = position;
         }
         public static EnemyWorldEffect Summon(string enemyRef, int count = 1, int livingLimit = 4) =>
             new EnemyWorldEffect(Guard.Text(enemyRef, nameof(enemyRef)), null, count, livingLimit, null, false, CardEffects.None);
-        public static EnemyWorldEffect AddCards(string face, int count = 1, string zone = "discard", bool disabled = false, CardEffects effects = CardEffects.Ineffective | CardEffects.Unplayable)
+        public static EnemyWorldEffect AddCards(string face, int count = 1, string zone = "discard", bool disabled = false, CardEffects effects = CardEffects.Ineffective | CardEffects.Unplayable,
+            CardInsertionPosition position = CardInsertionPosition.Default)
         {
-            if (zone != CardZoneKinds.Deck && zone != CardZoneKinds.Discard || !StandardDeck.Cards().Any(c => c.Id.Value == face))
-                throw new ArgumentException("Generated cards require a known face and deck/discard destination.");
-            return new EnemyWorldEffect(null, face, count, 63, zone, disabled, effects);
+            if (zone != CardZoneKinds.Deck && zone != CardZoneKinds.Discard && zone != CardZoneKinds.Hand || !StandardDeck.Cards().Any(c => c.Id.Value == face))
+                throw new ArgumentException("Generated cards require a known face and deck/discard/hand destination.");
+            if (!Enum.IsDefined(typeof(CardInsertionPosition), position)) throw new ArgumentException("Unknown card insertion position.");
+            if (position == CardInsertionPosition.Default)
+                position = zone == CardZoneKinds.Deck ? CardInsertionPosition.Shuffle : CardInsertionPosition.Bottom;
+            if (zone != CardZoneKinds.Deck && position != CardInsertionPosition.Bottom)
+                throw new ArgumentException("Shuffle/Top positions require the deck destination; discard/hand accept Default/Bottom.");
+            return new EnemyWorldEffect(null, face, count, 63, zone, disabled, effects, position);
         }
     }
     public sealed class EnemyBehaviorAction

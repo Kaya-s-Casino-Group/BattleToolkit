@@ -42,8 +42,8 @@ namespace PokerEngine
                             Check(effect, new[] { "enemyRef", "count", "livingLimit" }, new string[0]);
                             return EnemyWorldEffect.Summon(Text(effect, "enemyRef"), Int(effect, "count", 1), Int(effect, "livingLimit", 4));
                         }
-                        Check(effect, new[] { "face", "count", "zone", "disabled", "effects" }, new string[0]);
-                        return EnemyWorldEffect.AddCards(Text(effect, "face"), Int(effect, "count", 1), Text(effect, "zone", CardZoneKinds.Discard), Bool(effect, "disabled", false), Enum(effect, "effects", CardEffects.Ineffective | CardEffects.Unplayable));
+                        Check(effect, new[] { "face", "count", "zone", "position", "disabled", "effects" }, new string[0]);
+                        return EnemyWorldEffect.AddCards(Text(effect, "face"), Int(effect, "count", 1), Text(effect, "zone", CardZoneKinds.Discard), Bool(effect, "disabled", false), Enum(effect, "effects", CardEffects.Ineffective | CardEffects.Unplayable), Enum(effect, "position", CardInsertionPosition.Default));
                     });
                     return new EnemyBehaviorAction(Text(action, "id"), Text(action, "name", Text(action, "id")), effects.Length == 0 ? null : ReadEnemySequence(effects[0]),
                         world, EnemyWhen(action), Int(action, "weight", 1), Int(action, "cooldownRounds", 0), Int(action, "maxUses", 0), Enum(action, "deadTarget", EnemyDeadTargetPolicy.Retarget));

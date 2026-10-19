@@ -220,6 +220,119 @@ namespace PokerEngine.Tests
             Assert.IsTrue(session.Execute(before.Revision, Player, CardDuelAction.Discard, junk).Accepted);
         }
 
+        private static string InsertionXml(string xml, string zone, string position = null, int count = 3)
+        {
+            var doc = new System.Xml.XmlDocument(); doc.LoadXml(xml);
+            foreach (System.Xml.XmlElement node in doc.SelectNodes("//AddCards"))
+            {
+                node.SetAttribute("zone", zone); node.SetAttribute("count", count.ToString());
+                if (position != null) node.SetAttribute("position", position);
+            }
+            return doc.OuterXml;
+        }
+        [TestCase("Top")]
+        [TestCase("Bottom")]
+        [TestCase("Shuffle")]
+        [TestCase(null)]
+        public void DeckInsertionOrdersCardsAndReplaysWithoutMutatingPreviewSource(string position)
+        {
+            var session = Load("09_GluttonyBoss", xml => InsertionXml(xml, "deck", position));
+            var before = session.State;
+            var original = before.Zone(CardZoneKinds.Deck, Player).Cards.ToArray();
+            var preview = new BattleSession(session.Engine, before);
+            var previewResult = Round(preview);
+            Assert.AreSame(before, session.State);
+            CollectionAssert.AreEqual(original, before.Zone(CardZoneKinds.Deck, Player).Cards);
+            var result = Round(session);
+            var fact = result.Timeline.Single(e => e.Kind == BattleTimelineKind.CardsCreated);
+            var created = fact.Cards.ToArray();
+            Assert.AreEqual(3, created.Length);
+            CollectionAssert.AreEqual(preview.State.Zone(CardZoneKinds.Deck, Player).Cards, session.State.Zone(CardZoneKinds.Deck, Player).Cards);
+            CollectionAssert.AreEqual(preview.State.Random.StateBytes, session.State.Random.StateBytes);
+            Assert.AreEqual(previewResult.Timeline.Single(e => e.Kind == BattleTimelineKind.CardsCreated).InsertionPosition, fact.InsertionPosition);
+            Assert.IsFalse(result.Timeline.Any(e => e.Kind == BattleTimelineKind.DeckRecycled));
+            var deck = session.State.Zone(CardZoneKinds.Deck, Player).Cards;
+            var resolved = position == null ? CardInsertionPosition.Shuffle : (CardInsertionPosition)Enum.Parse(typeof(CardInsertionPosition), position);
+            Assert.AreEqual(resolved, fact.InsertionPosition);
+            Assert.AreEqual(resolved, before.Duel.Enemies[0].BehaviorState.Intent.WorldEffects.Single().Position);
+            CollectionAssert.AreEquivalent(original.Concat(created), deck);
+            if (resolved == CardInsertionPosition.Shuffle)
+            {
+                CollectionAssert.AreNotEqual(before.Random.StateBytes, session.State.Random.StateBytes);
+                CollectionAssert.AreNotEqual(original.Concat(created), deck);
+                CollectionAssert.AreNotEqual(created.Concat(original), deck);
+            }
+            else
+            {
+                CollectionAssert.AreEqual(resolved == CardInsertionPosition.Top ? original.Concat(created.Reverse()) : created.Reverse().Concat(original), deck);
+                CollectionAssert.AreEqual(before.Random.StateBytes, session.State.Random.StateBytes);
+            }
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.Draw, drawCount: 3).Accepted);
+            CollectionAssert.AreEqual(deck.Reverse().Take(3), session.State.Zone(CardZoneKinds.Hand, Player).Cards);
+            var after = session.State;
+            Assert.IsFalse(session.Execute(before.Revision, Player, CardDuelAction.EndTurn).Accepted);
+            Assert.AreSame(after, session.State);
+        }
+        [TestCase("discard", "Shuffle")]
+        [TestCase("hand", "Top")]
+        [TestCase("hand", "Shuffle")]
+        [TestCase("played", "Bottom")]
+        [TestCase("deck", "Typo")]
+        [TestCase("deck", "999")]
+        public void InvalidInsertionConfigurationIsRejected(string zone, string position)
+        {
+            var xml = InsertionXml(ToolkitTestFiles.Read("Engine/Content/Templates/09_GluttonyBoss.xml"), zone, position);
+            Assert.IsFalse(BattleContentCompiler.CompileXml(xml).Success);
+        }
+        [Test] public void DirectHandInsertionAllowsOverflowAndUsesExistingForcedDiscardFlow()
+        {
+            var session = Load("09_GluttonyBoss", xml => InsertionXml(xml, "hand", count: 10));
+            var before = session.State;
+            var result = Round(session);
+            var junk = session.State.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
+            Assert.AreEqual(10, junk.Length);
+            Assert.IsTrue(junk.All(id => !session.State.Table.GetCard(id).CanPlay && session.State.Table.GetCard(id).CanDiscard));
+            CollectionAssert.AreEqual(before.Zone(CardZoneKinds.Deck, Player).Cards, session.State.Zone(CardZoneKinds.Deck, Player).Cards);
+            Assert.AreEqual(0, session.State.Zone(CardZoneKinds.Discard, Player).Cards.Count);
+            Assert.IsFalse(result.Timeline.Any(e => e.Kind == BattleTimelineKind.CardsDealt));
+            Assert.AreEqual(0, session.Engine.DrawLimit(session.State, Player));
+            Assert.AreEqual(2, session.Engine.RequiredDiscards(session.State, Player));
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.SkipDraw).Accepted);
+            Assert.IsFalse(session.Execute(session.State.Revision, Player, CardDuelAction.Play, junk.Take(1)).Accepted);
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.EndTurn).Accepted);
+            Assert.AreEqual(BattlePlayerWindow.ForcedDiscard, session.State.FlowFor(Player).Window);
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.ConfirmOverflow, junk.Take(2)).Accepted);
+            Assert.AreEqual(8, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
+            Assert.AreEqual(2, session.State.Zone(CardZoneKinds.Discard, Player).Cards.Count);
+            Assert.AreEqual(BattlePlayerWindow.Ending, session.State.FlowFor(Player).Window);
+        }
+        [Test] public void SuccessiveWorldEffectsRespectDeclarationOrder()
+        {
+            var session = Load("09_GluttonyBoss", xml => {
+                var doc = new System.Xml.XmlDocument(); doc.LoadXml(InsertionXml(xml, "deck", "Top", 1));
+                foreach (System.Xml.XmlElement node in doc.SelectNodes("//AddCards"))
+                {
+                    var second = (System.Xml.XmlElement)node.CloneNode(true); second.SetAttribute("face", "standard:2:3");
+                    node.ParentNode.AppendChild(second);
+                }
+                return doc.OuterXml;
+            });
+            var facts = Round(session).Timeline.Where(e => e.Kind == BattleTimelineKind.CardsCreated).ToArray();
+            Assert.AreEqual(2, facts.Length);
+            CollectionAssert.AreEqual(facts[1].Cards.Concat(facts[0].Cards), session.State.Zone(CardZoneKinds.Deck, Player).Cards.Reverse().Take(2));
+        }
+        [Test] public void CapacityClampsGenerationAndFullDeckDoesNotConsumeRandomness()
+        {
+            var session = Load("09_GluttonyBoss", xml => InsertionXml(xml, "deck", "Shuffle", 64));
+            for (int i = 0; i < 8; i++) Round(session);
+            Assert.AreEqual(512, session.State.Table.Cards.Count);
+            var before = session.State;
+            var result = Round(session);
+            Assert.AreEqual(512, session.State.Table.Cards.Count);
+            Assert.IsFalse(result.Timeline.Any(e => e.Kind == BattleTimelineKind.CardsCreated));
+            CollectionAssert.AreEqual(before.Random.StateBytes, session.State.Random.StateBytes);
+        }
+
         [TestCase(EnemyDeadTargetPolicy.Retarget, 90)]
         [TestCase(EnemyDeadTargetPolicy.Skip, 100)]
         public void DeadLockedTargetUsesConfiguredFallback(EnemyDeadTargetPolicy fallback, int expectedHealth)

@@ -23,7 +23,7 @@ internal static class CompilerBridge
                     typeof(BattleRuleValueKey), typeof(CardDuelDealTrigger), typeof(BattleRefillMode), typeof(RelicTriggerTiming),
                     typeof(RelicEventRelation), typeof(RelicTriggerOccurrence), typeof(RelicFactAmount), typeof(RelicBoundaryTiming),
                     typeof(RelicPhaseRelation), typeof(RelicActionTiming), typeof(RelicActionRelation), typeof(PlayerBlockExpiry),
-                    typeof(CardDuelRefillTiming), typeof(OpponentTargetSelection), typeof(Rank), typeof(Suit), typeof(CardEffects) };
+                    typeof(CardDuelRefillTiming), typeof(OpponentTargetSelection), typeof(Rank), typeof(Suit), typeof(CardEffects), typeof(CardInsertionPosition) };
                 output = new {
                     contract = CompiledBattleContent.CurrentRulesContractVersion,
                     enums = types.ToDictionary(type => type.Name, type => Enum.GetNames(type)),

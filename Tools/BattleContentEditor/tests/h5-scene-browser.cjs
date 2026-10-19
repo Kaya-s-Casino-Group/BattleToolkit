@@ -260,6 +260,27 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       assert.equal(await reduced.page.locator('.battle-scenery').evaluate(el=>getComputedStyle(el,'::after').animationName),'none');
       assert.deepEqual(reduced.errors,[]);
     });
+    await test('可配置牌顶、牌底、随机洗入和直接入手，卡面与真实结算一致',async()=>{
+      const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
+      for(const [zone,position,label] of [['deck','Top','牌顶'],['deck','Bottom','牌底'],['deck','Shuffle','随机洗入'],['hand','Default','手牌']]){
+        const configured=standard.replace(/(<AddCards\b[^>]*?)zone="discard"/g,'$1zone="'+zone+'" position="'+position+'"');
+        await load(page,configured);await start(page,ids[2]);
+        let result=await round(page);
+        assert.match(await page.locator('#playtest-creation-notice').textContent(),new RegExp(label));
+        if(zone==='hand'){
+          assert.equal(result.battle.players[0].hand.length,1);
+          assert.equal(await page.locator('#playtest-hand .junk-card-title:visible').count(),1);
+          await page.screenshot({path:'/private/tmp/h5-insertion-hand.png',fullPage:true,animations:'disabled'});
+        }else{
+          assert.equal(result.battle.players[0].hand.length,0);
+          result=await draw(page,1);
+          if(position!=='Shuffle')assert.equal(result.battle.players[0].hand[0].canPlay,position==='Bottom');
+          if(position==='Top')assert.equal(await page.locator('#playtest-hand .junk-card-title:visible').count(),1);
+        }
+        await noHorizontalOverflow(page);
+      }
+      await load(page,standard);
+    });
     await test('手牌废牌清楚显示废牌标题和规则，普通牌保留点数花色，出弃牌权限一致',async()=>{
       let xml=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
       xml=xml.replace(/<Deck id="standard-deck"[\s\S]*?<\/Deck>/,

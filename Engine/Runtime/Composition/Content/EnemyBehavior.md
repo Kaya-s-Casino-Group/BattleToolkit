@@ -61,7 +61,21 @@ OpeningEffects 只允许给自己施加状态，原生入场与召唤入场共�
 <AddCards face="standard:1:2" count="1" zone="discard" disabled="false" effects="Ineffective,Unplayable" />
 ```
 
-face 使用标准牌面 ID（可从模板或网页牌面选择器取得）。对每个存活玩家独立生成实例，放入 deck（牌库底）或 discard（弃牌堆）；随后正常参与摸牌和弃牌回收洗牌。绝不直接放手牌，不改变局外 DeckEntry。每位玩家全场最多512张，超出部分不生成。每次生成记录 CardsCreated，包含接收人、卡 ID、目标区域和状态快照。
+face 使用标准牌面 ID（可从模板或网页牌面选择器取得）。对每个存活玩家独立生成实例，不改变局外 DeckEntry。每位玩家全场最多512张，超出部分不生成。每次生成记录 CardsCreated，包含接收人、卡 ID、目标区域、实际插入位置和状态快照。
+
+| 配置 | 行为 |
+| --- | --- |
+| `zone="discard"` | 默认放入弃牌堆，等待回收后摸到；标准 Boss 保持此配置 |
+| `zone="deck" position="Shuffle"` | 新牌与剩余抽牌堆一起随机洗牌 |
+| `zone="deck" position="Top"` | 按生成顺序放到牌顶，下次优先摸到 |
+| `zone="deck" position="Bottom"` | 按生成顺序追加到牌底 |
+| `zone="hand"` | 直接进入手牌，立即显示卡面 |
+
+`position` 省略或为 `Default` 时：抽牌堆使用 `Shuffle`，弃牌堆和手牌使用 `Bottom`。`Shuffle` / `Top` 只接受抽牌堆，错误组合在 XML 校验时拒绝。旧的 `zone="deck"` 未写位置配置会改为随机洗入；需要固定牌顶或牌底时必须显式填写 `Top` 或 `Bottom`。
+
+随机洗入使用对局的可重放随机状态，同一种子与操作得到同一结果；预览、拒绝的命令和容量已满的空效果不会推进权威随机状态。插入洗牌不属于“抽牌堆耗尽后回收弃牌”，不会触发 `OnReshuffle` / `DeckRecycled`。多个 AddCards 按声明顺序依次结算。
+
+直接入手是额外开放的配置能力；策划默认仍为按意图塞入抽牌堆或弃牌堆，不占手牌。直接入手不消耗摸牌次数，也不触发摸牌事件；允许暂时超过手牌上限（仍受512张总量限制），主动摸牌数量按剩余空间限制，启用主动摸牌流程时在结束阶段按现有规则强制弃至上限。`effectDrawOverflow` 只控制摸牌效果，不控制生成卡牌。
 
 `Unplayable` 只禁止出牌，仍可弃牌；搭配 `Ineffective` 禁止单牌计分贡献。`disabled` 是完全禁用，连弃牌也禁止，不建议用它制作普通废牌。AddCards 默认采用可弃的废牌组合，也可以配置正常卡牌。
 

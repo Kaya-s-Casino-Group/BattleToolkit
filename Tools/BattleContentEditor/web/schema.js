@@ -13,6 +13,7 @@ export const sections = [
   ['ScoringProfiles','Scoring','计分规则','基础规则','牌型分值、倍率及等级成长']
 ];
 export const labels = {
+ Shuffle:'随机洗入', Top:'牌顶（先摸）', Bottom:'牌底 / 末尾', deck:'抽牌堆', discard:'弃牌堆', hand:'直接入手',
  Unplayable:'不可出牌（可弃牌）', Behavior:'怪物行为', Stage:'行为阶段', Action:'行为动作', When:'行为条件', OpeningEffects:'入场状态', Summon:'召唤怪物', AddCards:'生成卡牌', HitArmor:'逐击护甲', Sequence:'顺序轮换', Priority:'条件优先', Weighted:'权重随机',
  BattleContent:'内容包', Hand:'牌型', Effect:'效果步骤', Effects:'行动效果', CardPoints:'单牌计分', Rank:'点数分值', Face:'指定牌面分值', Card:'卡牌', HandLevel:'牌型等级',
  BlockActionWindow:'眩晕 · 阻止行动', PreventStatusApplication:'控制免疫 · 阻止施加', ReflectBlockedDamage:'盾反', LifeSteal:'吸血', OverhealDamage:'溢出治疗转伤害', PeriodicDamage:'周期伤害 / 流血',
@@ -33,7 +34,7 @@ export const labels = {
  PerEvent:'每次符合条件的事件', PerAction:'每次行动', PerBoundary:'每次开战或阶段切换', DamageToHealth:'实际生命伤害', BlockAbsorbed:'护盾吸收量', HealthRestored:'实际治疗量',
  BattleStarted:'战斗开始', PhaseStarted:'阶段开始', OwnerTeam:'己方阶段', OpponentTeam:'敌方阶段', PlayCompleted:'出牌完成', DiscardCompleted:'弃牌完成',
  OwnerIsActor:'持有者行动', AllyIsActor:'友方行动', OpponentIsActor:'敌方行动', Retain:'保留护盾', AfterEnemyPhase:'敌方阶段后清除', NextPlayerTurn:'下个玩家回合', AfterAction:'行动后',
- Default:'现有默认计分', player:'玩家阶段', enemy:'敌人阶段', true:'是', false:'否', Enhanced:'强化', Laminated:'覆膜', Ineffective:'失效', Clubs:'梅花 ♣', Diamonds:'方块 ♦', Hearts:'红桃 ♥', Spades:'黑桃 ♠',
+ Default:'默认', player:'玩家阶段', enemy:'敌人阶段', true:'是', false:'否', Enhanced:'强化', Laminated:'覆膜', Ineffective:'失效', Clubs:'梅花 ♣', Diamonds:'方块 ♦', Hearts:'红桃 ♥', Spades:'黑桃 ♠',
  Ace:'A', Jack:'J', Queen:'Q', King:'K', Two:'2', Three:'3', Four:'4', Five:'5', Six:'6', Seven:'7', Eight:'8', Nine:'9', Ten:'10'
 };
 for (const [section,item,label] of sections) { labels[section]=label; labels[item]=label; }
@@ -141,7 +142,7 @@ export function descriptor(node) {
  else if(name==='Action') {fields=[text('id','动作 ID',true),text('name','意图名称'),num('weight','权重',1),num('cooldownRounds','间隔回合数',0),num('maxUses','最多使用次数（0不限）',0),en('deadTarget','锁定目标死亡时',['Retarget','Skip'],'Retarget')];children=['When','Effects','Summon','AddCards'];}
  else if(name==='When') {fields=[en('kind','条件类型',['Always','All','Any','Not','HealthAtMost','RoundAtLeast','AlliesBelow','HasStatus'],'Always')];if(['HealthAtMost','RoundAtLeast','AlliesBelow'].includes(a('kind')))fields.push(num('value','阈值（生命比例0..1）',0));if(a('kind')==='HasStatus')fields.push(ref('statusRef','状态','Statuses',true));if(['All','Any','Not'].includes(a('kind')))children=['When'];}
  else if(name==='Summon') fields=[ref('enemyRef','召唤模板','Enemies',true),num('count','数量',1),num('livingLimit','场上存活敌人上限',4)];
- else if(name==='AddCards') fields=[f('face','牌面','card',{required:true}),num('count','数量',1),en('zone','放入区域',['deck','discard'],'discard'),bool('disabled','完全禁用（不可出牌也不可弃牌）',false),f('effects','卡牌效果','multi',{options:meta.enums.CardEffects,default:'None'})];
+ else if(name==='AddCards') fields=[f('face','牌面','card',{required:true}),num('count','数量',1),en('zone','放入区域',['deck','discard','hand'],'discard'),en('position','插入位置（默认：抽牌堆随机洗入，其他末尾）','CardInsertionPosition',node.getAttribute('zone')==='deck'?'Shuffle':'Bottom'),bool('disabled','完全禁用（不可出牌也不可弃牌）',false),f('effects','卡牌效果','multi',{options:meta.enums.CardEffects,default:'Ineffective,Unplayable'})];
  else if(name==='HitArmor') fields=[num('multiplier','伤害倍率',0.5),num('reduction','固定减伤',0),num('consumeStacks','每击消耗层数',1),bool('primaryOnly','仅主效果消耗',true)];
  else if(name==='Deck') {fields=base();children=['Card'];}
  else if(name==='Card') fields=[text('id','卡牌来源 ID',true),f('face','牌面','card',{required:true}),f('effects','卡牌效果','multi',{options:meta.enums.CardEffects,default:'None'}),bool('disabled','牌已失效')];
@@ -159,6 +160,7 @@ export const exclusiveChildren=new Set(['Budget','Conditions','CardPoints','Effe
 
 // Explanations for concepts that need more than a short field label.
 export const help = {
+ AddCards: '按意图向每个存活玩家塞牌。默认进弃牌堆；抽牌堆默认随机洗入，也可选择牌顶或牌底。手牌/弃牌堆仅支持默认或末尾。直接入手是额外配置，可暂时超限，结束阶段按规则强制弃牌。',
  Encounter: '将玩家、初始构筑、敌人和战斗规则组合成一场对局。同一个敌人模板可以多次加入，每个参战角色需要不同的编号。',
  Loadout: '设置开局带什么：牌组、牌型等级和遗物。在对局配置中为玩家选择这套初始构筑。',
  Budget: '这件遗物的所有触发规则共用这里的次数限制和冷却。一次行动包含它引发的连锁效果；开战和每次阶段切换分别计算一次次数限制。',

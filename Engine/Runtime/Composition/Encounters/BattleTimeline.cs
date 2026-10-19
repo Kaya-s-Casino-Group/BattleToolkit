@@ -38,6 +38,7 @@ namespace PokerEngine
         public string ToZone { get; }
         public ParticipantId CardOwner { get; }
         public CardDuelDealTrigger? DealTrigger { get; }
+        public CardInsertionPosition? InsertionPosition { get; }
         public CombatRuleEvent RuleEvent { get; }
         public RelicTriggerActivation RelicActivation { get; }
         public BattleActionCostResolution ActionCost { get; }
@@ -49,7 +50,8 @@ namespace PokerEngine
             CombatRuleEvent ruleEvent = null, RelicTriggerActivation activation = null,
             BattleActionCostResolution cost = null, ScoreResult score = null, PokerHandClassification pattern = null,
             IEnumerable<CardInstanceId> cards = null, string from = null, string to = null,
-            ParticipantId cardOwner = default(ParticipantId), CardDuelDealTrigger? dealTrigger = null, bool isActionSkipped = false)
+            ParticipantId cardOwner = default(ParticipantId), CardDuelDealTrigger? dealTrigger = null, bool isActionSkipped = false,
+            CardInsertionPosition? insertionPosition = null)
         {
             Sequence = sequence; StepIndex = stepIndex; Kind = kind; Action = action; Actor = actor; ActionId = actionId;
             State = state; PhaseKey = phaseKey; Reason = reason; RuleEvent = ruleEvent; RelicActivation = activation;
@@ -59,16 +61,17 @@ namespace PokerEngine
             Targets = Guard.View(Guard.Copy(targets ?? Array.Empty<ParticipantId>(), nameof(targets)));
             Cards = Guard.View(Guard.Copy(cards ?? Array.Empty<CardInstanceId>(), nameof(cards)));
             FromZone = from; ToZone = to; CardOwner = cardOwner; DealTrigger = dealTrigger;
+            InsertionPosition = insertionPosition;
         }
         internal BattleTimelineEntry InBatch(long sequence, int stepIndex) => new BattleTimelineEntry(sequence, stepIndex,
             Kind, Action, Actor, ActionId, State, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
-            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped);
+            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped, InsertionPosition);
         internal BattleTimelineEntry WithState(CardDuelState state) => new BattleTimelineEntry(Sequence, StepIndex,
             Kind, Action, Actor, ActionId, state, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
-            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped);
+            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, IsActionSkipped, InsertionPosition);
         internal BattleTimelineEntry WithSkippedAction() => new BattleTimelineEntry(Sequence, StepIndex,
             Kind, Action, Actor, ActionId, State, Selected, Targets, PhaseKey, Reason, RuleEvent, RelicActivation,
-            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, true);
+            ActionCost, Score, Pattern, Cards, FromZone, ToZone, CardOwner, DealTrigger, true, InsertionPosition);
     }
 
     /// <summary>Per-execution observer. It has no engine callbacks, RNG, clocks, or mutation of authority state.</summary>
@@ -102,11 +105,11 @@ namespace PokerEngine
             CombatRuleEvent ruleEvent = null, RelicTriggerActivation activation = null,
             BattleActionCostResolution cost = null, ScoreResult score = null, PokerHandClassification pattern = null,
             IEnumerable<CardInstanceId> cards = null, string from = null, string to = null,
-            ParticipantId cardOwner = default(ParticipantId), CardDuelDealTrigger? trigger = null)
+            ParticipantId cardOwner = default(ParticipantId), CardDuelDealTrigger? trigger = null, CardInsertionPosition? insertionPosition = null)
         {
             entries.Add(new BattleTimelineEntry(entries.Count, 0, kind, action, actor, actionId, State,
                 selected, targets, phase, reason, ruleEvent, activation, cost, score, pattern,
-                cards, from, to, cardOwner, trigger, skipped));
+                cards, from, to, cardOwner, trigger, skipped, insertionPosition));
         }
         internal static string Phase(TeamBattleState state) =>
             state.Phase == ScoredDuelPhase.AwaitingEnemyAction ? BattleStatusTiming.EnemyPhase : BattleStatusTiming.PlayerPhase;
