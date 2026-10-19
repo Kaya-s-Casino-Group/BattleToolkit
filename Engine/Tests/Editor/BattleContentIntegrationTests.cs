@@ -261,8 +261,8 @@ namespace PokerEngine.Tests
             Assert.AreEqual(4, session.State.Duel.Player(Player).Relics.Relics.Single().RemainingCharges);
             Assert.AreEqual(9, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
             var result = Act(session, CardDuelAction.Play, 1);
-            // Existing numeric ordering is base * (1 + summed rates) + summed flat: (10 * 1.5 + 2) twice.
-            Assert.AreEqual(966, session.State.Duel.Combat.Get(Enemy).Health);
+            // Configuration order is sequential: ((10 + 2) * 1.5) twice.
+            Assert.AreEqual(964, session.State.Duel.Combat.Get(Enemy).Health);
             Assert.AreEqual(6, session.State.Duel.Combat.Get(Player).Block);
             Assert.AreEqual(3, session.State.Duel.Player(Player).Energy.Energy);
             Assert.AreEqual(9, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);

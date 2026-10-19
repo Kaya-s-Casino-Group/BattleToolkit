@@ -18,7 +18,7 @@ export const labels = {
  Numeric:'数值修正', HandModifier:'牌型效果修正', RuleValue:'战斗规则修正', Refill:'补牌修正', Budget:'共用次数与冷却', FactTrigger:'战斗事件触发', BoundaryTrigger:'开战 / 回合阶段触发', ActionTrigger:'出牌 / 弃牌完成触发', Conditions:'全部条件同时满足',
  FactAtLeast:'本次结算数值至少达到', OwnerHealthAtMost:'持有者生命比例不高于', OwnerHasStatus:'持有者具有状态', EventStatus:'本次施加的状态', HandIs:'出牌牌型为', SubmittedCardsAtLeast:'出牌张数至少', DiscardedCardsAtLeast:'弃牌张数至少',
  HighCard:'高牌', OnePair:'一对', TwoPair:'两对', ThreeOfAKind:'三条', Straight:'顺子', Flush:'同花', FullHouse:'葫芦', FourOfAKind:'四条', StraightFlush:'同花顺', FiveOfAKind:'五条',
- Any:'任意 / 统一', Ordinary:'普通', Royal:'皇家', Damage:'伤害', Heal:'治疗', GainBlock:'获得护盾', ApplyStatus:'施加状态', Eliminate:'消灭',
+ Any:'任意 / 统一', Ordinary:'普通', Royal:'皇家', Damage:'伤害', Heal:'治疗', GainBlock:'获得护盾', ApplyStatus:'施加状态', Cleanse:'净化负面状态', Negative:'负面', Eliminate:'消灭',
  Constant:'固定值', ScoreTotalScale:'总分 × 系数', ScorePointsScale:'筹码 × 系数', Self:'自身', Opponents:'敌方', Allies:'友方', EventActor:'本次行动者', EventSource:'本次效果的施加者', EventTarget:'本次效果的承受者',
  FirstLiving:'首个存活', LowestHealth:'生命最低', HighestHealth:'生命最高', AllLiving:'全部存活（AOE）', Requested:'手动指定', ActorPolicy:'按角色的选敌设置',
  UntilRemoved:'直到移除', TriggerCount:'触发次数', ThroughNextPhase:'持续到指定阶段结束', ThroughCurrentRound:'持续到本轮结束', KeepLonger:'保留持续更久的状态', IndependentInstances:'各自独立生效',
@@ -84,7 +84,7 @@ export function descriptor(node) {
  else if(name==='Effect') {
   const trigger=['FactTrigger','BoundaryTrigger','ActionTrigger'].includes(parent), modifier=parent==='HandModifier';
   if(!trigger&&!modifier) fields.push(text('id','效果编号',true));
-  fields.push(en('kind','基础能力',['Damage','Heal','GainBlock','ApplyStatus','Eliminate'],null,true));
+  fields.push(en('kind','基础能力',['Damage','Heal','GainBlock','ApplyStatus','Cleanse','Eliminate'],null,true));
   if(['Damage','Heal','GainBlock'].includes(a('kind'))) fields.push(en('amountKind','数值来源',parent==='Hand'?meta.enums.EffectAmountKind:['Constant'],'Constant'),num('amount','数值 / 系数',undefined,true));
   if(a('kind')==='ApplyStatus') fields.push(ref('statusRef','状态配置','Statuses',true),num('stacks','施加层数',1),...lifetime(node));
   if(!(modifier && node.parentElement.getAttribute('operation')==='ReplaceEffect')) {
@@ -116,7 +116,7 @@ export function descriptor(node) {
   if(name==='FactTrigger') fields.push(en('relation','谁施加或承受本次效果','RelicEventRelation','OwnerIsSource'),en('occurrence','触发频率','RelicTriggerOccurrence','PerEvent'),f('origins','哪些效果可以触发','multi',{options:meta.enums.CombatEffectOrigin,default:'Primary'}));
   if(name==='BoundaryTrigger'&&a('timing')!=='BattleStarted') fields.push(en('phase','所属阶段','RelicPhaseRelation'));
   if(name==='ActionTrigger') fields.push(en('relation','行动者关系','RelicActionRelation','OwnerIsActor'));
-  fields.push(num('priority','优先级',0),bool('chain','允许派生效果继续触发'),en('sourcePolicy','来源存活要求','CombatReactionSourcePolicy','RequireLiving'));children=['Conditions','Effect'];
+  fields.push(num('priority','同件遗物内优先级',0),bool('chain','允许派生效果继续触发'),en('sourcePolicy','来源存活要求','CombatReactionSourcePolicy','RequireLiving'));children=['Conditions','Effect'];
  }
  else if(name==='Conditions') {
   const trigger=node.parentElement;

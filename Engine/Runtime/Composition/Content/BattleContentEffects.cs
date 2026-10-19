@@ -98,14 +98,15 @@ namespace PokerEngine
                 case CombatEffectKind.Heal: return BattleEffectSpec.Heal(amount);
                 case CombatEffectKind.GainBlock: return BattleEffectSpec.GainBlock(amount);
                 case CombatEffectKind.ApplyStatus: return BattleEffectSpec.ApplyStatus(ReadStatusApplication(node));
+                case CombatEffectKind.Cleanse: return BattleEffectSpec.Cleanse();
                 default: return BattleEffectSpec.Eliminate();
             }
         }
         private CombatEffectKind ReadEffectKind(BattleContentNode node)
         {
             var kind = ReadRequiredEnum<CombatEffectKind>(node, "kind");
-            if (!IsNumeric(kind) && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate)
-                throw new ArgumentException("Only Damage, Heal, GainBlock, ApplyStatus and Eliminate are content effects.");
+            if (!IsNumeric(kind) && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate && kind != CombatEffectKind.Cleanse)
+                throw new ArgumentException("Only Damage, Heal, GainBlock, ApplyStatus, Cleanse and Eliminate are content effects.");
             RejectAttributes(node, IsNumeric(kind) ? new[] { "statusRef", "stacks", "lifetime", "count", "phase" } :
                 kind == CombatEffectKind.ApplyStatus ? new[] { "amount", "amountKind" } :
                 new[] { "amount", "amountKind", "statusRef", "stacks", "lifetime", "count", "phase" });

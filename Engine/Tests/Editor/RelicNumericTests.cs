@@ -19,7 +19,7 @@ namespace PokerEngine.Tests
         [TestCase(BattleNumericStat.DamageDealt)] [TestCase(BattleNumericStat.DamageReceived)]
         [TestCase(BattleNumericStat.HealingDone)] [TestCase(BattleNumericStat.HealingReceived)]
         [TestCase(BattleNumericStat.BlockGranted)] [TestCase(BattleNumericStat.BlockReceived)]
-        public void EveryStatCombinesFlatAndAdditiveRatesWithoutEquipmentOrderDependence(BattleNumericStat stat)
+        public void EveryStatSettlesEachContributionInAcquisitionOrder(BattleNumericStat stat)
         {
             var equipment = new[] {
                 Relic("a", Spec("rate", stat, RelicNumericOperation.AddRate, 0.2m)),
@@ -28,17 +28,19 @@ namespace PokerEngine.Tests
             };
             var normal = Query(new BattleRelicLoadout(Owner, equipment), stat, 100);
             var reversed = Query(new BattleRelicLoadout(Owner, equipment.Reverse()), stat, 100);
-            Assert.AreEqual(160, normal.OutputAmount); Assert.AreEqual(normal.OutputAmount, reversed.OutputAmount);
+            // 100 * 1.2 * 1.3 + 10 = 166; reversed: floor((100 + 10) * 1.3 * 1.2) = 171.
+            Assert.AreEqual(166, normal.OutputAmount); Assert.AreEqual(171, reversed.OutputAmount); Assert.IsTrue(normal.Sequential);
             Assert.AreEqual(0.5m, normal.RateAdjustment); Assert.AreEqual(10, normal.FlatAdjustment);
-            CollectionAssert.AreEqual(normal.Contributions.Select(item => item.SourceInstanceId), reversed.Contributions.Select(item => item.SourceInstanceId));
+            CollectionAssert.AreEqual(new[] { "a", "b", "c" }, normal.Contributions.Select(item => item.SourceInstanceId));
+            CollectionAssert.AreEqual(new[] { "c", "b", "a" }, reversed.Contributions.Select(item => item.SourceInstanceId));
             Assert.AreEqual(3, normal.Contributions.Count);
         }
 
-        [Test] public void RatesRoundOnlyAfterCombiningAndNegativeResultsClampWithoutCreatingNegativeEffects()
+        [Test] public void EachNumericStepRoundsAndClampsBeforeTheNextContribution()
         {
             var stat = BattleNumericStat.DamageDealt;
             var rules = new[] { Spec("a", stat, RelicNumericOperation.AddRate, 0.5m), Spec("b", stat, RelicNumericOperation.AddRate, 0.5m) };
-            Assert.AreEqual(2, Query(new BattleRelicLoadout(Owner, new[] { Relic("r", rules) }), stat, 1).OutputAmount);
+            Assert.AreEqual(1, Query(new BattleRelicLoadout(Owner, new[] { Relic("r", rules) }), stat, 1).OutputAmount);
             var reduced = new BattleRelicLoadout(Owner, new[] { Relic("r", Spec("a", stat, RelicNumericOperation.AddRate, -2),
                 Spec("b", stat, RelicNumericOperation.AddFlat, 5)) });
             Assert.AreEqual(5, Query(reduced, stat, 100).OutputAmount);

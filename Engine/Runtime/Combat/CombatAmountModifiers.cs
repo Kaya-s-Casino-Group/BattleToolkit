@@ -39,7 +39,7 @@ namespace PokerEngine
         }
     }
 
-    /// <summary>One aggregate stage: floor(max(0, input * max(0, 1 + sum(rates)) + sum(flats))).</summary>
+    /// <summary>Numeric stage. Sequential mode applies each contribution to the previous result in supplied order.</summary>
     public sealed class CombatAmountModification
     {
         public long InputAmount { get; }
@@ -47,19 +47,25 @@ namespace PokerEngine
         public decimal FlatAdjustment { get; }
         public decimal RateAdjustment { get; }
         public IReadOnlyList<CombatAmountContribution> Contributions { get; }
+        public bool Sequential { get; }
         public bool IsIdentity => Contributions.Count == 0;
 
-        public CombatAmountModification(long inputAmount, IEnumerable<CombatAmountContribution> contributions = null)
+        public CombatAmountModification(long inputAmount, IEnumerable<CombatAmountContribution> contributions = null, bool sequential = false)
         {
             if (inputAmount < 0) throw new ArgumentOutOfRangeException(nameof(inputAmount));
             var items = Guard.Copy(contributions ?? Array.Empty<CombatAmountContribution>(), nameof(contributions));
             if (items.Length > 1024 || items.Select(item => Tuple.Create(item.SourceInstanceId, item.RuleId)).Distinct().Count() != items.Length)
                 throw new ArgumentException("Numeric contributions require distinct identities and at most 1024 entries.", nameof(contributions));
-            // Canonical reduction also makes decimal overflow/rounding independent of equipment/configuration order.
-            items = items.OrderBy(item => item.SourceInstanceId, StringComparer.Ordinal).ThenBy(item => item.RuleId, StringComparer.Ordinal).ToArray();
+            // Legacy aggregate callers retain canonical reduction; ordered callers preserve acquisition order.
+            if (!sequential) items = items.OrderBy(item => item.SourceInstanceId, StringComparer.Ordinal).ThenBy(item => item.RuleId, StringComparer.Ordinal).ToArray();
             decimal flat = 0, rate = 0;
             foreach (var item in items) { flat = checked(flat + item.FlatAdjustment); rate = checked(rate + item.RateAdjustment); }
-            decimal adjusted = checked(inputAmount * Math.Max(0m, checked(1m + rate)) + flat);
+            decimal adjusted = inputAmount;
+            if (sequential)
+                foreach (var item in items)
+                    adjusted = checked((long)decimal.Floor(Math.Max(0m, checked(adjusted * Math.Max(0m, checked(1m + item.RateAdjustment)) + item.FlatAdjustment))));
+            else adjusted = checked(inputAmount * Math.Max(0m, checked(1m + rate)) + flat);
+            Sequential = sequential;
             InputAmount = inputAmount; OutputAmount = checked((long)decimal.Floor(Math.Max(0m, adjusted)));
             FlatAdjustment = flat; RateAdjustment = rate; Contributions = Guard.View(items);
         }

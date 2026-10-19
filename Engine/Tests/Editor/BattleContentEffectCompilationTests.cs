@@ -110,6 +110,17 @@ namespace PokerEngine.Tests
         [TestCase("<Effect id='a' kind='Damage' amount='1'/><Effect id='a' kind='Heal' amount='1'/>")]
         public void HandCompilerRejectsMalformedEffects(string effects) => Error(Compile(Hands("OnePair", effects)));
 
+        [Test] public void CleanseAndNegativeTagsCompileWithoutNumericOrApplicationPayloads()
+        {
+            var compiled = Compile("<Statuses><Status id='negative' tags='Negative,Control'/></Statuses>" +
+                Hands("FullHouse", "<Effect id='cleanse' kind='Cleanse' target='Self'/>"));
+            Success(compiled);
+            Assert.AreEqual(StatusTags.Negative | StatusTags.Control, compiled.Content.Statuses["negative"].Tags);
+            Assert.AreEqual(CombatEffectKind.Cleanse, compiled.Content.HandRules["standard"].Resolve(Context(HandCategory.FullHouse)).Steps.Single().Effect.Kind);
+            foreach (var invalid in new[] { "amount='1'", "amountKind='ScoreTotalScale'", "statusRef='negative'", "stacks='1'", "lifetime='UntilRemoved'" })
+                Error(Compile(Hands("FullHouse", "<Effect id='cleanse' kind='Cleanse' target='Self' " + invalid + "/>")));
+        }
+
         [Test] public void HandMappingsRejectMissingCategoryAndOverlappingRoyalMatches()
         {
             Error(Compile("<HandRules><HandRule id='incomplete'><Hand category='HighCard'><Effect id='damage/1' kind='Damage' amount='1'/></Hand></HandRule></HandRules>"));

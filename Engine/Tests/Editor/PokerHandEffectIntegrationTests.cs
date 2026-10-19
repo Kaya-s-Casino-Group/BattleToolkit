@@ -200,8 +200,8 @@ namespace PokerEngine.Tests
             Assert.IsTrue(preview.Accepted, preview.Error.ToString()); Assert.IsEmpty(before.Duel.Combat.Statuses);
             var result = Play(session); var primary = result.Steps[0].Transition; SamePlan(preview.EffectPlan, primary.EffectPlan);
             Assert.AreEqual(HandCategory.FullHouse, primary.Pattern.Category); Assert.IsEmpty(primary.Events);
-            CollectionAssert.AreEqual(new[] { Enemy, Player }, primary.EffectPlan.Effects.Select(item => item.Target));
-            Assert.IsTrue(primary.EffectPlan.Effects.All(item => item.Kind == CombatEffectKind.ApplyStatus));
+            CollectionAssert.AreEqual(new[] { Enemy, Player, Player }, primary.EffectPlan.Effects.Select(item => item.Target));
+            CollectionAssert.AreEqual(new[] { CombatEffectKind.ApplyStatus, CombatEffectKind.Cleanse, CombatEffectKind.ApplyStatus }, primary.EffectPlan.Effects.Select(effect => effect.Kind));
             var control = primary.State.Duel.Combat.Statuses.Single(item => item.DefinitionId == profile.StunStatusId);
             var immunity = primary.State.Duel.Combat.Statuses.Single(item => item.DefinitionId == profile.ControlImmunityStatusId);
             Assert.AreEqual(1, control.Duration.RemainingTriggers); Assert.AreEqual(DurationKind.TriggerCount, control.Duration.Kind);

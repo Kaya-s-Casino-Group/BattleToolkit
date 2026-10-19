@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 场景规则内容：策划案 revision 1277。通过 HTML 配置工具导入本文件修改；旧 SO 不再参与本场景开战。 -->
+<!-- 场景规则内容：策划案 revision 1278。通过 HTML 配置工具导入本文件修改；旧 SO 不再参与本场景开战。 -->
 <!-- 未定案的牌型系数、状态和遗物数值均为可调测试值，不代表正式平衡。角色生命/敌人伤害等沿用旧场景。 -->
 <BattleContent schemaVersion="1" id="single-battle-new-content" name="单局战斗·策划规则测试" version="single-battle.xml.1">
   <ScoringProfiles>
@@ -27,19 +27,19 @@
     <Rules id="single-battle-rules" name="单局共享规则" scoringRef="single-battle-score" roundLimit="20" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16"/>
   </BattleRules>
   <Statuses>
-    <!-- 先施加免控，阻止之后到来的控制；不实现事后清除负面状态。 -->
+    <!-- 葫芦先净化已有负面/控制状态，再免疫之后到来的控制。 -->
     <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1"><BlockActionWindow/></Status>
     <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy"><PreventStatusApplication tags="Control"/></Status>
     <!-- DoT 为独立实例，每段命中各附加一份；每份触发两次，不做层数衰减。 -->
-    <Status id="bleed" name="流血·行动后2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="ActionCompleted" amount="2" target="Self"/></Status>
-    <Status id="poison" name="中毒·己方阶段末2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="PhaseEnding" amount="2" target="Self"/></Status>
+    <Status id="bleed" tags="Negative" name="流血·行动后2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="ActionCompleted" amount="2" target="Self"/></Status>
+    <Status id="poison" tags="Negative" name="中毒·己方阶段末2伤共2次" lifetime="TriggerCount" count="2" reapply="IndependentInstances"><PeriodicDamage timing="PhaseEnding" amount="2" target="Self"/></Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved"><ReflectBlockedDamage ratio="1" target="EventSource"/></Status>
     <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved"><OverhealDamage ratio="1" target="Opponents" selection="FirstLiving"/></Status>
     <!-- 供后续遗物选用；同花基础恢复来自筹码，不默认叠加按实际伤害吸血。 -->
     <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved"><LifeSteal ratio="0.2" target="Self"/></Status>
   </Statuses>
   <HandRules>
-    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.test.1">
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.test.2">
       <!-- 伤害系数为策划填表前的测试值；一对/两对的高伤由现有计分表体现。 -->
       <Hand category="HighCard"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
       <Hand category="OnePair"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="FirstLiving"/></Hand>
@@ -56,6 +56,7 @@
       </Hand>
       <Hand category="FullHouse">
         <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="FirstLiving"/>
+        <Effect id="cleanse" kind="Cleanse" target="Self"/>
         <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self"/>
       </Hand>
       <Hand category="FourOfAKind"><Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving"/></Hand>

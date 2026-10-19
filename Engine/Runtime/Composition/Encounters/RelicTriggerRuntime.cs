@@ -280,9 +280,9 @@ namespace PokerEngine
             var nextUses = new Dictionary<string, int>(uses, StringComparer.Ordinal); var nextUsed = new HashSet<Tuple<string, string>>(used);
             var reports = Activations.ToList(); var batches = new List<CombatReactionBatch>();
             bool finished = actionStart.Players.All(player => !context.State.Get(player.Id).IsAlive) || actionStart.Enemies.All(enemy => !context.State.Get(enemy.Id).IsAlive);
-            var entries = loadouts.Values.SelectMany(loadout => loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).ActionTriggers
-                .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })))
-                .OrderBy(entry => entry.Spec.Priority).ThenBy(entry => entry.Source, StringComparer.Ordinal).ThenBy(entry => entry.Spec.Id, StringComparer.Ordinal);
+            var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
+                loadout.RulesFor(relic.InstanceId).ActionTriggers.OrderBy(spec => spec.Priority)
+                .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })));
             if (!finished) foreach (var entry in entries)
             {
                 var loadout = nextLoadouts[entry.Owner]; var relic = loadout.Relics.Single(item => item.InstanceId == entry.Source);
@@ -314,9 +314,9 @@ namespace PokerEngine
             var nextUses = new Dictionary<string, int>(uses, StringComparer.Ordinal); var nextUsed = new HashSet<Tuple<string, string>>(used);
             var reports = Activations.ToList(); var batches = new List<CombatReactionBatch>();
             bool finished = actionStart.Players.All(player => !context.State.Get(player.Id).IsAlive) || actionStart.Enemies.All(enemy => !context.State.Get(enemy.Id).IsAlive);
-            var entries = loadouts.Values.SelectMany(loadout => loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).BoundaryTriggers
-                .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })))
-                .OrderBy(entry => entry.Spec.Priority).ThenBy(entry => entry.Source, StringComparer.Ordinal).ThenBy(entry => entry.Spec.Id, StringComparer.Ordinal);
+            var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
+                loadout.RulesFor(relic.InstanceId).BoundaryTriggers.OrderBy(spec => spec.Priority)
+                .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })));
             if (!finished) foreach (var entry in entries)
             {
                 var loadout = nextLoadouts[entry.Owner]; var relic = loadout.Relics.Single(item => item.InstanceId == entry.Source);
@@ -342,9 +342,9 @@ namespace PokerEngine
             var nextLoadouts = new Dictionary<ParticipantId, BattleRelicLoadout>(loadouts);
             var nextUses = new Dictionary<string, int>(uses, StringComparer.Ordinal); var nextUsed = new HashSet<Tuple<string, string>>(used);
             var reports = Activations.ToList(); var batches = new List<CombatReactionBatch>(); var resolver = new BattleRelicTriggerResolver();
-            var entries = loadouts.Values.SelectMany(loadout => loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).Triggers
-                .Select(trigger => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Trigger = trigger })))
-                .OrderBy(entry => entry.Trigger.Priority).ThenBy(entry => entry.Source, StringComparer.Ordinal).ThenBy(entry => entry.Trigger.Id, StringComparer.Ordinal);
+            var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
+                loadout.RulesFor(relic.InstanceId).Triggers.OrderBy(trigger => trigger.Priority)
+                .Select(trigger => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Trigger = trigger })));
             foreach (var entry in entries)
             {
                 var loadout = nextLoadouts[entry.Owner]; var relic = loadout.Relics.Single(item => item.InstanceId == entry.Source);

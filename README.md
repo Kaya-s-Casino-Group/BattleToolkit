@@ -10,6 +10,8 @@
 4. 导入 `Engine/Content/SingleBattleDemoNew.xml`，即可修改游戏当前共享配置、统一校验并试玩。选择对局配置、填写固定种子，选牌预览、出牌、弃牌或结束回合。
 5. 修改后导出 XML；需要交付到游戏时覆盖 `Engine/Content/SingleBattleDemoNew.xml` 并提交本仓库。运行中的对局配置冻结，重新开局才生效。
 
+按策划案整理的独立标准单局见 `Engine/Content/StandardSingleBattle.xml`，编成 ID 为 `standard-single-battle`。使用方式、可配置范围、占位数值与未覆盖项见 [单对局配置说明](Engine/Content/README.md)。现有 Demo 场景绑定保持不变。
+
 已有网页草稿保存在同一浏览器和地址中。工具不会自动写回 XML，导出文件仍需保存到约定位置。首次安装通常需要几分钟；不需要管理员权限，也不修改全局运行环境。macOS 若解压后失去执行权限，可在终端执行 `bash start.command`。
 
 [详细工具用法](Tools/BattleContentEditor/README.md) · [启动与故障排查](scripts/README.md) · [XML 配置契约](Engine/Runtime/Composition/Content/README.md)

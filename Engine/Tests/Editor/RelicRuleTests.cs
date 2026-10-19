@@ -60,7 +60,7 @@ namespace PokerEngine.Tests
             Assert.AreEqual(1, query.Amount.BaseValue); Assert.AreEqual(1, query.Amount.Delta);
             Assert.AreEqual(query.Cost, other.Cost);
             CollectionAssert.AreEqual(new[] { "a", "b" }, query.Amount.Contributions.Select(item => item.SourceInstanceId));
-            CollectionAssert.AreEqual(query.Amount.Contributions.Select(item => item.SourceInstanceId), other.Amount.Contributions.Select(item => item.SourceInstanceId));
+            CollectionAssert.AreEqual(new[] { "b", "a" }, other.Amount.Contributions.Select(item => item.SourceInstanceId));
             Assert.AreEqual(1, first.State.Duel.Player(RelicRuleTestData.Owner).Rules.PlayEnergyCost);
         }
 

@@ -116,7 +116,7 @@ namespace PokerEngine.Tests
             fixture.Act(CardDuelAction.CollectPlayed); Assert.IsEmpty(fixture.Act(CardDuelAction.Play, 1).RelicActivations);
         }
 
-        [Test] public void EquipmentOrderDoesNotChangeDispatchAndEachOwnerHasAnIndependentBudget()
+        [Test] public void AcquisitionOrderControlsDispatchAndEachOwnerHasAnIndependentBudget()
         {
             var any = new[] { RelicTriggerTestData.Trigger(relation: RelicEventRelation.AllyIsSource) };
             var a = RelicTriggerTestData.Gear("a", any, charges: 1); var z = RelicTriggerTestData.Gear("z", any, charges: 1);
@@ -124,8 +124,8 @@ namespace PokerEngine.Tests
             var left = new RelicTriggerTestData.Fixture(new[] { z, a }, Multi(), allyGear: ally);
             var right = new RelicTriggerTestData.Fixture(new[] { a, z }, Multi(), allyGear: ally);
             var l = left.Act(CardDuelAction.Play, 1); var r = right.Act(CardDuelAction.Play, 1);
-            CollectionAssert.AreEqual(new[] { "a", "b", "z" }, l.RelicActivations.Select(item => item.SourceInstanceId));
-            CollectionAssert.AreEqual(l.RelicActivations.Select(item => item.ActivationId), r.RelicActivations.Select(item => item.ActivationId));
+            CollectionAssert.AreEqual(new[] { "z", "a", "b" }, l.RelicActivations.Select(item => item.SourceInstanceId));
+            CollectionAssert.AreEqual(new[] { "a", "z", "b" }, r.RelicActivations.Select(item => item.SourceInstanceId));
             Assert.AreEqual(6, left.State.Duel.Combat.Get(Owner).Block); Assert.AreEqual(3, left.State.Duel.Combat.Get(Ally).Block);
             Assert.AreEqual(0, left.Relic("b", Ally).RemainingCharges);
         }

@@ -112,7 +112,7 @@ return new BattleEffectSequence(Version, "伤害指定敌人并治疗指定队�
 
 所有步骤先按同一个行动开始快照解析存活目标，按“步骤顺序、目标顺序”展开，最多 64 个效果（包含结算时跳过的效果）；数值对每个目标完整应用，不自动分摊。攻击侧修正仍读取行动开始状态，承伤侧修正逐条读取批次内更新状态。结算时已死亡的目标直接跳过，不重新选目标、不产生事件、不调用承伤修正；后续其他目标和效果继续执行。例如伤害致死后施加状态，只跳过该目标的状态，不撤销致死伤害。事件 Index 保留原展开效果的位置，可有缺口。一次出牌只付一次费用；未知单位、初始死亡来源、溢出等真正错误仍回滚整次行动。来源在结算中死亡则取消其剩余主动效果，保留已经结算的结果。
 
-ApplyStatus 使用 `StatusApplicationSpec` 声明定义、层数和期限，由引擎为每个目标生成 StatusInstance；新实例 ID 由战斗 ID、行动 Revision、步骤及目标序号确定，预览与正式执行一致。实例 ID 与状态容量在实际施加时校验，被跳过或免疫拦截的状态不占位。来源和伤害的 Hand 快照由引擎附加，规则不能替换。状态只存放在 CombatState.Statuses。Eliminate 直接归零生命并独立报告死因，不计算伤害；ClearBlock 仍只作为内部维护操作。实际结算事实通过 `RuleEvents` 贯穿结算与 Team/Card 结果，旧 `Events` 保留生命／格挡事件投影。契约与 combat.8 版本影响见 [Combat README](Runtime/Combat/README.md)。
+ApplyStatus 使用 `StatusApplicationSpec` 声明定义、层数和期限，由引擎为每个目标生成 StatusInstance；新实例 ID 由战斗 ID、行动 Revision、步骤及目标序号确定，预览与正式执行一致。实例 ID 与状态容量在实际施加时校验，被跳过或免疫拦截的状态不占位。来源和伤害的 Hand 快照由引擎附加，规则不能替换。状态只存放在 CombatState.Statuses。Cleanse 移除目标上标记 Negative 或 Control 的全部状态实例，保留增益；每次移除产生带 Cleansed 原因的状态事实，不伪造伤害或治疗。Eliminate 直接归零生命并独立报告死因，不计算伤害；ClearBlock 仍只作为内部维护操作。实际结算事实通过 `RuleEvents` 贯穿结算与 Team/Card 结果，旧 `Events` 保留生命／格挡事件投影。契约与 combat.9 版本影响见 [Combat README](Runtime/Combat/README.md)。
 
 通过 `BattleRules(reactionProvider: ..., reactionLimits: ...)` 可接入纯 `ICombatReactionProvider`。出牌、敌人行动、弃牌奖励和清盾均使用同一配置；派生伤害仍按目标应用承伤修正，队列全部完成后再判断胜负和阶段。目录中的已施加触发状态自动执行，外部 provider 在其后补充；未施加触发状态时，原牌型效果和弃牌收益保持原样。主效果逐条执行，每条后立即结算其反应及显式允许的子反应，所有效果共用原子 Combat 提交；预览复用同一流程。事件 Provenance 提供父事实与触发来源，CombatEvent.Overheal 只记录实际接受治疗的溢出。无效反应和预算超限分别透传为 CardDuelError.InvalidReaction / ReactionLimitExceeded，失败仍回滚牌区、能量、弃牌次数、随机状态和计分。盾反、吸血、溢出治疗转伤害已可通过状态行为配置；流血／中毒通过 `PeriodicDamageSpec` 接入行动后／所属阵营阶段末时钟，复用护盾、承伤与死亡结算，按有效机会消费次数，不做层数衰减。未施加周期状态时不生成额外时钟事实；遗物获取／装备流程仍未接入。
 
@@ -152,7 +152,7 @@ var protection = new BattleEffectStep(BattleEffectSpec.ApplyStatus(new StatusApp
 | 高牌、一对、两对 | 单体一段伤害，各自独立系数 |
 | 顺子 | 单体多段伤害，配置 2–64 段及每段系数；附加流血／中毒属于后续遗物机制 |
 | 三条、四条 | 全部存活敌人各受一段伤害，各自独立系数，不分摊 |
-| 葫芦 | 敌方单体眩晕＋自身提前免控，不附加伤害、不清除已有控制 |
+| 葫芦 | 敌方单体眩晕＋自身净化已有负面/控制状态＋免控，不附加伤害 |
 | 同花 | 单体一段伤害＋自身按筹码回血，不读取实际伤害或敌方数量 |
 | 皇家同花顺 | 直接消灭全部存活敌人，绕过伤害修正与护盾 |
 | 普通同花顺、五条 | 文档缺项的兼容策略：各自配置的单体一段伤害，不获得皇家消灭效果 |
@@ -356,21 +356,21 @@ var setup = new BattleRelicSetup(relicDefinition, runRelic, battleRules: numeric
 
 Origins 必填且不能重复，按 Primary / Triggered / Periodic / Reflection / Lifesteal / Overheal 显式选择。可选 HandCategory 条件只允许 Primary，读取权威 HandAttackInfo，同时适用于本次出牌的伤害和治疗；弃牌没有牌型事实，派生效果不继承触发它的牌型。首版不提供任意委托条件、等级成长公式或状态条件。
 
-`IBattleNumericResolver.Resolve(BattleNumericQuery)` 返回 `CombatAmountModification`，读取绑定内不可变配置；每阶段采用 `floor(max(0, 基础量 × max(0, 1 + Σ比例增减) + Σ固定增减))`，仅在汇总后取整。贡献按实例 Id / 条目 Id 的序数顺序归约，装配或配置条目换序不改变结果。100 基础量、+20%、+30%、+10 得到 160；固定加值不乘百分比。每个存活目标、每段效果独立计算；自疗/自身护盾也依次走来源和接受两阶段。同定义合法副本各自贡献，不因定义 Id 相同去重。
+`IBattleNumericResolver.Resolve(BattleNumericQuery)` 返回 `CombatAmountModification`，读取绑定内不可变配置；每阶段按遗物获得顺序、同件遗物内 Numeric 配置顺序逐项执行 `floor(max(0, 当前量 × max(0, 1 + 比例增减) + 固定增减))`；每一步取整并作为下一步输入。100 基础量、+20%、+30%、+10 得到 166；先 +10 再 +30%、+20% 得到 171。每个存活目标、每段效果独立计算；自疗/自身护盾也依次走来源和接受两阶段。同定义合法副本各自贡献，不因定义 Id 相同去重。
 
-伤害顺序为：现有角色攻方修正 → 来源遗物 → 现有角色承伤修正 → 目标遗物 → 格挡/扣血。治疗和护盾为：来源遗物 → 目标遗物 → 生命上限/护盾累加。Composition 的 RelicCombatAmountModifier 适配 Combat 的通用 ICombatAmountModifier，主动作、弃牌收益和即时/周期派生效果统一走公共队列。ApplyStatus、Eliminate、ClearBlock、空弃牌收益以及已死亡而跳过的效果都不参与数值修正。未绑定遗物的单位返回恒等结果。
+伤害顺序为：现有角色攻方修正 → 来源遗物 → 现有角色承伤修正 → 目标遗物 → 格挡/扣血。治疗和护盾为：来源遗物 → 目标遗物 → 生命上限/护盾累加。Composition 的 RelicCombatAmountModifier 适配 Combat 的通用 ICombatAmountModifier，主动作、弃牌收益和即时/周期派生效果统一走公共队列。ApplyStatus、Cleanse、Eliminate、ClearBlock、空弃牌收益以及已死亡而跳过的效果都不参与数值修正。未绑定遗物的单位返回恒等结果。
 
 `CombatEvent.Effect` 和 `EffectPlan` 保留原始待结算请求（主动伤害已包含既有角色攻方修正）；OutgoingAmountModification / IncomingAmountModification 保存双方贡献与输入输出，空贡献时为 null。`SettledAmount` 是护盾吸收/生命上限截断前的最终量，`SettledDamage` 仅对伤害返回该值。HealthRestored / Overheal 使用最终治疗量，吸血仍按实际 DamageToHealth 产生，反伤仍按 BlockAbsorbed 产生；新修正不改变原有触发资格和深度限制。不能用原始 Effect.Amount 代替修正后的治疗量或最终承伤。
 
 查询和预览不写状态、不隐式消耗 Charges / UsesThisRound / CooldownRounds / Memory；被动修正也不自动受这些字段限制。消耗次数的“下一次强化”应由后续触发提交机制负责。任何溢出或非法修正输出拒绝整个事务，包括已执行的前序效果、牌区、资源和随机状态。无修正时既有数值/事件语义与状态转换保持不变。
 
-非空数值配置（含版本、条目及条件）扩展绑定指纹；全部配置为空时沿用原有字节布局与指纹。配置本身不写进运行状态 JSON，读档时仍由外部绑定注入；不同配置拒绝读取同一快照。旧 Run / Draw / Holdem 契约不变，Combat 的可选参数默认关闭，状态存档格式和 RulesVersion 不变。
+非空数值配置（含版本、条目及条件）扩展绑定指纹；全部配置为空时沿用原有字节布局与指纹。配置本身不写进运行状态 JSON，读档时仍由外部绑定注入；不同配置拒绝读取同一快照。旧 Run / Draw / Holdem 契约不变，Combat 的可选参数默认关闭；当前版本兼容边界见文末“净化与遗物获得顺序”。
 
 ## 遗物对牌型效果的结构修正
 
 在 `BattleRelicRules(..., handEffects: ...)` 配置 `RelicHandEffectModifierSpec`。仅对动作玩家的 `IScoredHandEffectRule` 输出执行一次：基础 BattleEffectSequence → IHandEffectModifier / RelicHandEffectModifier → 目标绑定 → 既有角色与双方数值修正 → Combat 队列。敌人、弃牌、即时反应和周期效果不进入结构修正。本入口为被动配置，预览/查询不修改或消费运行状态；下述事实触发的次数和冷却不自动限制这些被动结构修正。
 
-`BattleEffectStep(id, effect, target)` 的 Id 在序列内唯一且不依赖数组下标。PokerHandEffectSteps 提供 DamageHit(1) / DamageHit(2)…（`damage/1`…）、Heal、Stun、ControlImmunity、Eliminate；同花治疗、葫芦的两种状态均可分别定位。原两参数构造保留，未命名步骤正常结算，但不能作为具名修改的目标。改变牌型基础规则时应保留同一语义步骤的 Id。
+`BattleEffectStep(id, effect, target)` 的 Id 在序列内唯一且不依赖数组下标。PokerHandEffectSteps 提供 DamageHit(1) / DamageHit(2)…（`damage/1`…）、Heal、Stun、Cleanse、ControlImmunity、Eliminate；同花治疗、葫芦的两种状态均可分别定位。原两参数构造保留，未命名步骤正常结算，但不能作为具名修改的目标。改变牌型基础规则时应保留同一语义步骤的 Id。
 
 ```csharp
 var rules = new BattleRelicRules("relic.hand-shape.1", handEffects: new[] {
@@ -390,7 +390,7 @@ var setup = new BattleRelicSetup(relicDefinition, runRelic, rules);
 - AddHits 的 count 是额外段数（1–63），只复制指定的一段基础伤害，紧跟该步骤插入；不会将整条顺子序列再执行一次。该步骤的替换和目标修改先合并，新增段继承合并后的效果与目标，且仍逐段/逐目标参与普通数值修正及触发。
 - Replace 只替换指定步骤的 Effect，保留 Id 和 Target；Retarget 只替换 Target，保留效果。两者可组合，替换状态时可配置状态类型、层数和相对时长。AddHits 与非伤害替换冲突会拒绝。
 - 所有匹配只看原始牌型与基础步骤。类别不符或没有该具名步骤时不修改（例如皇家同花顺没有 damage/1）；配置拼错步骤 Id 同样不会生效，内容应以具名常量并配测试验证。新增步骤不会再被其他条目匹配。新增 Id 根据遗物实例 Id、条目 Id 和副本编号生成，长度编码避免分隔符碰撞；最终序列仍验证唯一性。
-- 多个 AddHits 相加；追加效果与新增段按实例 Id、条目 Id 的序数顺序排列，装配/条目换序不改变执行顺序。同类别/同一步骤的 Replace 或 Retarget，载荷相同则合并并保留各来源记录，不同则在配置或装配时拒绝，不使用隐式后写覆盖。
+- 多个 AddHits 相加；追加效果与新增段按遗物获得顺序、同件内配置顺序排列。同类别/同一步骤的 Replace 或 Retarget，载荷相同则合并并保留各来源记录，不同则在配置或装配时拒绝，不使用隐式后写覆盖。
 
 `BattleEffectPlan.HandModification` 保存 Input / Output 具名序列，以及 Changes 中的遗物实例、规则、操作、原步骤和结果步骤 Id。没有实际结构修改时该字段为 null，基础 RuleVersion / Explanation 保持不变；完整变化以报告为准。这些序列是目标展开和数值修正之前的声明，真正结算结果仍读取 Effects / RuleEvents。
 
@@ -400,7 +400,7 @@ var setup = new BattleRelicSetup(relicDefinition, runRelic, rules);
 
 ## 遗物对能量、费用、手牌和补牌的规则修正
 
-`BattleRelicRules(..., ruleValues: ..., refillRules: ...)` 保存被动规则配置。`RelicRuleValueSpec` 支持 MaxEnergy、InitialEnergy、PlayEnergyCost、DiscardEnergyCost、HandLimit 的固定整数增减；基础值加所有 Delta 后统一校验/截断，不连乘、不逐条截断。贡献按实例 Id / 条目 Id 的序数排序，装配顺序不影响结果。费用最低为 0；有效能量上限至少 1、初始能量至少 0、手牌上限 1–52，非法容量或 int 溢出在创建对局时拒绝。上限与初始能量分别配置，上限 +1 不自动增加初始能量；初始能量允许超过上限，沿用原规则。
+`BattleRelicRules(..., ruleValues: ..., refillRules: ...)` 保存被动规则配置。`RelicRuleValueSpec` 支持 MaxEnergy、InitialEnergy、PlayEnergyCost、DiscardEnergyCost、HandLimit 的固定整数增减；基础值加所有 Delta 后统一校验/截断，不连乘、不逐条截断。贡献按遗物获得顺序及条目配置顺序记录；这些纯整数加法仍在最终边界统一校验。费用最低为 0；有效能量上限至少 1、初始能量至少 0、手牌上限 1–52，非法容量或 int 溢出在创建对局时拒绝。上限与初始能量分别配置，上限 +1 不自动增加初始能量；初始能量允许超过上限，沿用原规则。
 
 ```csharp
 var rules = new BattleRelicRules("relic.budget.1", ruleValues: new[] {
@@ -450,7 +450,7 @@ Relation 以遗物持有者为基准，支持自身/友方/敌方是来源或目
 
 同一遗物实例的所有触发共用一个 `RelicTriggerBudgetSpec`：RemainingCharges 按 ChargeCost 扣减，UsesThisRound 按激活次数增加，MaxUsesPerAction / MaxUsesPerRound 可选，CooldownRounds 为共享冷却。没有有限 Charges 则不限制总次数，ChargeCost=0 不消耗有限次数。PerEvent 默认逐事实判断；PerAction 让该触发条目在一次 TeamBattle 命令中最多激活一次，共享行动上限则限制该遗物所有条目总数。玩家与敌人行动各有独立的行动预算；同一整轮的玩家/敌人阶段共用 UsesThisRound。
 
-顺序固定为 Priority 升序 → 遗物实例 Id 序数 → 触发 Id 序数，与装备传入顺序无关。每条合格触发先绑定存活目标，再预占预算，后续候选立即读取新预算。同一激活里的多效果、AOE 不重复扣费；无目标或所有数值效果为 0 时不消费。进入队列后，目标后来死亡、满血治疗、状态被免疫或数值修正为 0 都不退款；真正结算错误则回滚整次事务。
+同一事实的候选先按玩家阵容顺序，再按各玩家遗物获得顺序处理；同件遗物内按 Priority 升序、相同优先级按配置顺序处理。Priority 不跨遗物抢占。每条合格触发先绑定存活目标，再预占预算，后续候选立即读取新预算。同一激活里的多效果、AOE 不重复扣费；无目标或所有数值效果为 0 时不消费。进入队列后，目标后来死亡、满血治疗、状态被免疫或数值修正为 0 都不退款；真正结算错误则回滚整次事务。
 
 冷却 N 表示跳过后续 N 个完整回合。触发时 N>0 写入 N+1，阻止当前回合再触发；每次进入下一玩家回合递减 1、清零 UsesThisRound，并清理 Round 记忆。比如 N=1：本回合写 2，下回合为 1 不触发，再下一回合为 0 可触发。免费行动、预览、CollectPlayed 和开局 Start 不推进冷却；导入冷却不在创建时额外递减。仅配置了触发的遗物参与维护，无触发遗物的既有运行字段保持不变，有限次数不自动补满。
 
@@ -494,7 +494,7 @@ Composition 的 `BattleRelicTriggerResolver` 只生成激活草案；不可变�
 
 同一个 PhaseEnding 的周期伤害与遗物反应复用一条队列和总条数/深度限制。遗物条件读取周期伤害后的状态；此时新施加的中毒不会在同一边界补触发一次。终局发生后，已经入队的效果按原死亡跳过规则结算完，不开启后续边界或发牌；AfterEnemyPhase 清盾也会清掉该敌方结束边界刚获得的护盾。旧的非边界弃牌结算路径保持兼容。
 
-每次开战、阶段开始、阶段结束都创建独立临时窗口，分别有稳定 `BoundaryId`，不继承最后一次行动的计数。`MaxUsesPerAction` / `PerAction` 只管行动窗口；新增可选 `MaxUsesPerBoundary` 管该遗物在一个边界内直接激活与派生事实激活的总数，事实条目的 `PerBoundary` 则让该条目每个边界最多激活一次、在普通行动中不匹配。`PerEvent` 可在两类窗口内逐事实匹配。每个直接边界条目在该边界只检查一次，多个候选按 Priority、实例 Id、条目 Id 排序并先预占共享预算，再依既有队列结算。
+每次开战、阶段开始、阶段结束都创建独立临时窗口，分别有稳定 `BoundaryId`，不继承最后一次行动的计数。`MaxUsesPerAction` / `PerAction` 只管行动窗口；新增可选 `MaxUsesPerBoundary` 管该遗物在一个边界内直接激活与派生事实激活的总数，事实条目的 `PerBoundary` 则让该条目每个边界最多激活一次、在普通行动中不匹配。`PerEvent` 可在两类窗口内逐事实匹配。每个直接边界条目在该边界只检查一次，多个候选按玩家阵容、遗物获得顺序、同件内 Priority 与配置顺序排列并先预占共享预算，再依既有队列结算。
 
 有限次数、UsesThisRound、MaxUsesPerRound、CooldownRounds 在事实和边界间共享；下一轮维护后才检查玩家开始触发。冷却 N 仍表示跳过后续 N 个完整回合，开战与首个玩家开始之间不递减。只有配置了任一触发的遗物参与轮维护。窗口计数不写存档，schema v1 不变；仅有边界配置、新边界上限或 PerBoundary 时追加 `battle-relic.boundaries.1` 指纹段，旧事实配置指纹不变。
 
@@ -522,7 +522,7 @@ var rules = new BattleRelicRules("boundary-example.1", boundaryTriggers: new[] {
 | Relation | OwnerIsActor / AllyIsActor（含自身）/ OpponentIsActor / Any；与遗物拥有者比较 |
 | Conditions | AND；共同支持 OwnerHealthAtMost、OwnerHasStatus；出牌支持 HandIs、SubmittedCardsAtLeast；弃牌支持 DiscardedCardsAtLeast |
 | Effects / Target | 复用五种基础效果；Self、Allies、Opponents、EventActor；每条效果独立选单体/AOE |
-| Priority | 数值升序，其次按遗物实例 Id、条目 Id 的 ordinal 顺序；不依赖装配顺序 |
+| Priority | 仅在同件遗物内升序，同优先级按配置顺序；不同遗物按获得顺序 |
 | SourcePolicy / CanTriggerReactions | 默认存活来源、叶子效果；显式开放死亡来源或后继事实触发 |
 
 `EventActor` 是完成该操作的行动者，`Self` 和效果 Source 仍是遗物拥有者。例如队友出牌后给队友加盾，应配 AllyIsActor + EventActor。死亡行动者返回空目标，不改选他人。完成入口没有效果端点，拒绝 EventSource / EventTarget 以及 FactAtLeast / EventStatus；事实、边界、周期状态及即时状态反应配置也拒绝没有上下文的 EventActor。卡牌条件使用权威快照；旧 TeamBattle 调用没有 Hand 时视为未知，不伪造牌型或张数。
@@ -773,3 +773,11 @@ Unity 的 CardMatchHost 消费此基础层，运行时及编辑器围绕同一�
 
 
 `CardDuelEngine.PreviewHand(state, actor, selected)` 提供只读候选牌型/计分结果，正式 Play 复用此入口。它验证选牌成员、数量、禁用状态及内容归属，不检查出牌费用，不调用伤害/目标/发牌策略，不推进随机或状态；返回的 CardDuelTransition.State 是原输入，Damage/Events 为空。无快照格式变化。
+
+## 净化与遗物获得顺序（2026-10-19）
+
+主线 Loadout 中的遗物列表就是获得顺序，运行时保留 Order，不能重排；跨战斗的获得/卖出/再次获得仍由后续 Run 接入负责。Numeric 按获得顺序逐条计算；HandModifier 的追加与加段、RuleValue/Refill 的贡献记录、事实/边界/行动完成触发均保留获得顺序。不同事件的时机与主效果→派生效果顺序保持不变，同一父事实仍统一判定触发资格及预占预算。旧 Draw/Holdem 的计分与 Run 接口保持原状。
+
+葫芦在眩晕后净化自身，再施加免控。净化使用已注册目录的标签，Control 兼容旧控制定义，流血/中毒等其他负面状态须显式标记 Negative。净化不绕过玩家行动限制：已被眩晕的玩家仍不能主动出牌，但可由队友或合法触发效果净化。预览、回滚与时间线使用同一净化事实。
+
+本次更新 Combat 规则至 combat.9、XML 规则契约至 battle-content.2，并升级非空主线遗物行为的绑定指纹；旧规则快照明确拒绝，没有自动迁移。XML 格式仍为 schemaVersion=1。

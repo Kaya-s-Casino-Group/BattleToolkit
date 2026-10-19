@@ -86,8 +86,9 @@ namespace PokerEngine.Tests
             var profile = new PokerHandEffectProfile("full-house.1", Damage(), 0.5m, stunActionWindows: 3,
                 controlImmunityLifetime: lifetime, stunStatusId: CustomStun, controlImmunityStatusId: CustomImmunity);
             var sequence = new PokerHandEffectRule(profile).Resolve(Context(HandCategory.FullHouse));
-            Assert.AreEqual(2, sequence.Steps.Count); Assert.IsTrue(sequence.Steps.All(step => step.Effect.Kind == CombatEffectKind.ApplyStatus));
-            var stun = sequence.Steps[0]; var immunity = sequence.Steps[1];
+            CollectionAssert.AreEqual(new[] { CombatEffectKind.ApplyStatus, CombatEffectKind.Cleanse, CombatEffectKind.ApplyStatus }, sequence.Steps.Select(step => step.Effect.Kind));
+            AssertTarget(sequence.Steps[1], EffectTargetGroup.Self, EffectTargetSelection.AllLiving);
+            var stun = sequence.Steps[0]; var immunity = sequence.Steps[2];
             AssertTarget(stun, EffectTargetGroup.Opponents, EffectTargetSelection.FirstLiving);
             AssertTarget(immunity, EffectTargetGroup.Self, EffectTargetSelection.AllLiving);
             Assert.AreEqual(CustomStun, stun.Effect.Status.DefinitionId); Assert.AreEqual(1, stun.Effect.Status.Stacks);
@@ -281,7 +282,7 @@ namespace PokerEngine.Tests
                 StatusLifetimeSpec.ThroughCurrentRound(), StatusLifetimeSpec.ThroughNextPhase("player") })
             {
                 var profile = new PokerHandEffectProfile("override-lifetime.1", Damage(), 0.5m, controlImmunityLifetime: lifetime);
-                var effect = new PokerHandEffectRule(profile).Resolve(Context(HandCategory.FullHouse)).Steps[1].Effect.Status;
+                var effect = new PokerHandEffectRule(profile).Resolve(Context(HandCategory.FullHouse)).Steps[2].Effect.Status;
                 Assert.AreEqual(lifetime.Kind, effect.Lifetime.Kind); Assert.AreEqual(lifetime.Count, effect.Lifetime.Count);
                 Assert.AreEqual(lifetime.PhaseKey, effect.Lifetime.PhaseKey);
                 Assert.AreEqual(lifetime.Kind, profile.StatusDefinitions.Single(definition => definition.Id == profile.ControlImmunityStatusId).DefaultLifetime.Kind);

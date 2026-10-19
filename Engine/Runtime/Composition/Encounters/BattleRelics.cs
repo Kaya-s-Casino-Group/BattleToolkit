@@ -163,33 +163,33 @@ namespace PokerEngine
                     // Preserve the exact pre-modifier fingerprint for bindings with no numeric behavior.
                     if (Relics.Any(state => RulesFor(state.InstanceId).Modifiers.Count != 0))
                     {
-                        writer.Write("battle-relic.numeric.1");
+                        writer.Write("battle-relic.numeric.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).Write(writer);
                     }
-                    // Append a separate extension so all existing numeric-only fingerprints remain byte-for-byte stable.
+                    // Each extension versions its settlement semantics as well as its configuration.
                     if (Relics.Any(state => RulesFor(state.InstanceId).HandEffects.Count != 0))
                     {
-                        writer.Write("battle-relic.hand-effects.1");
+                        writer.Write("battle-relic.hand-effects.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).WriteHandEffects(writer);
                     }
                     if (Relics.Any(state => RulesFor(state.InstanceId).RuleValues.Count != 0 || RulesFor(state.InstanceId).RefillRules.Count != 0))
                     {
-                        writer.Write("battle-relic.rules.1");
+                        writer.Write("battle-relic.rules.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).WriteRules(writer);
                     }
                     if (Relics.Any(state => RulesFor(state.InstanceId).Triggers.Count != 0))
                     {
-                        writer.Write("battle-relic.triggers.1");
+                        writer.Write("battle-relic.triggers.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).WriteTriggers(writer);
                     }
                     if (Relics.Any(state => RulesFor(state.InstanceId).ActionTriggers.Count != 0))
                     {
-                        writer.Write("battle-relic.actions.1");
+                        writer.Write("battle-relic.actions.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).WriteActions(writer);
                     }
                     if (Relics.Any(state => RulesFor(state.InstanceId).HasBoundaryConfiguration))
                     {
-                        writer.Write("battle-relic.boundaries.1");
+                        writer.Write("battle-relic.boundaries.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).WriteBoundaries(writer);
                     }
                 }

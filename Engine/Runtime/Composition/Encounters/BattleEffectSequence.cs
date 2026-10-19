@@ -44,6 +44,7 @@ namespace PokerEngine
         public static BattleEffectSpec GainBlock(long amount) => new BattleEffectSpec(CombatEffectKind.GainBlock, amount);
         public static BattleEffectSpec ApplyStatus(StatusApplicationSpec status) =>
             new BattleEffectSpec(CombatEffectKind.ApplyStatus, status: status ?? throw new ArgumentNullException(nameof(status)));
+        public static BattleEffectSpec Cleanse() => new BattleEffectSpec(CombatEffectKind.Cleanse);
         public static BattleEffectSpec Eliminate() => new BattleEffectSpec(CombatEffectKind.Eliminate);
     }
 

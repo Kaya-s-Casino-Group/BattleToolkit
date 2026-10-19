@@ -26,6 +26,16 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
  await test('十类配置表单完整可打开',async()=>{
   for(const [title,id]of [['对局配置','example-fight'],['玩家模板','hero'],['敌人模板','guard'],['初始构筑','example-build'],['初始牌组','small-deck'],['牌型效果','example-hands'],['状态配置','stun'],['遗物配置','example-relic'],['公共战斗规则','standard-battle'],['计分规则','standard-score']]){await open(title,id);assert.ok(await page.locator('#editor [data-key="id"]').count());}
  });
+ await test('净化效果和负面状态可在共享配置表单中读取并导出',async()=>{
+  const scene=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/SingleBattleDemoNew.xml'),'utf8');
+  await load(scene);await clean();await nav('状态配置');await page.locator('.definition-button[title="bleed"]').click();
+  assert.equal(await page.locator('#editor > .field-grid [data-key="tags"]').inputValue(),'Negative');
+  await nav('牌型效果');await page.locator('.definition-button[title="document-hands"]').click();
+  assert.equal(await page.locator('select[data-key="kind"] option[value="Cleanse"]:checked').count(),1);
+  const download=page.waitForEvent('download');await page.locator('#export').click();
+  const saved=await fs.readFile(await (await download).path(),'utf8');assert.match(saved,/kind="Cleanse"/);assert.match(saved,/tags="Negative"/);
+  await load(example);await clean();
+ });
  await test('字段错误定位并修复',async()=>{await open('玩家模板','hero');await edit('maxHealth','0');await settle();assert.match(await page.locator('#validation-state').innerText(),/^[1-9]/);await page.locator('.issue').first().click();assert.ok(await page.locator('.highlight').count());await edit('maxHealth','100');await clean();});
  await test('引用选择器搜索名称和 ID',async()=>{await open('公共战斗规则','standard-battle');await page.locator('[data-field$="/@scoringRef"] button').filter({hasText:'选择'}).click();await page.getByLabel('搜索引用').fill('standard');await page.locator('#modal-body .reference').click();await confirm();assert.equal(await page.locator('[data-key="scoringRef"]').inputValue(),'standard-score');});
  await test('重命名定义自动更新类型化引用',async()=>{await open('状态配置','stun');await page.locator('#editor > .field-grid [data-key="id"]').fill('stun-renamed');await page.locator('#editor > .field-grid [data-key="id"]').press('Tab');await confirm();await clean();await page.locator('#xml-tab').click();assert.match(await page.locator('#xml-source').inputValue(),/statusRef="stun-renamed"/);await page.locator('#undo').click();await clean();});

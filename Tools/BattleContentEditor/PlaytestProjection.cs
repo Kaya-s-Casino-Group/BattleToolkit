@@ -90,7 +90,7 @@ internal static partial class PlaytestBridge
             if (changed != null)
             {
                 var status = changed.StatusAfter ?? changed.StatusBefore;
-                string reason = changed.Reason == CombatStatusChangeReason.Expired ? "到期" : changed.Reason == CombatStatusChangeReason.Refreshed ? "刷新" : changed.StatusAfter == null ? "耗尽" : "消耗";
+                string reason = changed.Reason == CombatStatusChangeReason.Cleansed ? "净化" : changed.Reason == CombatStatusChangeReason.Expired ? "到期" : changed.Reason == CombatStatusChangeReason.Refreshed ? "刷新" : changed.StatusAfter == null ? "耗尽" : "消耗";
                 string owner = status.Target.Kind == EntityKind.Participant ? Name(names, new ParticipantId(status.Target.Id)) : status.Target.Id;
                 yield return owner + "：" + StatusName(status.DefinitionId, catalog) + " " + reason + (changed.StatusAfter == null ? "" : "（" + Duration(changed.StatusAfter.Duration) + "）");
                 continue;

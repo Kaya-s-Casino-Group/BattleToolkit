@@ -147,7 +147,7 @@ namespace PokerEngine
             if (context == null) throw new ArgumentNullException(nameof(context));
             var entries = context.Loadout.Relics.SelectMany(relic => context.Loadout.RulesFor(relic.InstanceId).HandEffects
                 .Where(spec => spec.HandCategory == context.Action.Score.Category).Select(spec => new Entry { Source = relic.InstanceId, Spec = spec }))
-                .OrderBy(entry => entry.Source, StringComparer.Ordinal).ThenBy(entry => entry.Spec.Id, StringComparer.Ordinal).ToArray();
+                .ToArray();
             var output = new List<BattleEffectStep>(); var changes = new List<HandEffectChange>();
             foreach (var step in context.Sequence.Steps)
             {

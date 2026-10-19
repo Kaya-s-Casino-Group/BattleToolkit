@@ -199,7 +199,7 @@ namespace PokerEngine.Tests
             var left = first.Act(CardDuelAction.Start).Draws.Single(); var right = second.Act(CardDuelAction.Start).Draws.Single();
             Assert.AreEqual(3, left.Plan.SelectedCount); Assert.AreEqual(1, left.Plan.CountDelta); Assert.AreEqual(4, left.DrawnCount);
             Assert.AreEqual(left.DrawnCount, right.DrawnCount);
-            CollectionAssert.AreEqual(new[] { "a", "b" }, right.Plan.Contributions.Select(item => item.SourceInstanceId));
+            CollectionAssert.AreEqual(new[] { "b", "a" }, right.Plan.Contributions.Select(item => item.SourceInstanceId));
             CollectionAssert.AreEqual(first.State.Zone(CardZoneKinds.Hand).Cards, second.State.Zone(CardZoneKinds.Hand).Cards);
         }
 

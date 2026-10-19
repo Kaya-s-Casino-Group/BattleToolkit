@@ -63,7 +63,7 @@ namespace PokerEngine
         public IReadOnlyList<BattleRuleContribution> Contributions { get; }
         internal BattleRuleValueResolution(BattleRuleValueKey key, int baseValue, IEnumerable<BattleRuleContribution> contributions)
         {
-            var items = contributions.OrderBy(item => item.SourceInstanceId, StringComparer.Ordinal).ThenBy(item => item.RuleId, StringComparer.Ordinal).ToArray();
+            var items = contributions.ToArray();
             long delta = 0; foreach (var item in items) delta = checked(delta + item.Delta);
             long value = checked(baseValue + delta);
             if (key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost) value = Math.Max(0, value);
@@ -194,7 +194,7 @@ namespace PokerEngine
             if (baseCount < 0 || baseCount > context.MissingCards) throw new ArgumentException("Base draw policy must respect the hand limit.");
             var contributions = query.Loadout.Relics.SelectMany(relic => query.Loadout.RulesFor(relic.InstanceId).RefillRules
                 .Where(spec => spec.Trigger == context.Trigger).Select(spec => new BattleRefillContribution(relic.InstanceId, spec)))
-                .OrderBy(item => item.SourceInstanceId, StringComparer.Ordinal).ThenBy(item => item.RuleId, StringComparer.Ordinal).ToArray();
+                .ToArray();
             var replacement = contributions.FirstOrDefault(item => item.Rule.Mode.HasValue)?.Rule;
             var mode = replacement?.Mode;
             int selected = mode == BattleRefillMode.Skip ? 0 : mode == BattleRefillMode.FillToLimit ? context.MissingCards :

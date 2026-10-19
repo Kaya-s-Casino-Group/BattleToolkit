@@ -88,6 +88,21 @@ namespace PokerEngine
                 throw new ArgumentException("KeepLonger status definitions require one instance per target.");
         }
 
+        // Control is cleansable even for existing definitions authored before the Negative tag.
+        internal static void Cleanse(List<StatusInstance> statuses, CombatEffect effect, CombatStatusCatalog catalog,
+            long revision, int effectIndex, List<CombatRuleEvent> events, CombatEffectProvenance provenance)
+        {
+            if (catalog == null) throw new ArgumentException("Cleanse requires a status catalog.");
+            var removed = statuses.Where(status => Targets(status, effect.Target) &&
+                (catalog.Get(status.DefinitionId).Tags & (StatusTags.Negative | StatusTags.Control)) != 0).ToArray();
+            foreach (var status in removed)
+            {
+                statuses.Remove(status);
+                events.Add(new CombatStatusChangedEvent(revision, effectIndex, events.Count, effect, status, null,
+                    CombatStatusChangeReason.Cleansed, provenance: provenance));
+            }
+        }
+
         internal static void Apply(CombatState state, List<StatusInstance> statuses, CombatEffect effect, CombatStatusCatalog catalog,
             long revision, int effectIndex, List<CombatRuleEvent> events, CombatEffectProvenance provenance = null)
         {

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    [Flags] public enum StatusTags { None = 0, Control = 1 }
+    [Flags] public enum StatusTags { None = 0, Control = 1, Negative = 2 }
     public enum StatusLifetimeKind { UntilRemoved = 1, TriggerCount, ThroughNextPhase, ThroughCurrentRound }
     public enum StatusReapplyPolicy { KeepLonger = 1, IndependentInstances = 2 }
 
@@ -35,7 +35,7 @@ namespace PokerEngine
         public StatusTags BlockedTags { get; }
         public PreventStatusApplicationSpec(StatusTags blockedTags)
         {
-            if (blockedTags == StatusTags.None || (blockedTags & ~StatusTags.Control) != 0)
+            if (blockedTags == StatusTags.None || (blockedTags & ~(StatusTags.Control | StatusTags.Negative)) != 0)
                 throw new ArgumentException("Specify supported nonempty status tags.", nameof(blockedTags));
             BlockedTags = blockedTags;
         }
@@ -52,7 +52,7 @@ namespace PokerEngine
         public CombatStatusDefinition(StatusDefinitionId id, StatusTags tags, IEnumerable<StatusBehaviorSpec> behaviors,
             StatusLifetimeSpec defaultLifetime, StatusReapplyPolicy reapplyPolicy = StatusReapplyPolicy.KeepLonger)
         {
-            if (!id.IsValid || (tags & ~StatusTags.Control) != 0 || !Enum.IsDefined(typeof(StatusReapplyPolicy), reapplyPolicy))
+            if (!id.IsValid || (tags & ~(StatusTags.Control | StatusTags.Negative)) != 0 || !Enum.IsDefined(typeof(StatusReapplyPolicy), reapplyPolicy))
                 throw new ArgumentException("Invalid status definition.");
             var copy = Guard.Copy(behaviors, nameof(behaviors));
             if (copy.Any(item => item == null || !(item is BlockActionWindowSpec || item is PreventStatusApplicationSpec ||

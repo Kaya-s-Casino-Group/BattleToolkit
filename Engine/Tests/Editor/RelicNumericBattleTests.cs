@@ -73,10 +73,10 @@ namespace PokerEngine.Tests
             var result = fixture.Act(CardDuelAction.Play, 1, new BattleTargetBindings("default", new[] { B }));
             var fact = result.Events.Single();
             Assert.AreEqual(100, fact.Effect.Amount); Assert.AreEqual(100, result.EffectPlan.Effects.Single().Amount);
-            Assert.AreEqual(160, fact.OutgoingAmountModification.OutputAmount); Assert.AreEqual(160, fact.IncomingAmountModification.InputAmount);
-            Assert.AreEqual(77, fact.SettledAmount); Assert.AreEqual(2, result.State.Duel.Player(A).Energy.Energy);
-            Assert.AreEqual(kind == CombatEffectKind.Damage ? 523 : kind == CombatEffectKind.Heal ? 677 : 600, result.State.Duel.Combat.Get(B).Health);
-            Assert.AreEqual(kind == CombatEffectKind.GainBlock ? 77 : 0, result.State.Duel.Combat.Get(B).Block);
+            Assert.AreEqual(166, fact.OutgoingAmountModification.OutputAmount); Assert.AreEqual(166, fact.IncomingAmountModification.InputAmount);
+            Assert.AreEqual(80, fact.SettledAmount); Assert.AreEqual(2, result.State.Duel.Player(A).Energy.Energy);
+            Assert.AreEqual(kind == CombatEffectKind.Damage ? 520 : kind == CombatEffectKind.Heal ? 680 : 600, result.State.Duel.Combat.Get(B).Health);
+            Assert.AreEqual(kind == CombatEffectKind.GainBlock ? 80 : 0, result.State.Duel.Combat.Get(B).Block);
             Assert.IsTrue(fact.OutgoingAmountModification.Contributions.All(item => item.SourceInstanceId == "a"));
             Assert.IsTrue(fact.IncomingAmountModification.Contributions.All(item => item.SourceInstanceId == "b"));
             Assert.AreEqual(aRuntime, BattleRelicSnapshotCodec.Serialize(result.State.Duel.Player(A).Relics));

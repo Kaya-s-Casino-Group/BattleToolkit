@@ -40,7 +40,7 @@ namespace PokerEngine
         {
             Id = Guard.Text(id, nameof(id)); Target = target ?? throw new ArgumentNullException(nameof(target));
             bool numeric = kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock;
-            if (!numeric && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate ||
+            if (!numeric && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate && kind != CombatEffectKind.Cleanse ||
                 numeric != (amount != null) || (kind == CombatEffectKind.ApplyStatus) != (status != null))
                 throw new ArgumentException("Effect payload does not match its kind.");
             if (status?.Duration != null && status.Duration.Kind != DurationKind.UntilRemoved && status.Duration.Kind != DurationKind.TriggerCount ||
@@ -54,7 +54,8 @@ namespace PokerEngine
             var effect = Kind == CombatEffectKind.Damage ? BattleEffectSpec.Damage(Amount.Resolve(score)) :
                 Kind == CombatEffectKind.Heal ? BattleEffectSpec.Heal(Amount.Resolve(score)) :
                 Kind == CombatEffectKind.GainBlock ? BattleEffectSpec.GainBlock(Amount.Resolve(score)) :
-                Kind == CombatEffectKind.ApplyStatus ? BattleEffectSpec.ApplyStatus(Status) : BattleEffectSpec.Eliminate();
+                Kind == CombatEffectKind.ApplyStatus ? BattleEffectSpec.ApplyStatus(Status) :
+                Kind == CombatEffectKind.Cleanse ? BattleEffectSpec.Cleanse() : BattleEffectSpec.Eliminate();
             return new BattleEffectStep(Id, effect, Target);
         }
     }

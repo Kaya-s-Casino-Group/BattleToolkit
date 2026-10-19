@@ -57,7 +57,7 @@ namespace PokerEngine.Tests
         }
         private static XmlDocument Document()
         { var document = new XmlDocument(); document.LoadXml(ReadProjectFile(ContentPath)); return document; }
-        private static BattleSession Fixture(int kind, string encounter = "single-battle-new", bool twoEnemies = false, int health = 700, bool controller = false, int enemyBlock = 0)
+        private static BattleSession Fixture(int kind, string encounter = "single-battle-new", bool twoEnemies = false, int health = 700, bool controller = false, int enemyBlock = 0, Action<XmlDocument> configure = null)
         {
             var document = Document(); var deck = document.SelectSingleNode("/BattleContent/Decks/Deck[@id='standard-deck']"); deck.RemoveAll();
             ((XmlElement)deck).SetAttribute("id", "standard-deck");
@@ -81,11 +81,41 @@ namespace PokerEngine.Tests
                 definition.InnerXml = "<Effects><Effect id='control' kind='ApplyStatus' statusRef='stun' target='Opponents'/><Effect id='damage' kind='Damage' amount='4' target='Opponents'/></Effects>";
                 document.SelectSingleNode("/BattleContent/Enemies").AppendChild(definition);
             }
+            configure?.Invoke(document);
             var session = Assemble(Compile(document.OuterXml), encounter); Act(session, CardDuelAction.Start); return session;
         }
         private static CardInstanceId[] Selected(BattleSession session) => session.State.Zone(CardZoneKinds.Hand, Player).Cards.Where(id =>
             session.State.Table.GetCard(id).OriginId.StartsWith("selected/", StringComparison.Ordinal)).ToArray();
         private static CardDuelTransition Play(BattleSession session) => Act(session, CardDuelAction.Play, Selected(session)).Steps[0].Transition;
+
+        [Test] public void RealFullHouseCleansesDotsBeforeTheirActionClockAndPreservesBuffsInPreviewAndTimeline()
+        {
+            var session = Fixture(6, configure: document => {
+                var relic = document.CreateElement("Relic"); relic.SetAttribute("id", "starting-statuses");
+                relic.InnerXml = "<BoundaryTrigger id='open' timing='BattleStarted'>" +
+                    "<Effect kind='ApplyStatus' statusRef='bleed' target='Self'/>" +
+                    "<Effect kind='ApplyStatus' statusRef='poison' target='Self'/>" +
+                    "<Effect kind='ApplyStatus' statusRef='shield-reflect' target='Self'/></BoundaryTrigger>";
+                document.SelectSingleNode("/BattleContent/Relics").AppendChild(relic);
+                var binding = document.CreateElement("Relic"); binding.SetAttribute("instanceId", "open"); binding.SetAttribute("ref", "starting-statuses");
+                document.SelectSingleNode("/BattleContent/Loadouts/Loadout[@id='baseline']").AppendChild(binding);
+            });
+            var before = session.State;
+            var preview = session.Engine.PreviewPlay(before, before.Revision, Player, Selected(session));
+            Assert.IsTrue(preview.Accepted, preview.Error.ToString()); Assert.AreSame(before, session.State);
+            Assert.AreEqual(3, before.Duel.Combat.Statuses.Count);
+            var result = Act(session, CardDuelAction.Play, Selected(session));
+            var cleansed = result.Steps.SelectMany(step => step.Transition.RuleEvents).OfType<CombatStatusChangedEvent>().Where(x => x.Reason == CombatStatusChangeReason.Cleansed).ToArray();
+            CollectionAssert.AreEqual(new[] { "bleed", "poison" }, cleansed.Select(x => x.StatusBefore.DefinitionId.Value));
+            Assert.AreEqual(700, session.State.Duel.Combat.Get(Player).Health);
+            CollectionAssert.AreEquivalent(new[] { "shield-reflect", "stun", "control-immunity" }, session.State.Duel.Combat.Statuses.Select(x => x.DefinitionId.Value));
+            CollectionAssert.AreEqual(preview.State.Duel.Combat.Statuses.Select(x => x.Id), session.State.Duel.Combat.Statuses.Select(x => x.Id));
+            var facts = result.Timeline.Where(x => x.RuleEvent is CombatStatusChangedEvent change && change.Reason == CombatStatusChangeReason.Cleansed).ToArray();
+            Assert.AreEqual(2, facts.Length);
+            Assert.IsFalse(facts[0].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "bleed"));
+            Assert.IsTrue(facts[0].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
+            Assert.IsFalse(facts[1].State.Duel.Combat.Statuses.Any(x => x.DefinitionId.Value == "poison"));
+        }
 
         [Test] public void RealSceneContentCompilesAndCreatesAnUnstartedIndependentBaseline()
         {
@@ -169,7 +199,7 @@ namespace PokerEngine.Tests
         {
             var session = Fixture(6, twoEnemies: true, controller: true); var primary = Play(session);
             Assert.AreEqual(HandCategory.FullHouse, primary.Score.Category); Assert.IsEmpty(primary.Events);
-            Assert.IsTrue(primary.EffectPlan.Effects.All(effect => effect.Kind == CombatEffectKind.ApplyStatus));
+            CollectionAssert.AreEqual(new[] { CombatEffectKind.ApplyStatus, CombatEffectKind.Cleanse, CombatEffectKind.ApplyStatus }, primary.EffectPlan.Effects.Select(effect => effect.Kind));
             var immunity = session.State.Duel.Combat.Statuses.Single(status => status.DefinitionId.Value == "control-immunity");
             Assert.AreEqual(DurationKind.UntilPhaseEnd, immunity.Duration.Kind); Assert.AreEqual(BattleStatusTiming.EnemyPhase, immunity.Duration.PhaseKey);
             var round = Act(session, CardDuelAction.EndTurn); var events = round.Steps.SelectMany(step => step.Transition.RuleEvents).ToArray();

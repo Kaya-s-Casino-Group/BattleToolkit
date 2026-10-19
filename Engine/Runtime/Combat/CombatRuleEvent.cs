@@ -29,7 +29,7 @@ namespace PokerEngine
             : base(revision, index, effect, sequenceIndex, provenance) { }
     }
 
-    public enum CombatStatusChangeReason { Refreshed = 1, Consumed = 2, Expired = 3 }
+    public enum CombatStatusChangeReason { Refreshed = 1, Consumed = 2, Expired = 3, Cleansed = 4 }
     public sealed class CombatStatusChangedEvent : CombatRuleEvent
     {
         public StatusInstance StatusBefore { get; }

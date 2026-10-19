@@ -175,7 +175,7 @@ namespace PokerEngine
                     spec.Operation == RelicNumericOperation.AddFlat ? (long)spec.Value : 0,
                     spec.Operation == RelicNumericOperation.AddRate ? spec.Value : 0));
             }
-            return new CombatAmountModification(query.BaseAmount, contributions);
+            return new CombatAmountModification(query.BaseAmount, contributions, sequential: true);
         }
     }
 

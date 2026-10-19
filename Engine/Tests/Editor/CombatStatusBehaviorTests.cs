@@ -34,8 +34,8 @@ namespace PokerEngine.Tests
             Assert.AreEqual(StatusReapplyPolicy.KeepLonger, definition.ReapplyPolicy);
             Assert.Throws<NotSupportedException>(() => ((IList<StatusBehaviorSpec>)definition.Behaviors).Clear());
             Assert.Throws<ArgumentException>(() => new PreventStatusApplicationSpec(StatusTags.None));
-            Assert.Throws<ArgumentException>(() => new PreventStatusApplicationSpec((StatusTags)2));
-            Assert.Throws<ArgumentException>(() => new CombatStatusDefinition(definition.Id, (StatusTags)2, list, StatusLifetimeSpec.UntilRemoved()));
+            Assert.Throws<ArgumentException>(() => new PreventStatusApplicationSpec((StatusTags)4));
+            Assert.Throws<ArgumentException>(() => new CombatStatusDefinition(definition.Id, (StatusTags)4, list, StatusLifetimeSpec.UntilRemoved()));
             Assert.Throws<ArgumentException>(() => new CombatStatusDefinition(definition.Id, StatusTags.None,
                 new StatusBehaviorSpec[] { new UnknownBehavior() }, StatusLifetimeSpec.UntilRemoved()));
             Assert.Throws<ArgumentException>(() => new CombatStatusDefinition(definition.Id, StatusTags.None,

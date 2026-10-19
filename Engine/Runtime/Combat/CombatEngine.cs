@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CombatEffectKind { Damage = 1, Heal = 2, GainBlock = 3, ClearBlock = 4, ApplyStatus = 5, Eliminate = 6 }
+    public enum CombatEffectKind { Damage = 1, Heal = 2, GainBlock = 3, ClearBlock = 4, ApplyStatus = 5, Eliminate = 6, Cleanse = 7 }
     public enum CombatError { None, InvalidState, StaleRevision, InvalidEffect, Overflow, InvalidDamageModifier, InvalidReaction, ReactionLimitExceeded, InvalidAmountModifier }
 
     /// <summary>Authority-resolved effect, not a player command. The mode validates action costs, targets and amounts first.</summary>
@@ -21,7 +21,7 @@ namespace PokerEngine
         public CombatEffect(CombatEffectKind kind, ParticipantId source, ParticipantId target, long amount = 0, DamageModification attackModification = null, AttackContext attack = null, StatusInstance status = null)
         {
             if (!Enum.IsDefined(typeof(CombatEffectKind), kind) || !source.IsValid || !target.IsValid || amount < 0 ||
-                (kind == CombatEffectKind.ClearBlock || kind == CombatEffectKind.ApplyStatus || kind == CombatEffectKind.Eliminate) && amount != 0)
+                (kind == CombatEffectKind.ClearBlock || kind == CombatEffectKind.ApplyStatus || kind == CombatEffectKind.Eliminate || kind == CombatEffectKind.Cleanse) && amount != 0)
                 throw new ArgumentException("Invalid combat effect.");
             if ((kind == CombatEffectKind.ApplyStatus) != (status != null))
                 throw new ArgumentException("Only ApplyStatus requires a status payload.");
@@ -45,6 +45,7 @@ namespace PokerEngine
                 throw new ArgumentException("Combat status effects require participant references.");
             return new CombatEffect(CombatEffectKind.ApplyStatus, new ParticipantId(status.Source.Id), new ParticipantId(status.Target.Id), status: status);
         }
+        public static CombatEffect Cleanse(ParticipantId source, ParticipantId target) => new CombatEffect(CombatEffectKind.Cleanse, source, target);
         public static CombatEffect Eliminate(ParticipantId source, ParticipantId target) => new CombatEffect(CombatEffectKind.Eliminate, source, target);
     }
     public sealed class CombatEvent : CombatRuleEvent
@@ -102,7 +103,7 @@ namespace PokerEngine
     /// <summary>Shared deterministic authority resolver. No turn, AI, card score, faction targeting or reward policy.</summary>
     public static class CombatEngine
     {
-        public const string RulesVersion = "combat.8";
+        public const string RulesVersion = "combat.9";
         public static CombatTransition Resolve(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects, IIncomingDamageModifier incomingDamage = null,
             CombatStatusCatalog statusCatalog = null, ICombatReactionProvider reactionProvider = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null)
@@ -280,10 +281,13 @@ namespace PokerEngine
                                 ValidateStatus(effect.Status, state, unitIds);
                                 CombatStatusRules.Apply(state, statuses, effect, statusCatalog, revision, effectIndex, events, provenance);
                                 break;
+                            case CombatEffectKind.Cleanse:
+                                CombatStatusRules.Cleanse(statuses, effect, statusCatalog, revision, effectIndex, events, provenance);
+                                break;
                             case CombatEffectKind.Eliminate: health = 0; break;
                             default: throw new ArgumentException("Unknown combat effect.");
                         }
-                        if (effect.Kind != CombatEffectKind.ApplyStatus)
+                        if (effect.Kind != CombatEffectKind.ApplyStatus && effect.Kind != CombatEffectKind.Cleanse)
                         {
                             var after = before.WithVitals(health, block); units[after.Id] = after;
                             events.Add(new CombatEvent(revision, effectIndex, effect, before, after, absorbed, overkill, incoming, events.Count, provenance,

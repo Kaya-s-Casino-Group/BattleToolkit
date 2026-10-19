@@ -6,7 +6,7 @@ namespace PokerEngine
     /// <summary>Stable base-step names, independent of sequence positions and configured hit count.</summary>
     public static class PokerHandEffectSteps
     {
-        public const string Heal = "heal", Stun = "stun", ControlImmunity = "control-immunity", Eliminate = "eliminate";
+        public const string Cleanse = "cleanse", Heal = "heal", Stun = "stun", ControlImmunity = "control-immunity", Eliminate = "eliminate";
         public static string DamageHit(int number)
         {
             if (number < 1 || number > 64) throw new ArgumentOutOfRangeException(nameof(number));
@@ -58,9 +58,10 @@ namespace PokerEngine
                     });
             }
             if (category == HandCategory.FullHouse)
-                return new BattleEffectSequence(Version, "葫芦：单体眩晕与自身提前免控", new[] {
+                return new BattleEffectSequence(Version, "葫芦：单体眩晕、自身净化与免控", new[] {
                     new BattleEffectStep(PokerHandEffectSteps.Stun, BattleEffectSpec.ApplyStatus(new StatusApplicationSpec(Profile.StunStatusId, 1,
                         StatusDuration.ForTriggers(Profile.StunActionWindows))), SingleTarget),
+                    new BattleEffectStep(PokerHandEffectSteps.Cleanse, BattleEffectSpec.Cleanse(), EffectTargetSpec.Self()),
                     new BattleEffectStep(PokerHandEffectSteps.ControlImmunity, BattleEffectSpec.ApplyStatus(StatusApplicationSpec.WithLifetime(Profile.ControlImmunityStatusId,
                         Profile.ControlImmunityLifetime)), EffectTargetSpec.Self())
                 });

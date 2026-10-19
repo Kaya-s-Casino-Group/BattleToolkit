@@ -134,7 +134,7 @@ namespace PokerEngine.Tests
             var f = new RelicTriggerTestData.Fixture(new[] { RelicActionTestData.Gear(new[] {
                 RelicActionTestData.Action("z"), RelicActionTestData.Action("a"), RelicActionTestData.Action("first", priority: -1) },
                 new RelicTriggerBudgetSpec(maxUsesPerRound: 2)) });
-            CollectionAssert.AreEqual(new[] { "first", "a" }, f.Act(CardDuelAction.Play, 1).RelicActivations.Select(x => x.TriggerId));
+            CollectionAssert.AreEqual(new[] { "first", "z" }, f.Act(CardDuelAction.Play, 1).RelicActivations.Select(x => x.TriggerId));
             f.Act(CardDuelAction.CollectPlayed); Assert.IsEmpty(f.Act(CardDuelAction.Play, 1).RelicActivations); f.Act(CardDuelAction.CollectPlayed);
             f.NextRound(); Assert.AreEqual(0, f.Relic().UsesThisRound); Assert.AreEqual(2, f.Act(CardDuelAction.Play, 1).RelicActivations.Count);
         }

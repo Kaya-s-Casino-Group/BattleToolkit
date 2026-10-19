@@ -64,13 +64,13 @@ else
 
 HandRule 中每类 Hand 必须覆盖且不能重叠。同花顺可用单个 Any 分支统一行为，或分别配置 Ordinary/Royal；其他类别只允许 Any。每个分支有 1–64 个步骤，id 只需在本分支唯一，效果顺序影响结算。
 
-Effect.kind 仅允许 Damage、Heal、GainBlock、ApplyStatus、Eliminate。前三者必须显式填写 amount：默认 amountKind=Constant（非负整数），牌型效果另外支持 ScoreTotalScale / ScorePointsScale（非负十进制系数，乘以权威总分/Points 后向下取整、检查溢出）。这是封闭表达式集合，不执行自由公式或代码。ApplyStatus 要求 statusRef，可填 stacks（默认 1）及期限覆盖；Eliminate 不接受数值/状态字段。当前类型无关的字段会报错，而不是读取后忽略。
+Effect.kind 仅允许 Damage、Heal、GainBlock、ApplyStatus、Cleanse、Eliminate。前三者必须显式填写 amount：默认 amountKind=Constant（非负整数），牌型效果另外支持 ScoreTotalScale / ScorePointsScale（非负十进制系数，乘以权威总分/Points 后向下取整、检查溢出）。这是封闭表达式集合，不执行自由公式或代码。ApplyStatus 要求 statusRef，可填 stacks（默认 1）及期限覆盖；Cleanse / Eliminate 不接受数值/状态字段。Cleanse 移除目标的 Negative 或 Control 状态实例，保留增益。当前类型无关的字段会报错，而不是读取后忽略。
 
 主效果目标默认 Opponents/FirstLiving；可选 Self、Opponents、Allies，selection 可选 FirstLiving、LowestHealth、HighestHealth、AllLiving、Requested、ActorPolicy（组合限制复用 EffectTargetSpec）。Requested 可配 requestSlot。AOE 是 selection=AllLiving，与能力类型解耦；Heal 若要治疗自己须明确 target=Self，不按效果类型推测目标。
 
 自动触发使用 CombatTargetSpec，可配置 Self、Opponents、Allies、EventSource、EventTarget、EventActor；后面三者仅在相应事实存在的入口使用。EventActor 仅供行动完成触发；边界没有事件来源/目标，不允许借用。自动触发不接收 Requested/requestSlot。遗物触发目标默认 Self；盾反默认 EventSource、吸血默认 Self、溢出治疗转伤默认 Opponents、周期伤害默认 Self。
 
-Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 为 ActionCompleted（流血）或 PhaseEnding（中毒）。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances。控制免疫是 PreventStatusApplication 的提前状态，不是事后移除眩晕。
+Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 为 ActionCompleted（流血）或 PhaseEnding（中毒）。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances。控制免疫是 PreventStatusApplication 的提前状态；事后移除使用 Cleanse。Status.tags 支持 None、Control、Negative 及逗号组合；未标记 Negative/Control 的状态不会被净化。
 
 ## 遗物四类能力
 
@@ -87,7 +87,7 @@ Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDa
 | ActionTrigger | id/timing；可选 relation/priority/chain/sourcePolicy，子项 Conditions 与 Effect |
 | Budget | 共享 maxUsesPerAction/maxUsesPerRound/maxUsesPerBoundary，chargeCost 默认 1、cooldownRounds 默认 0；每件遗物最多一个 |
 
-Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasStatus、EventStatus、HandIs、SubmittedCardsAtLeast、DiscardedCardsAtLeast。事实时机/行动种类不可提供的条件会拒绝。触发 Effect 不填步骤 id，由触发条目标识；这里仅接受常量。固定修正和百分比修正仍按既有公式 `base × (1 + Σrate) + Σflat`，沿用既有取整与上下限。
+Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasStatus、EventStatus、HandIs、SubmittedCardsAtLeast、DiscardedCardsAtLeast。事实时机/行动种类不可提供的条件会拒绝。触发 Effect 不填步骤 id，由触发条目标识；这里仅接受常量。Numeric 按 Loadout 中遗物的获得顺序、同件内配置顺序逐条计算 `floor(max(0, 当前量 × max(0, 1 + rate) + flat))`，前一步结果参与下一步。触发先按玩家阵容和遗物获得顺序，同件内再按 priority 升序、同优先级按配置顺序；priority 不跨遗物抢占。
 
 结构修正先检查遗物之间替换/目标冲突，再结合实际编成的牌型分支校验：加段数只命中原始及替换后都为 Damage 的步骤，展开结果不能超过 64 步。某个 stepId 在该类别的全部分支均不存在时给出 Warning；允许皇家分支没有普通同花顺的伤害步骤。未装备的遗物不会被任意玩家模板套用。
 
@@ -98,3 +98,5 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 编译结果提供 SchemaVersion、RulesContractVersion、包 Id/Version 和 SHA-256 Fingerprint。指纹忽略注释、排版空白、属性顺序、name/explanation，以及根章节和独立定义排列顺序；保留效果、阵容、牌组、构筑等子项的语义顺序。缺省字段与显式默认值、等值数字的不同写法仍可能产生不同指纹，本期不承诺完全语义归一化。它用于内容包身份，不能替代已有对局快照/绑定指纹；未改动旧存档 schema 或旧绑定算法。
 
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
+
+当前规则契约为 battle-content.2（XML schemaVersion 仍为 1），包含净化与获得顺序结算；旧绑定/规则快照不自动迁移。

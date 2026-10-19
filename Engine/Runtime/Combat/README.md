@@ -53,7 +53,7 @@ ScoredDuelState 组合持有独立的 PlayerTurnState（MaxEnergy / Energy），
 
 主动效果 Outgoing 的 Combat 上下文为批次开始快照，派生效果 Outgoing 与所有 Incoming 使用该条效果结算前的最新状态。现有 IIncomingDamageModifier 在两个新阶段之间执行；既有角色攻方修正仍由 Composition 预先执行。修正器返回 CombatAmountModification，不能修改来源、目标或状态；输入量不匹配或返回 null 报 InvalidAmountModifier，溢出仍报 Overflow，均原子拒绝。
 
-CombatAmountContribution 只保存来源实例/规则条目身份、固定值和百分比，不引用 Relic / Runs。CombatAmountModification 汇总同阶段贡献，计算 `floor(max(0, input × max(0, 1 + sum(rates)) + sum(flats)))`；最多 1024 个唯一来源实例/条目组合，按序数身份归约而不依赖传入顺序。
+CombatAmountContribution 只保存来源实例/规则条目身份、固定值和百分比，不引用 Relic / Runs。CombatAmountModification 汇总同阶段贡献，计算 `floor(max(0, input × max(0, 1 + sum(rates)) + sum(flats)))`；最多 1024 个唯一来源实例/条目组合。默认聚合模式保留原有调用行为；主线遗物传 sequential=true，按传入的获得顺序逐条执行 `floor(max(0, 当前量 × max(0, 1 + rate) + flat))`，每一步检查 long 溢出。贡献列表保留实际顺序，FlatAdjustment/RateAdjustment 仅为贡献总量，Sequential=true 时不能用总量重建最终值。
 
 CombatEvent 保留原 Effect，新增 OutgoingAmountModification / IncomingAmountModification 和 SettledAmount；无贡献时对应记录为 null。伤害的最终承伤读取 SettledDamage；治疗的 HealthRestored 和 Overheal 由 SettledAmount 计算，格挡累加使用 SettledAmount。反应必须读取这些实际事实，不能把请求 Effect.Amount 当成最终结果。修正流程不改变反应次数消耗、派生资格或状态到期策略。Composition 的遗物配置和示例见 [被动数值修正](../../README.md#遗物的被动数值修正)。
 
@@ -184,7 +184,7 @@ var progress = engine.ReadProgress(state);
 
 ## 存档与结果
 
-`ScoredDuelSnapshotCodec` schema v4 保存规则指纹、初始玩家生命、单位状态、玩家能量、完成回合数、阶段、计分与行动账本；反序列化按冻结配置重放行动账本，核对生命/格挡/能量/回合数/阶段/Revision，支持在等待怪物行动时恢复。v4 新增付费弃牌账本、独立最大/初始能量与两类消耗的规则指纹，允许合法的超过上限能量，但仍拒绝伪造能量；规则版本为 combat.8 / scored-duel.4，v1–v3 旧档明确拒绝。combat.3 新增状态施加、消灭和类型化规则事件；combat.4 将已死亡目标改为跳过；combat.5 新增可配置状态行为、重施、消费、精确到期和事件 SequenceIndex；combat.6 新增即时派生队列、因果字段、溢出治疗事实，并将结算中来源死亡改为取消其剩余主动效果；combat.7 接入正式状态触发行为、当前快照目标选择与激活次数消费；combat.8 增加行动／阶段时钟、周期伤害及其生命周期。CombatState 存储形状未变；指纹包含 Combat 版本，因此旧 combat.2–combat.7 快照也明确拒绝。规则或数值变化拒绝旧档；暂不提供迁移或磁盘 I/O。该快照仍不包含 CardDuel 的四牌区和随机状态。
+`ScoredDuelSnapshotCodec` schema v4 保存规则指纹、初始玩家生命、单位状态、玩家能量、完成回合数、阶段、计分与行动账本；反序列化按冻结配置重放行动账本，核对生命/格挡/能量/回合数/阶段/Revision，支持在等待怪物行动时恢复。v4 新增付费弃牌账本、独立最大/初始能量与两类消耗的规则指纹，允许合法的超过上限能量，但仍拒绝伪造能量；规则版本为 combat.9 / scored-duel.4，v1–v3 旧档明确拒绝。combat.3 新增状态施加、消灭和类型化规则事件；combat.4 将已死亡目标改为跳过；combat.5 新增可配置状态行为、重施、消费、精确到期和事件 SequenceIndex；combat.6 新增即时派生队列、因果字段、溢出治疗事实，并将结算中来源死亡改为取消其剩余主动效果；combat.7 接入正式状态触发行为、当前快照目标选择与激活次数消费；combat.8 增加行动／阶段时钟、周期伤害及其生命周期。combat.9 新增 Cleanse 和 Negative 标签。CombatState 存储形状未变；指纹包含 Combat 版本，因此旧 combat.2–combat.8 快照也明确拒绝。规则或数值变化拒绝旧档；暂不提供迁移或磁盘 I/O。该快照仍不包含 CardDuel 的四牌区和随机状态。
 
 `EncounterContext`、`EncounterProgress`、`EncounterResult` 由状态即时投影，不重复存储。生命战的通用参与者描述只包含槽位/阵营，InitialResources 为 null；生命模板与初始生命由 ScoredDuelDefinition / ScoredDuelState 持有。结果包含双方胜负、原因、回合数和最终 Revision；奖励与幂等写回由 Run/宿主管理。
 
@@ -204,3 +204,7 @@ Composition 已新增 CardDuelEngine，把 CardTableState 四牌区与 ScoredDue
 CardDuelEngine.Create 只创建独立牌组与四区（Hand/Played/Discard 为 0），不发牌。首次 CardDuelAction.Start 免费补满 HandSize，HasStarted 置真、Table.Revision 加一，不改变 Duel、能量、动作账本、完成回合或弃牌次数；首回合前拒绝其他命令，重复 Start 拒绝。Unity 在空区绑定后执行 Start，以便开局发牌复用正常展示流程。
 
 发牌策略以 ICardDuelDealPolicy.GetDrawCount(CardDuelDealContext) 注入 CardDuelEngine。四种触发点共用引擎的安全移牌/洗回路径，返回数量必须在 0..MissingCards；策略不修改牌区。CardDuelDealPolicy 允许出牌与弃牌分别选择 AfterAction / NextPlayerTurn，默认出牌延后、弃牌立刻补满。终局不再触发补牌；修改策略后需要创建新战局，CardDuel 完整存档仍未实现。
+
+### 净化
+
+`CombatEffect.Cleanse(source, target)` 在当前批次状态上移除目标全部 Negative 或 Control 状态，需要显式状态目录。Control 自动可净化，其他负面状态用 Negative 标签声明；不会根据定义 ID、来源阵营或行为类型猜测正负。增益和其他单位状态保留。每个被移除实例生成 `CombatStatusChangedEvent(Reason=Cleansed, StatusAfter=null)`，保留效果归因和顺序，不生成生命事件。无匹配状态不生成移除事实，死目标按已有规则跳过；后续非法效果仍回滚整个批次。净化不提供持续免疫，之后仍可重新施加负面状态。

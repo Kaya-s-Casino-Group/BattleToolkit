@@ -45,7 +45,7 @@ namespace PokerEngine.Tests
             CollectionAssert.AreEqual(new[] { "damage/1", "damage/2", "damage/3" }, straight.Steps.Select(step => step.Id));
             CollectionAssert.AreEqual(straight.Steps.Select(step => step.Id), longer.Steps.Take(3).Select(step => step.Id));
             CollectionAssert.AreEqual(new[] { "damage/1", "heal" }, rule.Resolve(RelicHandEffectTestData.Context(HandCategory.Flush)).Steps.Select(step => step.Id));
-            CollectionAssert.AreEqual(new[] { "stun", "control-immunity" }, rule.Resolve(RelicHandEffectTestData.Context(HandCategory.FullHouse)).Steps.Select(step => step.Id));
+            CollectionAssert.AreEqual(new[] { "stun", "cleanse", "control-immunity" }, rule.Resolve(RelicHandEffectTestData.Context(HandCategory.FullHouse)).Steps.Select(step => step.Id));
         }
 
         [Test] public void NamedStepsAreUniqueWhileLegacyUnnamedStepsRemainValid()
@@ -58,7 +58,7 @@ namespace PokerEngine.Tests
             Assert.IsTrue(modified.IsIdentity); Assert.AreSame(original, modified.Output);
         }
 
-        [Test] public void AllFourOperationsComposeOnceAndDoNotDependOnEquipmentOrSpecOrder()
+        [Test] public void AllFourOperationsComposeAndKeepAcquisitionOrderForGeneratedHits()
         {
             var original = Sequence(Hit(), new BattleEffectStep("heal", BattleEffectSpec.Heal(3), EffectTargetSpec.Self()), Hit("last", 5));
             var specs = new[] {
@@ -76,8 +76,10 @@ namespace PokerEngine.Tests
             Assert.AreSame(original.Steps[1], result.Output.Steps[4]); Assert.AreSame(original.Steps[2], result.Output.Steps[5]);
             Assert.AreEqual(CombatEffectKind.GainBlock, result.Output.Steps.Last().Effect.Kind);
             Assert.AreEqual(7, result.Output.Steps.Select(step => step.Id).Distinct().Count());
-            CollectionAssert.AreEqual(result.Output.Steps.Select(step => step.Id), reversed.Output.Steps.Select(step => step.Id));
-            CollectionAssert.AreEqual(result.Changes.Select(change => change.SourceInstanceId + "/" + change.RuleId),
+            CollectionAssert.AreEquivalent(result.Output.Steps.Select(step => step.Id), reversed.Output.Steps.Select(step => step.Id));
+            StringAssert.StartsWith("relic/1:a/", result.Output.Steps[1].Id);
+            StringAssert.StartsWith("relic/1:b/", reversed.Output.Steps[1].Id);
+            CollectionAssert.AreEquivalent(result.Changes.Select(change => change.SourceInstanceId + "/" + change.RuleId),
                 reversed.Changes.Select(change => change.SourceInstanceId + "/" + change.RuleId));
             Assert.AreEqual(10, original.Steps[0].Effect.Amount); Assert.AreEqual(3, original.Steps.Count);
             Assert.AreEqual(original.RuleVersion, result.Output.RuleVersion);
@@ -172,7 +174,7 @@ namespace PokerEngine.Tests
                 new BattleRelicLoadout(RelicHandEffectTestData.Owner, new[] { RelicHandEffectTestData.Gear("r") })));
         }
 
-        [Test] public void NumericOnlyFingerprintMatchesThePreviouslyCommittedImplementation()
+        [Test] public void NumericBindingRejectsSnapshotsFromTheAggregateOrderingContract()
         {
             // Captured by executing fc3bb5d in an isolated temporary checkout, before structural configuration existed.
             var binding = new BattleRelicLoadout(RelicHandEffectTestData.Owner, new[] {
@@ -180,7 +182,10 @@ namespace PokerEngine.Tests
                     new BattleRelicRules("numeric.1", new[] { new RelicNumericModifierSpec("bonus", BattleNumericStat.DamageDealt,
                         RelicNumericOperation.AddFlat, 7, new[] { CombatEffectOrigin.Primary }) }))
             });
-            Assert.AreEqual("5261de8f03eb53d3b510ccab3bd4610b91ac0e634bea5aae8fde4d02db6eacfe", binding.Fingerprint);
+            const string oldFingerprint = "5261de8f03eb53d3b510ccab3bd4610b91ac0e634bea5aae8fde4d02db6eacfe";
+            Assert.AreNotEqual(oldFingerprint, binding.Fingerprint);
+            var old = BattleRelicSnapshotCodec.Serialize(binding).Replace(binding.Fingerprint, oldFingerprint);
+            Assert.Throws<SnapshotException>(() => BattleRelicSnapshotCodec.Deserialize(old, binding));
             Assert.IsEmpty(binding.RulesFor("r").HandEffects);
         }
 
