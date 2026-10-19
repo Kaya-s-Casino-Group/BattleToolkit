@@ -123,3 +123,7 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
 
 当前规则契约为 battle-content.3、Combat 为 combat.10（XML schemaVersion 仍为 1），包含手动摸牌/分阶段弃牌、计分遗物、葫芦分项、叠层流血和逐段转火。旧绑定/规则快照不自动迁移。
+
+## 可配置怪物（battle-content.4）
+
+行为阶段、条件、锁定意图、召唤、生成卡牌和护甲见 [EnemyBehavior.md](EnemyBehavior.md)。旧固定敌人定义保留支持，新模板在 `Engine/Content/Templates/07—09`。

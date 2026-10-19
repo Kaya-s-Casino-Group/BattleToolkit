@@ -13,7 +13,7 @@ namespace PokerEngine
         [DataMember(Order = 4, IsRequired = true)] public CardEffects Effects { get; private set; }
         [DataMember(Order = 5, IsRequired = true)] public bool IsDisabled { get; private set; }
         // These are card-level permissions; the mode still checks turns, selection limits, and budgets.
-        public bool CanPlay => !IsDisabled;
+        public bool CanPlay => !IsDisabled && (Effects & CardEffects.Unplayable) == 0;
         public bool CanDiscard => !IsDisabled;
         public bool CanScore => CardEffectRules.CanScore(Effects);
 

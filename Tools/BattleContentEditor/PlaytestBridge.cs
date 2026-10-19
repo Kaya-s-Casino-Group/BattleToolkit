@@ -14,6 +14,8 @@ internal static partial class PlaytestBridge
     {
         internal string SessionId, RunId, Seed, EncounterId, Fingerprint, XmlHash;
         internal BattleSession Session;
+        // Authoring labels are presentation metadata and are intentionally not part of combat state.
+        internal BattleContentSource ContentSource;
         internal DateTime Touched;
         internal int Commands;
     }
@@ -104,11 +106,11 @@ internal static partial class PlaytestBridge
                 "action", action.ToString(), "actor", actor.Value, "selected", cards.Select(card => card.Value).ToArray(),
                 "legal", result.Accepted, "error", result.Error.ToString(), "message", result.Accepted ? "可以执行" : Error(result.Error),
                 "hand", hand.Accepted ? Hand(hand.Score) : null, "targets", targets, "targetMessage", targetError,
-                "steps", Steps(result, entry.Session.Engine.Duel.Definition.StatusCatalog)));
+                "steps", Steps(result, entry.Session.Engine.Duel.Definition.StatusCatalog, entry)));
         }
         if (!result.Accepted) return Fail(result.Error.ToString(), Error(result.Error), entry);
         var next = Copy(entry, candidate); next.Commands++;
-        var response = D("success", true, "battle", Snapshot(next), "steps", Steps(result, candidate.Engine.Duel.Definition.StatusCatalog));
+        var response = D("success", true, "battle", Snapshot(next), "steps", Steps(result, candidate.Engine.Duel.Definition.StatusCatalog, next));
         // Projection and serialization can fail too; commit only a completely deliverable result.
         Json.Serialize(response);
         Sessions[sessionId] = next;
@@ -136,8 +138,8 @@ internal static partial class PlaytestBridge
         var opening = session.Execute(session.State.Revision, session.State.Duel.PlayerId, CardDuelAction.Start);
         if (!opening.Accepted) return Fail(opening.Error.ToString(), "开局失败：" + Error(opening.Error), previous);
         var next = new Entry { SessionId = sessionId, RunId = Guid.NewGuid().ToString("D"), Seed = seed, EncounterId = encounter,
-            Fingerprint = compiled.Content.Fingerprint, XmlHash = Hash(xml), Session = session, Touched = DateTime.UtcNow };
-        var response = D("success", true, "battle", Snapshot(next), "steps", Steps(opening, session.Engine.Duel.Definition.StatusCatalog));
+            Fingerprint = compiled.Content.Fingerprint, XmlHash = Hash(xml), Session = session, ContentSource = read.Source, Touched = DateTime.UtcNow };
+        var response = D("success", true, "battle", Snapshot(next), "steps", Steps(opening, session.Engine.Duel.Definition.StatusCatalog, next));
         Json.Serialize(response);
         Sessions[sessionId] = next;
         return response;
@@ -145,7 +147,7 @@ internal static partial class PlaytestBridge
 
     private static Entry Copy(Entry entry, BattleSession session) => new Entry { SessionId = entry.SessionId, RunId = entry.RunId,
         Seed = entry.Seed, EncounterId = entry.EncounterId, Fingerprint = entry.Fingerprint, XmlHash = entry.XmlHash,
-        Session = session, Commands = entry.Commands, Touched = DateTime.UtcNow };
+        Session = session, ContentSource = entry.ContentSource, Commands = entry.Commands, Touched = DateTime.UtcNow };
 
     private static object TargetSlots(Entry entry, ParticipantId actor, CardInstanceId[] selected, CardDuelTransition preview)
     {

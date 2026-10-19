@@ -14,7 +14,7 @@ namespace PokerEngine
             return ReadDefinitions(section, "Status", node =>
             {
                 Check(node, new[] { "id", "name", "tags", "lifetime", "count", "phase", "reapply" },
-                    new[] { "BlockActionWindow", "PreventStatusApplication", "ReflectBlockedDamage", "LifeSteal", "OverhealDamage", "PeriodicDamage" });
+                    new[] { "BlockActionWindow", "PreventStatusApplication", "ReflectBlockedDamage", "LifeSteal", "OverhealDamage", "PeriodicDamage", "HitArmor" });
                 var behaviors = node.Children.Select(child => Capture(child, () => ReadStatusBehavior(child))).Where(item => item != null).ToArray();
                 return new CombatStatusDefinition(new StatusDefinitionId(Text(node, "id")), Enum(node, "tags", StatusTags.None), behaviors,
                     ReadLifetime(node, true), Enum(node, "reapply", StatusReapplyPolicy.KeepLonger));
@@ -25,6 +25,9 @@ namespace PokerEngine
         {
             switch (node.Name)
             {
+                case "HitArmor":
+                    Check(node, new[] { "multiplier", "reduction", "consumeStacks", "primaryOnly" }, new string[0]);
+                    return new HitArmorSpec(Decimal(node, "multiplier", 0.5m), Long(node, "reduction", 0), Int(node, "consumeStacks", 1), Bool(node, "primaryOnly", true));
                 case "BlockActionWindow": Check(node, new string[0], new string[0]); return new BlockActionWindowSpec();
                 case "PreventStatusApplication":
                     Check(node, new[] { "tags" }, new string[0]);

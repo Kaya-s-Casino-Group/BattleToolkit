@@ -6,7 +6,8 @@
   "scripts": {
     "test:browser": "node Tools/BattleContentEditor/tests/browser.cjs",
     "test:playtest": "node Tools/BattleContentEditor/tests/playtest-browser.cjs",
-    "test:web": "npm run test:browser && npm run test:playtest"
+    "test:h5": "node Tools/BattleContentEditor/tests/h5-scene-browser.cjs",
+    "test:web": "npm run test:browser && npm run test:playtest && npm run test:h5"
   },
   "devDependencies": {
     "playwright": "1.62.1"

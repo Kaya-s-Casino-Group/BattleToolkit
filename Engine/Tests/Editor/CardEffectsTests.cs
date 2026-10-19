@@ -28,7 +28,7 @@ namespace PokerEngine.Tests
 
         [Test] public void UnknownBitsAreRejectedRatherThanSilentlyChangingRules()
         {
-            foreach (var flags in new[] { (CardEffects)8, (CardEffects)(-1) })
+            foreach (var flags in new[] { (CardEffects)16, (CardEffects)(-1) })
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => new CardInstance(new CardInstanceId("a"), new CardDefinitionId("d"), effects: flags));
                 Assert.Throws<ArgumentOutOfRangeException>(() => new ScoringCard("a", new CardFace(Rank.Ace, Suit.Clubs), effects: flags));

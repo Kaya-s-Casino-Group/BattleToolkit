@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·策划机制基线" version="standard-single-battle.1.1563">
-  <!--策划 revision 1563。开局空手，主动摸牌一次至多5张，3次行动，弃牌防御后结束；踢脚牌仅加筹码。生命、敌伤、未定义牌型及段数为显式测试值。-->
+<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·三种怪物" version="standard-single-battle.2.1563">
+  <!--策划 revision 1563。开局空手，主动摸牌一次至多5张，3次行动，弃牌防御后结束；踢脚牌仅加筹码。三个默认怪物共用标准玩家和卡组；生命、敌伤、未定义牌型及段数为显式测试值。-->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -51,6 +51,9 @@
     </Status>
     <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
       <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+    <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
+      <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
     </Status>
   </Statuses>
   <HandRules>
@@ -125,7 +128,66 @@
     <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" manualDraw="true" openingDeal="false" drawCount="5" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="true" overflowTriggersDefense="false" kickerScoring="ChipsOnly" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" />
   </Players>
   <Enemies>
-    <Enemy id="guardian" name="守卫·基础数值占位" maxHealth="1200" initialBlock="0" damage="240" />
+    <Enemy id="rotator" name="轮换小怪" maxHealth="600">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="jab" name="试探攻击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="40" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="重击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="70" />
+            </Effects>
+          </Action>
+          <Action id="guard" name="防御">
+            <Effects>
+              <Effect id="block" kind="GainBlock" amount="90" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="summoner" name="护甲召唤精英" maxHealth="1800">
+      <Behavior>
+        <OpeningEffects>
+          <Effect id="armor" kind="ApplyStatus" statusRef="layer-armor" stacks="3" target="Self" />
+        </OpeningEffects>
+        <Stage id="normal" mode="Priority">
+          <Action id="summon" name="召唤护卫" cooldownRounds="1">
+            <When kind="AlliesBelow" value="2" />
+            <Summon enemyRef="rotator" count="2" livingLimit="3" />
+          </Action>
+          <Action id="strike" name="震击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="90" target="Opponents" selection="AllLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="gluttony" name="暴食Boss" maxHealth="2400">
+      <Behavior seed="17">
+        <Stage id="hungry" mode="Sequence">
+          <When kind="HealthAtMost" value="0.5" />
+          <Action id="devour" name="暴食：重击并塞入三张废牌">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="120" />
+            </Effects>
+            <AddCards face="standard:1:2" count="3" zone="discard" disabled="false" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+        <Stage id="normal" mode="Sequence">
+          <Action id="pollute" name="吞食：攻击并塞入一张废牌">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="60" />
+            </Effects>
+            <AddCards face="standard:1:2" count="1" zone="discard" disabled="false" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
   </Enemies>
   <Decks>
     <Deck id="standard-deck" name="标准52张牌">
@@ -187,9 +249,17 @@
     <Loadout id="baseline" name="标准初始构筑·无遗物" deckRef="standard-deck" />
   </Loadouts>
   <Encounters>
-    <Encounter id="standard-single-battle" name="标准单对局" rulesRef="single-battle-rules">
+    <Encounter id="standard-single-battle" name="轮换小怪 · 标准单对局" rulesRef="single-battle-rules">
       <Player id="player" ref="hero" loadoutRef="baseline" />
-      <Enemy id="enemy" ref="guardian" />
+      <Enemy id="enemy" ref="rotator" />
+    </Encounter>
+    <Encounter id="standard-armored-summoner" name="护甲召唤精英 · 标准单对局" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="summoner" />
+    </Encounter>
+    <Encounter id="standard-gluttony-boss" name="暴食Boss · 标准单对局" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="gluttony" />
     </Encounter>
   </Encounters>
 </BattleContent>

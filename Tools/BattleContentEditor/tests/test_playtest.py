@@ -109,6 +109,203 @@ class PlaytestTests(unittest.TestCase):
         result.pop('runId', None)
         return result
 
+    def test_enemy_behavior_templates_expose_world_effect_intents(self):
+        for file, word in [('07_RotationGrunt', '试探'), ('08_ArmoredSummoner', '召唤'), ('09_GluttonyBoss', '吞食')]:
+            with self.subTest(file=file):
+                xml = (server_module.ROOT / ('Engine/Content/Templates/' + file + '.xml')).read_text(encoding='utf-8')
+                battle = self.start(xml, encounter=file)['battle']
+                self.assertIn(word, ' '.join(battle['enemies'][0]['intent']))
+                result = self.action(battle, 'EndTurn')
+                after = self.assert_success(result)
+                if file == '08_ArmoredSummoner':
+                    self.assertEqual(3, len(after['enemies']))
+                    self.assertEqual('800', after['players'][0]['health'])
+                    self.assertIn('护甲召唤精英：召唤 轮换小怪 × 2（下个敌方回合行动）',
+                                  [line for step in result['steps'] for line in step['lines']])
+                if file == '09_GluttonyBoss':
+                    self.assertEqual(1, after['players'][0]['discardCount'])
+                    self.assertIn('暴食Boss：生成废牌 × 1，塞入 玩家 的弃牌堆',
+                                  [line for step in result['steps'] for line in step['lines']])
+
+    def test_world_effect_logs_use_actual_counts_and_card_zones(self):
+        template = (server_module.ROOT / 'Engine/Content/Templates/08_ArmoredSummoner.xml').read_text(encoding='utf-8')
+        for limit, expected in [(1, 0), (2, 1)]:
+            xml = changed_xml(template, lambda root: root.find('.//Summon').set('livingLimit', str(limit)))
+            battle = self.start(xml, encounter='08_ArmoredSummoner')['battle']
+            result = self.action(battle, 'EndTurn')
+            after = self.assert_success(result)
+            self.assertEqual(1 + expected, len(after['enemies']))
+            lines = [line for step in result['steps'] for line in step['lines'] if '：召唤 ' in line]
+            self.assertEqual(expected, len(lines))
+            if expected:
+                self.assertIn('召唤 轮换小怪 × 1', lines[0])
+        template = (server_module.ROOT / 'Engine/Content/Templates/09_GluttonyBoss.xml').read_text(encoding='utf-8')
+
+        def edit(root):
+            for effect in root.findall('.//AddCards'):
+                effect.set('zone', 'deck')
+                effect.set('count', '3')
+
+        battle = self.start(changed_xml(template, edit), encounter='09_GluttonyBoss')['battle']
+        result = self.action(battle, 'EndTurn')
+        after = self.assert_success(result)
+        self.assertEqual(battle['players'][0]['deckCount'] + 3, after['players'][0]['deckCount'])
+        self.assertIn('暴食Boss：生成废牌 × 3，塞入 玩家 的牌堆',
+                      [line for step in result['steps'] for line in step['lines']])
+        pile = after['players'][0]['piles']['deck']
+        self.assertEqual(after['players'][0]['deckCount'], pile['count'])
+        self.assertEqual(3, pile['unplayableCount'])
+        self.assertEqual([3], [card['count'] for card in pile['cards'] if not card['canPlay']])
+        self.assertEqual([{'actor': battle['enemies'][0]['id'], 'owner': battle['players'][0]['id'],
+                           'zone': 'deck', 'count': 3, 'unplayableCount': 3}],
+                         [fact for step in result['steps'] for fact in step['cardCreations']])
+
+    def test_standard_boss_piles_aggregate_junk_and_report_committed_creations(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        battle = self.start(xml, encounter='standard-gluttony-boss')['battle']
+        self.assertEqual({'count': 0, 'unplayableCount': 0, 'cards': []}, battle['players'][0]['piles']['discard'])
+        for expected in (1, 2):
+            if battle['players'][0]['window'] == 'Draw':
+                battle = self.assert_success(self.action(battle, 'Draw', drawCount=1))
+            result = self.action(battle, 'EndTurn')
+            after = self.assert_success(result)
+            player = after['players'][0]
+            pile = player['piles']['discard']
+            self.assertEqual(expected, player['discardCount'])
+            self.assertEqual(expected, pile['count'])
+            self.assertEqual(expected, pile['unplayableCount'])
+            self.assertEqual(1, len(pile['cards']))
+            junk = pile['cards'][0]
+            self.assertEqual(expected, junk['count'])
+            self.assertFalse(junk['canPlay'])
+            self.assertTrue(junk['canDiscard'])
+            self.assertFalse(junk['disabled'])
+            self.assertIn('Unplayable', junk['effects'])
+            self.assertNotIn('id', junk)
+            self.assertEqual(0, player['piles']['deck']['unplayableCount'])
+            self.assertEqual([{'actor': battle['enemies'][0]['id'], 'owner': player['id'],
+                               'zone': 'discard', 'count': 1, 'unplayableCount': 1}],
+                             [fact for step in result['steps'] for fact in step['cardCreations']])
+            battle = after
+
+    def test_pile_composition_is_sorted_without_instance_ids_or_draw_order(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        first = self.start(xml, encounter='standard-gluttony-boss', seed='pile-a', draw=False)['battle']
+        second = self.start(xml, encounter='standard-gluttony-boss', seed='pile-b', draw=False)['battle']
+        pile = first['players'][0]['piles']['deck']
+        self.assertEqual(pile, second['players'][0]['piles']['deck'])
+        self.assertEqual(52, pile['count'])
+        self.assertEqual(0, pile['unplayableCount'])
+        self.assertEqual(52, len(pile['cards']))
+        for card in pile['cards']:
+            self.assertEqual({'label', 'rank', 'suit', 'disabled', 'canPlay', 'canDiscard', 'effects', 'count'}, set(card))
+            self.assertEqual(1, card['count'])
+
+    def test_previewed_junk_creation_does_not_change_piles(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        battle = self.start(xml, encounter='standard-gluttony-boss')['battle']
+        # Stop in the ending window so previewing FinishTurn includes the enemy's actual planned settlement.
+        _, result = self.request({'op': 'command', 'sessionId': battle['sessionId'], 'runId': battle['runId'],
+            'revision': battle['revision'], 'actor': battle['players'][0]['id'], 'action': 'EndTurn', 'selected': []})
+        ending = self.assert_success(result)
+        self.assertEqual('Ending', ending['players'][0]['window'])
+        preview = self.action(ending, 'FinishTurn', op='preview')
+        self.assertTrue(preview['preview']['legal'])
+        self.assertEqual([{'actor': ending['enemies'][0]['id'], 'owner': ending['players'][0]['id'],
+                           'zone': 'discard', 'count': 1, 'unplayableCount': 1}],
+                         [fact for step in preview['preview']['steps'] for fact in step['cardCreations']])
+        self.assertEqual(ending, preview['battle'])
+        self.assertEqual(ending, self.state(ending))
+        committed = self.assert_success(self.action(ending, 'FinishTurn'))
+        self.assertEqual(1, committed['players'][0]['piles']['discard']['unplayableCount'])
+
+    def test_presentation_labels_statuses_and_relics_come_from_frozen_content(self):
+        template = (server_module.ROOT / 'Engine/Content/Templates/08_ArmoredSummoner.xml').read_text(encoding='utf-8')
+
+        def edit(root):
+            root.find("Players/Player[@id='hero']").set('name', '旅人甲')
+            root.find("Enemies/Enemy[@id='summoner']").set('name', '改名召唤者')
+            root.find("Enemies/Enemy[@id='rotator']").set('name', '纸片护卫')
+            root.find("Relics/Relic[@id='straight-dot']").set('name', '红色护符')
+            ET.SubElement(root.find('Loadouts/Loadout'), 'Relic', {'instanceId': 'equipped-token', 'ref': 'straight-dot', 'level': '1'})
+            ET.SubElement(root.find("Enemies/Enemy[@id='summoner']/Behavior/OpeningEffects"), 'Effect',
+                          {'id': 'opening-bleed', 'kind': 'ApplyStatus', 'statusRef': 'bleed', 'target': 'Self', 'stacks': '2'})
+
+        battle = self.start(changed_xml(template, edit), encounter='08_ArmoredSummoner')['battle']
+        player, enemy = battle['players'][0], battle['enemies'][0]
+        self.assertEqual(('hero', '旅人甲'), (player['definitionId'], player['displayName']))
+        self.assertEqual(('summoner', '改名召唤者'), (enemy['definitionId'], enemy['displayName']))
+        self.assertNotEqual(enemy['id'], enemy['definitionId'])
+        armor = next(status for status in enemy['statuses'] if status['definitionId'] == 'layer-armor')
+        bleed = next(status for status in enemy['statuses'] if status['definitionId'] == 'bleed')
+        self.assertEqual(['HitArmor'], armor['behaviorKeys'])
+        self.assertFalse(armor['isNegative'])
+        self.assertIn('Negative', bleed['tags'])
+        self.assertEqual(['PeriodicDamage'], bleed['behaviorKeys'])
+        self.assertTrue(bleed['isNegative'])
+        self.assertEqual('红色护符', player['relics'][0]['displayName'])
+        self.assertEqual('straight-dot', player['relics'][0]['definitionId'])
+        self.assertIn('施加状态', player['relics'][0]['description'])
+        intent = enemy['intentMeta']
+        self.assertEqual(('summon', '召唤护卫', 'normal'), (intent['actionId'], intent['name'], intent['stageId']))
+        self.assertTrue(intent['available'])
+        self.assertFalse(intent['skipped'])
+        self.assertEqual(('Summon', 2, 'rotator', '纸片护卫'),
+                         tuple(intent['worldEffects'][0][key] for key in ('kind', 'count', 'enemyRef', 'displayName')))
+        self.assertEqual(battle, self.state(battle))
+        after = self.assert_success(self.action(battle, 'EndTurn'))
+        summons = [unit for unit in after['enemies'] if unit['definitionId'] == 'rotator']
+        self.assertEqual(2, len(summons))
+        self.assertTrue(all(unit['displayName'] == '纸片护卫' for unit in summons))
+        self.assertEqual('红色护符', after['players'][0]['relics'][0]['displayName'])
+
+    def test_standard_pack_and_small_assets_are_served_without_exposing_other_files(self):
+        with urllib.request.urlopen(self.base + '/api/standard', timeout=30) as response:
+            root = ET.fromstring(response.read())
+            self.assertEqual('application/xml', response.headers.get_content_type())
+            self.assertEqual({'standard-single-battle', 'standard-armored-summoner', 'standard-gluttony-boss'},
+                             {node.get('id') for node in root.findall('Encounters/Encounter')})
+        folder = server_module.HERE / 'web' / 'assets'
+        folder.mkdir(exist_ok=True)
+        prefix = 'http-test-' + uuid.uuid4().hex
+        files = []
+        try:
+            for extension, body, expected_type in [('.png', b'\x89PNG\r\n\x1a\n', 'image/png'),
+                    ('.svg', b'<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/svg+xml')]:
+                path = folder / (prefix + extension)
+                files.append(path)
+                path.write_bytes(body)
+                with urllib.request.urlopen(self.base + '/assets/' + path.name, timeout=30) as response:
+                    self.assertEqual(body, response.read())
+                    self.assertEqual(expected_type, response.headers.get_content_type())
+                    self.assertEqual('nosniff', response.headers['X-Content-Type-Options'])
+                    self.assertEqual('no-store', response.headers['Cache-Control'])
+            large = folder / (prefix + '.webp')
+            files.append(large)
+            large.write_bytes(b'x' * (server_module.MAX_ASSET_BYTES + 1))
+            unsupported = folder / (prefix + '.txt')
+            files.append(unsupported)
+            unsupported.write_text('not an image', encoding='utf-8')
+            paths = ['/assets/' + large.name, '/assets/' + unsupported.name, '/assets/../server.py',
+                     '/assets/%2e%2e/server.py', '/assets/subfolder/test.png', '/assets/.hidden.png']
+            with tempfile.TemporaryDirectory() as temporary:
+                external = Path(temporary) / 'private.png'
+                external.write_bytes(b'outside the web folder')
+                link = folder / (prefix + '-linked.png')
+                try:
+                    link.symlink_to(external)
+                    files.append(link)
+                    paths.append('/assets/' + link.name)
+                except OSError:
+                    pass  # Windows may require a privilege for test symlinks.
+                for route in paths:
+                    with self.subTest(route=route), self.assertRaises(urllib.error.HTTPError) as caught:
+                        urllib.request.urlopen(self.base + route, timeout=30)
+                    self.assertEqual(404, caught.exception.code)
+        finally:
+            for path in files:
+                path.unlink(missing_ok=True)
+
     def test_manual_draw_skip_and_overflow_commands_are_transactional(self):
         def edit(root):
             hand = root.find("HandRules/HandRule/Hand[@category='HighCard']")

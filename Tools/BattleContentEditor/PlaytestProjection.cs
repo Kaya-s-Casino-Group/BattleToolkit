@@ -18,7 +18,7 @@ internal static partial class PlaytestBridge
             "outcome", duel.Phase == ScoredDuelPhase.Won ? "胜利" : duel.Phase == ScoredDuelPhase.Lost ? "失败" : "进行中",
             "actors", duel.Players.Where(player => duel.HasPlayerWindow(player.Id)).Select(player => player.Id.Value).ToArray(),
             "players", duel.Players.Select(player => {
-                var unit = Unit(duel, player.Id, catalog);
+                var unit = Unit(entry, duel, player.Id, catalog, "Players");
                 unit["energy"] = player.Energy.Energy; unit["maxEnergy"] = player.Energy.MaxEnergy;
                 unit["handLimit"] = player.Limits.HandLimit.Value; unit["discardsRemaining"] = state.RemainingDiscardBudgetFor(player.Id);
                 unit["manualDraw"] = player.Rules.Flow.ManualDraw;
@@ -33,43 +33,121 @@ internal static partial class PlaytestBridge
                 unit["costs"] = D("play", entry.Session.Engine.Duel.QueryActionCost(duel, player.Id, ScoredDuelActionKind.ScoredHand).Cost,
                     "discard", entry.Session.Engine.Duel.QueryActionCost(duel, player.Id, ScoredDuelActionKind.Discard).Cost);
                 unit["relics"] = player.Relics.Relics.Select(relic => D("id", relic.InstanceId, "name", relic.DefinitionId,
+                    "definitionId", relic.DefinitionId, "displayName", ContentName(entry, "Relics", relic.DefinitionId),
+                    "description", RelicDescription(ContentNode(entry, "Relics", relic.DefinitionId)),
                     "level", relic.Level, "charges", relic.RemainingCharges, "cooldown", relic.CooldownRounds, "usesThisRound", relic.UsesThisRound)).ToArray();
                 unit["hand"] = state.Zone(CardZoneKinds.Hand, player.Id).Cards.Select(id => {
                     var card = state.Table.GetCard(id); var face = entry.Session.Engine.Face(card);
                     return D("id", id.Value, "rank", face.Rank.ToString(), "suit", face.Suit.ToString(),
-                        "label", SuitLabel(face.Suit) + RankLabel(face.Rank), "disabled", card.IsDisabled, "effects", card.Effects.ToString());
+                        "label", SuitLabel(face.Suit) + RankLabel(face.Rank), "disabled", card.IsDisabled, "canPlay", card.CanPlay, "canDiscard", card.CanDiscard, "effects", card.Effects.ToString());
                 }).ToArray();
                 unit["deckCount"] = state.Zone(CardZoneKinds.Deck, player.Id).Cards.Count;
                 unit["discardCount"] = state.Zone(CardZoneKinds.Discard, player.Id).Cards.Count;
+                unit["piles"] = D("deck", Pile(entry, state, player.Id, CardZoneKinds.Deck),
+                    "discard", Pile(entry, state, player.Id, CardZoneKinds.Discard));
                 return unit;
             }).ToArray(),
             "enemies", duel.Enemies.Select(enemy => {
-                var unit = Unit(duel, enemy.Id, catalog);
+                var unit = Unit(entry, duel, enemy.Id, catalog, "Enemies");
                 var intent = entry.Session.Engine.Duel.PreviewEnemyAction(duel, enemy.Id);
+                var planned = enemy.BehaviorState.Intent;
+                var active = intent != null && intent.Accepted && !intent.IsSkipped;
+                var hits = active ? intent.Hits.Where(hit => hit.Effect.Source == enemy.Id &&
+                    (hit.Provenance == null || hit.Provenance.Origin == CombatEffectOrigin.Primary)).ToArray() : Array.Empty<CombatEvent>();
+                unit["intentMeta"] = D("actionId", planned?.Id, "name", planned?.Name ?? (active ? "行动" : "等待"),
+                    "stageId", enemy.BehaviorState.StageId, "available", intent?.Accepted ?? false, "skipped", intent?.IsSkipped ?? false,
+                    "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,
+                    "worldEffects", (active ? planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>() : Array.Empty<EnemyWorldEffect>())
+                        .Select(effect => D("kind", effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
+                            "enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone)).ToArray());
                 unit["intent"] = intent == null ? new string[0] : intent.Accepted ? EventLines(intent.RuleEvents, duel, catalog).ToArray() : new[] { "意图暂不可预览：" + Error(intent.Error) };
+                if (enemy.Behavior != null && intent != null && intent.Accepted && !intent.IsSkipped)
+                {
+                    unit["intent"] = new[] { planned?.Name ?? "等待" }.Concat((string[])unit["intent"])
+                        .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + e.Zone)).ToArray();
+                }
                 return unit;
             }).ToArray());
     }
 
-    private static Dictionary<string, object> Unit(TeamBattleState state, ParticipantId id, CombatStatusCatalog catalog)
+    private static object Pile(Entry entry, CardDuelState state, ParticipantId owner, string zone)
+    {
+        var cards = state.Zone(zone, owner).Cards.Select(id => state.Table.GetCard(id)).ToArray();
+        // Summarize composition without exposing instance IDs or the shuffled draw order.
+        var groups = cards.GroupBy(card => {
+            var face = entry.Session.Engine.Face(card);
+            return new { face.Rank, face.Suit, card.Effects, card.IsDisabled, card.CanPlay, card.CanDiscard };
+        }).OrderBy(group => group.Key.Rank).ThenBy(group => group.Key.Suit).ThenBy(group => group.Key.Effects)
+            .ThenBy(group => group.Key.IsDisabled).ThenBy(group => group.Key.CanPlay).ThenBy(group => group.Key.CanDiscard);
+        return D("count", cards.Length, "unplayableCount", cards.Count(card => !card.CanPlay),
+            "cards", groups.Select(group => D("label", SuitLabel(group.Key.Suit) + RankLabel(group.Key.Rank),
+                "rank", group.Key.Rank.ToString(), "suit", group.Key.Suit.ToString(),
+                "disabled", group.Key.IsDisabled, "canPlay", group.Key.CanPlay, "canDiscard", group.Key.CanDiscard,
+                "effects", group.Key.Effects.ToString(), "count", group.Count())).ToArray());
+    }
+
+    private static Dictionary<string, object> Unit(Entry entry, TeamBattleState state, ParticipantId id, CombatStatusCatalog catalog, string section)
     {
         var unit = state.Combat.Get(id);
         return D("id", id.Value, "name", Name(state, id), "health", Number(unit.Health), "maxHealth", Number(unit.MaxHealth),
+            "definitionId", unit.DefinitionId, "displayName", ContentName(entry, section, unit.DefinitionId),
             "block", Number(unit.Block), "alive", unit.IsAlive,
             "statuses", state.Combat.Statuses.Where(status => status.Target.Kind == EntityKind.Participant && status.Target.Id == id.Value)
-                .Select(status => D("id", status.Id.Value, "definitionId", status.DefinitionId.Value, "name", StatusName(status.DefinitionId, catalog),
-                    "stacks", status.Stacks, "duration", Duration(status.Duration))).ToArray());
+                .Select(status => {
+                    var definition = catalog?.Find(status.DefinitionId);
+                    var tags = definition?.Tags ?? StatusTags.None;
+                    return D("id", status.Id.Value, "definitionId", status.DefinitionId.Value, "name", StatusName(status.DefinitionId, catalog),
+                        "displayName", ContentName(entry, "Statuses", status.DefinitionId.Value),
+                        "tags", Enum.GetValues(typeof(StatusTags)).Cast<StatusTags>().Where(tag => tag != StatusTags.None && (tags & tag) == tag).Select(tag => tag.ToString()).ToArray(),
+                        "behaviorKeys", (definition?.Behaviors ?? Array.Empty<StatusBehaviorSpec>()).Select(behavior => behavior.GetType().Name.Replace("Spec", "")).ToArray(),
+                        "isNegative", (tags & StatusTags.Negative) != 0 || (definition?.Behaviors.Any(behavior => behavior is BlockActionWindowSpec) ?? false),
+                        "stacks", status.Stacks, "duration", Duration(status.Duration));
+                }).ToArray());
+    }
+
+    private static BattleContentNode ContentNode(Entry entry, string section, string id) => entry.ContentSource?.Root.Children
+        .FirstOrDefault(node => node.Name == section)?.Children.FirstOrDefault(node => Attribute(node, "id") == id);
+    private static string Attribute(BattleContentNode node, string key, string fallback = "") =>
+        node != null && node.Attributes.TryGetValue(key, out var value) ? value : fallback;
+    private static string ContentName(Entry entry, string section, string id) => Attribute(ContentNode(entry, section, id), "name", id);
+    private static string RelicDescription(BattleContentNode node)
+    {
+        if (node == null) return "";
+        var labels = new Dictionary<string, string> {
+            { "Score", "计分修正" }, { "Numeric", "战斗数值修正" }, { "HandModifier", "牌型效果" }, { "RuleValue", "行动规则修正" },
+            { "Refill", "补牌效果" }, { "FactTrigger", "战斗事件触发" }, { "BoundaryTrigger", "阶段触发" }, { "ActionTrigger", "行动触发" }
+        };
+        return string.Join("；", node.Children.Where(child => labels.ContainsKey(child.Name)).Select(child => {
+            var effects = Descendants(child).Where(effect => effect.Name == "Effect").Select(effect => EffectLabel(Attribute(effect, "kind"))).Distinct().ToArray();
+            return labels[child.Name] + (effects.Length == 0 ? "" : "：" + string.Join("、", effects));
+        }).Distinct());
+    }
+    private static IEnumerable<BattleContentNode> Descendants(BattleContentNode node) => node.Children.SelectMany(child => new[] { child }.Concat(Descendants(child)));
+    private static string EffectLabel(string kind)
+    {
+        switch (kind)
+        {
+            case "Damage": return "伤害";
+            case "Heal": return "治疗";
+            case "GainBlock": return "护盾";
+            case "ApplyStatus": return "施加状态";
+            case "DrawCards": return "摸牌";
+            case "Cleanse": return "净化";
+            case "Eliminate": return "消灭";
+            default: return kind;
+        }
     }
 
     private static object Hand(ScoreResult score) => D("category", score.Category.ToString(), "label", HandName(score.Category),
         "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints), "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
 
-    private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog) => result.Steps.Select(step => {
+    private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog, Entry entry) => result.Steps.Select(step => {
         var transition = step.Transition; var lines = new List<string>();
         if (transition.Score != null) lines.Add(HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
             " × 倍率 " + transition.Score.Multiplier.ToString(CultureInfo.InvariantCulture) + " = 牌型得分 " + Number(transition.Score.Total));
         if (transition.ActionCost != null) lines.Add("消耗能量 " + transition.ActionCost.Cost);
         lines.AddRange(EventLines(transition.RuleEvents, step.Before.Duel, catalog));
+        lines.AddRange(WorldEffectLines(transition.Timeline, entry));
         foreach (var activation in transition.RelicActivations)
             lines.Add("遗物触发：" + activation.Before.DefinitionId + " / " + activation.TriggerId);
         foreach (var draw in transition.Draws.Where(draw => draw.DrawnCount > 0))
@@ -84,8 +162,42 @@ internal static partial class PlaytestBridge
         if (step.Action == CardDuelAction.CollectPlayed) lines.Add("已打出的牌进入弃牌堆");
         if (lines.Count == 0) lines.Add("结算完成");
         return (object)D("action", step.Action.ToString(), "actor", step.Actor.Value, "title", Name(step.Before.Duel, step.Actor) + " · " + ActionName(step.Action),
-            "revision", Number(transition.State.Revision), "lines", lines.ToArray());
+            "revision", Number(transition.State.Revision), "lines", lines.ToArray(),
+            "cardCreations", transition.Timeline.Where(fact => fact.Kind == BattleTimelineKind.CardsCreated)
+                .Select(fact => D("actor", fact.Actor.Value, "owner", fact.CardOwner.Value, "zone", fact.ToZone,
+                    "count", fact.Cards.Count, "unplayableCount", fact.Cards.Count(id => !fact.State.Table.GetCard(id).CanPlay))).ToArray());
     }).ToArray();
+
+    private static IEnumerable<string> WorldEffectLines(IEnumerable<BattleTimelineEntry> timeline, Entry entry)
+    {
+        // Read committed facts, not the intended effect: living limits and card capacity can reduce counts.
+        var facts = timeline.Where(fact => fact.Kind == BattleTimelineKind.EnemySummoned || fact.Kind == BattleTimelineKind.CardsCreated).ToArray();
+        for (int index = 0; index < facts.Length; index++)
+        {
+            var fact = facts[index];
+            string owner = DisplayName(entry, fact.State.Duel, fact.Actor);
+            if (fact.Kind == BattleTimelineKind.EnemySummoned)
+            {
+                string definition = fact.State.Duel.Combat.Get(new ParticipantId(fact.Reason)).DefinitionId;
+                int count = 1;
+                while (index + 1 < facts.Length && facts[index + 1].Kind == BattleTimelineKind.EnemySummoned &&
+                    facts[index + 1].Actor == fact.Actor &&
+                    facts[index + 1].State.Duel.Combat.Get(new ParticipantId(facts[index + 1].Reason)).DefinitionId == definition)
+                { count++; index++; }
+                yield return owner + "：召唤 " + ContentName(entry, "Enemies", definition) + " × " + count + "（下个敌方回合行动）";
+            }
+            else
+            {
+                bool unplayable = fact.Cards.All(id => (fact.State.Table.GetCard(id).Effects & CardEffects.Unplayable) != 0);
+                string zone = fact.ToZone == CardZoneKinds.Deck ? "牌堆" : fact.ToZone == CardZoneKinds.Discard ? "弃牌堆" : fact.ToZone;
+                yield return owner + "：生成" + (unplayable ? "废牌" : "卡牌") + " × " + fact.Cards.Count + "，塞入 " +
+                    DisplayName(entry, fact.State.Duel, fact.CardOwner) + " 的" + zone;
+            }
+        }
+    }
+
+    private static string DisplayName(Entry entry, TeamBattleState state, ParticipantId id) => ContentName(entry,
+        state.Players.Any(player => player.Id == id) ? "Players" : "Enemies", state.Combat.Get(id).DefinitionId);
 
     private static IEnumerable<string> EventLines(IEnumerable<CombatRuleEvent> events, TeamBattleState names, CombatStatusCatalog catalog)
     {
@@ -150,6 +262,7 @@ internal static partial class PlaytestBridge
         if (behavior is ReflectBlockedDamageSpec) return "盾反 " + Ratio(((ReflectBlockedDamageSpec)behavior).Ratio);
         if (behavior is LifeStealSpec) return "吸血 " + Ratio(((LifeStealSpec)behavior).Ratio);
         if (behavior is OverhealDamageSpec) return "溢出治疗转伤 " + Ratio(((OverhealDamageSpec)behavior).Ratio);
+        if (behavior is HitArmorSpec armor) return "护甲 · 承伤 " + Ratio(armor.Multiplier) + " · 每击消耗 " + armor.ConsumeStacks + " 层";
         var periodic = behavior as PeriodicDamageSpec;
         if (periodic != null) return (periodic.Timing == CombatTimingKind.ActionCompleted ? "行动后" : "阶段结束时") + Number(periodic.DamagePerStack) + " 伤害/层";
         return "状态效果";

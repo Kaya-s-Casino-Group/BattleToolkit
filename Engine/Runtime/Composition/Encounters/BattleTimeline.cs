@@ -10,7 +10,7 @@ namespace PokerEngine
         BattleStarted, PhaseStarted, ActionStarted, ActionSkipped, HandEvaluated,
         ActionCostSettled, ResourcesChanged, EffectSettled, StatusChanged, RelicActivated,
         RuleTiming, CardsMoved, DeckRecycled, CardsDealt, ActionResolved,
-        PhaseEnding, PhaseEnded, PhaseClosed, BattleEnded
+        PhaseEnding, PhaseEnded, PhaseClosed, BattleEnded, EnemySummoned, CardsCreated
     }
 
     /// <summary>

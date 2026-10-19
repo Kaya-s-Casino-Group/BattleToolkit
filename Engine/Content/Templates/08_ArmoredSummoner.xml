@@ -1,0 +1,235 @@
+<?xml version='1.0' encoding='utf-8'?>
+<BattleContent schemaVersion="1" id="08_ArmoredSummoner" name="护甲召唤精英·行为验证模板" version="enemy-behavior.1">
+  <ScoringProfiles>
+    <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="Straight" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
+      <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
+      <CardPoints>
+        <Rank rank="Two" points="2" />
+        <Rank rank="Three" points="3" />
+        <Rank rank="Four" points="4" />
+        <Rank rank="Five" points="5" />
+        <Rank rank="Six" points="6" />
+        <Rank rank="Seven" points="7" />
+        <Rank rank="Eight" points="8" />
+        <Rank rank="Nine" points="9" />
+        <Rank rank="Ten" points="10" />
+        <Rank rank="Jack" points="10" />
+        <Rank rank="Queen" points="10" />
+        <Rank rank="King" points="10" />
+        <Rank rank="Ace" points="11" />
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <BattleRules>
+    <Rules id="single-battle-rules" name="标准单局规则·20回合上限为占位" scoringRef="single-battle-score" roundLimit="20" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" />
+  </BattleRules>
+  <Statuses>
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
+      <BlockActionWindow />
+    </Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
+      <PreventStatusApplication tags="Control" />
+    </Status>
+    <Status id="bleed" tags="Negative" name="流血·回合开始按层数伤害并减一层" lifetime="UntilRemoved" reapply="AddStacks">
+      <PeriodicDamage timing="TurnStarted" amount="1" target="Self" stackDecay="1" />
+    </Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
+      <ReflectBlockedDamage ratio="1" target="EventSource" />
+    </Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved">
+      <OverhealDamage ratio="1" target="Opponents" selection="FirstLiving" />
+    </Status>
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
+      <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+    <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
+      <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
+    </Status>
+  </Statuses>
+  <HandRules>
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.1">
+      <Hand category="HighCard">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="OnePair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="TwoPair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="ThreeOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/1/bleed" kind="ApplyStatus" statusRef="bleed" stacks="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/2" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/2/bleed" kind="ApplyStatus" statusRef="bleed" stacks="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/3" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+        <Effect id="damage/3/bleed" kind="ApplyStatus" statusRef="bleed" stacks="1" target="Opponents" selection="ActorPolicy" retargetChain="straight" />
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+        <Effect id="heal" kind="Heal" amountKind="ScorePointsScale" amount="1" target="Self" />
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="damage/triple" kind="Damage" amountKind="ThreeOfAKindTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+        <Effect id="damage/pair" kind="Damage" amountKind="OnePairTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="ActorPolicy" />
+        <Effect id="cleanse" kind="Cleanse" target="Self" />
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
+      </Hand>
+      <Hand category="FourOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Ordinary">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Royal">
+        <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="FiveOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+    </HandRule>
+  </HandRules>
+  <Relics>
+    <Relic id="straight-dot" name="模板·顺子额外流血" version="straight-dot.template.1">
+      <FactTrigger id="bleed-per-hit" timing="DamageSettled" relation="OwnerIsSource" occurrence="PerEvent" origins="Primary">
+        <Conditions>
+          <HandIs category="Straight" />
+        </Conditions>
+        <Effect kind="ApplyStatus" statusRef="bleed" target="EventTarget" stacks="1" />
+      </FactTrigger>
+    </Relic>
+    <Relic id="discard-reflect" name="模板·弃牌盾反" version="discard-reflect.template.1">
+      <BoundaryTrigger id="opening-reflect" timing="BattleStarted">
+        <Effect kind="ApplyStatus" statusRef="shield-reflect" target="Self" />
+      </BoundaryTrigger>
+    </Relic>
+    <Relic id="flush-overheal" name="模板·同花治疗与溢疗转伤" version="flush-overheal.template.1">
+      <Numeric id="flush-heal-rate" stat="HealingDone" operation="AddRate" value="0.5" origins="Primary" hand="Flush" />
+      <BoundaryTrigger id="opening-overheal" timing="BattleStarted">
+        <Effect kind="ApplyStatus" statusRef="overheal-damage" target="Self" />
+      </BoundaryTrigger>
+    </Relic>
+  </Relics>
+  <Players>
+    <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" manualDraw="true" openingDeal="false" drawCount="5" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="true" overflowTriggersDefense="false" kickerScoring="ChipsOnly" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" />
+  </Players>
+  <Enemies>
+    <Enemy id="rotator" name="轮换小怪" maxHealth="600">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="jab" name="试探攻击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="40" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="重击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="70" />
+            </Effects>
+          </Action>
+          <Action id="guard" name="防御">
+            <Effects>
+              <Effect id="block" kind="GainBlock" amount="90" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="summoner" name="护甲召唤精英" maxHealth="1800">
+      <Behavior>
+        <OpeningEffects>
+          <Effect id="armor" kind="ApplyStatus" statusRef="layer-armor" stacks="3" target="Self" />
+        </OpeningEffects>
+        <Stage id="normal" mode="Priority">
+          <Action id="summon" name="召唤护卫" cooldownRounds="1">
+            <When kind="AlliesBelow" value="2" />
+            <Summon enemyRef="rotator" count="2" livingLimit="3" />
+          </Action>
+          <Action id="strike" name="震击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="90" target="Opponents" selection="AllLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+  </Enemies>
+  <Decks>
+    <Deck id="standard-deck" name="标准52张牌">
+      <Card id="standard-1-2" face="standard:1:2" />
+      <Card id="standard-1-3" face="standard:1:3" />
+      <Card id="standard-1-4" face="standard:1:4" />
+      <Card id="standard-1-5" face="standard:1:5" />
+      <Card id="standard-1-6" face="standard:1:6" />
+      <Card id="standard-1-7" face="standard:1:7" />
+      <Card id="standard-1-8" face="standard:1:8" />
+      <Card id="standard-1-9" face="standard:1:9" />
+      <Card id="standard-1-10" face="standard:1:10" />
+      <Card id="standard-1-11" face="standard:1:11" />
+      <Card id="standard-1-12" face="standard:1:12" />
+      <Card id="standard-1-13" face="standard:1:13" />
+      <Card id="standard-1-14" face="standard:1:14" />
+      <Card id="standard-2-2" face="standard:2:2" />
+      <Card id="standard-2-3" face="standard:2:3" />
+      <Card id="standard-2-4" face="standard:2:4" />
+      <Card id="standard-2-5" face="standard:2:5" />
+      <Card id="standard-2-6" face="standard:2:6" />
+      <Card id="standard-2-7" face="standard:2:7" />
+      <Card id="standard-2-8" face="standard:2:8" />
+      <Card id="standard-2-9" face="standard:2:9" />
+      <Card id="standard-2-10" face="standard:2:10" />
+      <Card id="standard-2-11" face="standard:2:11" />
+      <Card id="standard-2-12" face="standard:2:12" />
+      <Card id="standard-2-13" face="standard:2:13" />
+      <Card id="standard-2-14" face="standard:2:14" />
+      <Card id="standard-3-2" face="standard:3:2" />
+      <Card id="standard-3-3" face="standard:3:3" />
+      <Card id="standard-3-4" face="standard:3:4" />
+      <Card id="standard-3-5" face="standard:3:5" />
+      <Card id="standard-3-6" face="standard:3:6" />
+      <Card id="standard-3-7" face="standard:3:7" />
+      <Card id="standard-3-8" face="standard:3:8" />
+      <Card id="standard-3-9" face="standard:3:9" />
+      <Card id="standard-3-10" face="standard:3:10" />
+      <Card id="standard-3-11" face="standard:3:11" />
+      <Card id="standard-3-12" face="standard:3:12" />
+      <Card id="standard-3-13" face="standard:3:13" />
+      <Card id="standard-3-14" face="standard:3:14" />
+      <Card id="standard-4-2" face="standard:4:2" />
+      <Card id="standard-4-3" face="standard:4:3" />
+      <Card id="standard-4-4" face="standard:4:4" />
+      <Card id="standard-4-5" face="standard:4:5" />
+      <Card id="standard-4-6" face="standard:4:6" />
+      <Card id="standard-4-7" face="standard:4:7" />
+      <Card id="standard-4-8" face="standard:4:8" />
+      <Card id="standard-4-9" face="standard:4:9" />
+      <Card id="standard-4-10" face="standard:4:10" />
+      <Card id="standard-4-11" face="standard:4:11" />
+      <Card id="standard-4-12" face="standard:4:12" />
+      <Card id="standard-4-13" face="standard:4:13" />
+      <Card id="standard-4-14" face="standard:4:14" />
+    </Deck>
+  </Decks>
+  <Loadouts>
+    <Loadout id="baseline" name="标准初始构筑·无遗物" deckRef="standard-deck" />
+  </Loadouts>
+  <Encounters>
+    <Encounter id="08_ArmoredSummoner" name="护甲召唤精英" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="summoner" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

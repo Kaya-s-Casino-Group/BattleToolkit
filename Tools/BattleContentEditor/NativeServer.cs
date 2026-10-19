@@ -28,6 +28,7 @@ internal static class NativeServer
     private const string Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
     private const int MaxBody = 4 * 1024 * 1024;
     private const int MaxPlaytestBody = 8 * 1024 * 1024;
+    private const int MaxAssetBytes = 512 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly JsonSerializerOptions WorkerJson = new JsonSerializerOptions
     { MaxDepth = 100, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -192,8 +193,15 @@ internal static class NativeServer
                     await FileReply(context, Path.Combine(root, "Engine", "Runtime", "Composition", "Content", "Examples", "battle-content.xml"), "application/xml");
                     return;
                 }
+                if (path == "/api/standard")
+                {
+                    await FileReply(context, Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), "application/xml");
+                    return;
+                }
                 if (Files.TryGetValue(path, out var file))
                 { await FileReply(context, Path.Combine(root, "Tools", "BattleContentEditor", "web", file.File), file.Mime); return; }
+                if (TryAsset(root, path, out string asset, out string assetMime))
+                { await FileReply(context, asset, assetMime); return; }
                 await Reply(context, 404, new { error = "未找到页面。" }); return;
             }
             if (!HttpMethods.IsPost(context.Request.Method))
@@ -254,9 +262,31 @@ internal static class NativeServer
     private static async Task FileReply(HttpContext context, string file, string mime)
     {
         byte[] bytes = await File.ReadAllBytesAsync(file, context.RequestAborted);
-        context.Response.ContentType = mime + "; charset=utf-8";
+        context.Response.ContentType = mime.StartsWith("image/", StringComparison.Ordinal) && mime != "image/svg+xml" ? mime : mime + "; charset=utf-8";
         context.Response.ContentLength = bytes.Length;
         await context.Response.Body.WriteAsync(bytes.AsMemory(), context.RequestAborted);
+    }
+
+    private static bool TryAsset(string root, string path, out string asset, out string mime)
+    {
+        asset = null; mime = null;
+        if (!path.StartsWith("/assets/", StringComparison.Ordinal)) return false;
+        string name = path.Substring("/assets/".Length);
+        // Only small top-level presentation images: no nested paths, hidden files, or links outside the tool.
+        if (name.Length == 0 || name.Length > 128 || name[0] == '.' ||
+            name.Any(character => !(char.IsAsciiLetterOrDigit(character) || character == '.' || character == '-' || character == '_'))) return false;
+        switch (Path.GetExtension(name).ToLowerInvariant())
+        {
+            case ".svg": mime = "image/svg+xml"; break;
+            case ".png": mime = "image/png"; break;
+            case ".webp": mime = "image/webp"; break;
+            case ".jpg": case ".jpeg": mime = "image/jpeg"; break;
+            default: return false;
+        }
+        string folder = Path.Combine(root, "Tools", "BattleContentEditor", "web", "assets");
+        asset = Path.Combine(folder, name);
+        return Directory.Exists(folder) && (File.GetAttributes(folder) & FileAttributes.ReparsePoint) == 0 &&
+            File.Exists(asset) && (File.GetAttributes(asset) & FileAttributes.ReparsePoint) == 0 && new FileInfo(asset).Length <= MaxAssetBytes;
     }
 
     // Rules execute in separate processes so a pathological configuration cannot pin the web host.

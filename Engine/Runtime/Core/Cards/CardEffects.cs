@@ -9,12 +9,13 @@ namespace PokerEngine
         None = 0,
         Enhanced = 1 << 0,
         Laminated = 1 << 1,
-        Ineffective = 1 << 2
+        Ineffective = 1 << 2,
+        Unplayable = 1 << 3
     }
 
     public static class CardEffectRules
     {
-        private const CardEffects Known = CardEffects.Enhanced | CardEffects.Laminated | CardEffects.Ineffective;
+        private const CardEffects Known = CardEffects.Enhanced | CardEffects.Laminated | CardEffects.Ineffective | CardEffects.Unplayable;
         public static bool IsValid(CardEffects effects) => (effects & ~Known) == 0;
         public static void Validate(CardEffects effects)
         {

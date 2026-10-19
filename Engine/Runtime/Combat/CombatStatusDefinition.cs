@@ -29,6 +29,19 @@ namespace PokerEngine
     }
 
     public abstract class StatusBehaviorSpec { protected StatusBehaviorSpec() { } }
+    /// <summary>Each eligible positive damage hit consumes layers even when block absorbs all damage.</summary>
+    public sealed class HitArmorSpec : StatusBehaviorSpec
+    {
+        public decimal Multiplier { get; }
+        public long Reduction { get; }
+        public int ConsumeStacks { get; }
+        public bool PrimaryOnly { get; }
+        public HitArmorSpec(decimal multiplier = 0.5m, long reduction = 0, int consumeStacks = 1, bool primaryOnly = true)
+        {
+            if (multiplier < 0 || multiplier > 1 || reduction < 0 || consumeStacks < 1) throw new ArgumentException("Invalid hit armor.");
+            Multiplier = multiplier; Reduction = reduction; ConsumeStacks = consumeStacks; PrimaryOnly = primaryOnly;
+        }
+    }
     public sealed class BlockActionWindowSpec : StatusBehaviorSpec { }
     public sealed class PreventStatusApplicationSpec : StatusBehaviorSpec
     {
@@ -56,7 +69,7 @@ namespace PokerEngine
                 throw new ArgumentException("Invalid status definition.");
             var copy = Guard.Copy(behaviors, nameof(behaviors));
             if (copy.Any(item => item == null || !(item is BlockActionWindowSpec || item is PreventStatusApplicationSpec ||
-                item is ReflectBlockedDamageSpec || item is LifeStealSpec || item is OverhealDamageSpec || item is PeriodicDamageSpec)) ||
+                item is ReflectBlockedDamageSpec || item is LifeStealSpec || item is OverhealDamageSpec || item is PeriodicDamageSpec || item is HitArmorSpec)) ||
                 copy.Select(item => item.GetType()).Distinct().Count() != copy.Length)
                 throw new ArgumentException("Status behaviors must have distinct supported types.", nameof(behaviors));
             Id = id; Tags = tags; Behaviors = Guard.View(copy);
@@ -65,6 +78,7 @@ namespace PokerEngine
         }
         internal void ValidateTriggerBudget(bool hasTriggerBudget)
         {
+            if (hasTriggerBudget && Behaviors.OfType<HitArmorSpec>().Any()) throw new ArgumentException("Hit armor consumes stacks, not trigger budgets.");
             if (hasTriggerBudget && Behaviors.OfType<PeriodicDamageSpec>().Any(p => p.StackDecay > 0))
                 throw new ArgumentException("Choose stack decay or a trigger budget for periodic damage, not both.");
             if (hasTriggerBudget && Behaviors.Count > 1)

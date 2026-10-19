@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import queue
@@ -17,6 +18,23 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 MAX_BODY = 4 * 1024 * 1024  # UTF-8 transport limit; reader additionally limits characters.
 MAX_PLAYTEST_BODY = 8 * 1024 * 1024  # JSON escaping adds overhead to XML.
+MAX_ASSET_BYTES = 512 * 1024
+ASSET_MIMES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+
+
+def presentation_asset(route):
+    """Only serve small top-level image files in this tool's assets folder."""
+    if not route.startswith('/assets/'):
+        return None
+    name = route[len('/assets/'):]
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', name):
+        return None
+    folder = HERE / 'web' / 'assets'
+    path = folder / name
+    mime = ASSET_MIMES.get(path.suffix.lower())
+    if mime and not folder.is_symlink() and path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_ASSET_BYTES:
+        return path, mime
+    return None
 
 
 def dotnet_runtime():
@@ -139,7 +157,7 @@ def make_server(compiler, port=18765):
         def reply(self, code, data, content_type='application/json'):
             body = json.dumps(data, ensure_ascii=False).encode('utf-8') if content_type == 'application/json' else data
             self.send_response(code)
-            self.send_header('Content-Type', content_type + '; charset=utf-8')
+            self.send_header('Content-Type', content_type if content_type.startswith('image/') and content_type != 'image/svg+xml' else content_type + '; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
@@ -159,9 +177,16 @@ def make_server(compiler, port=18765):
             if route == '/api/example':
                 path = ROOT / 'Engine/Runtime/Composition/Content/Examples/battle-content.xml'
                 self.reply(200, path.read_bytes(), 'application/xml'); return
+            if route == '/api/standard':
+                path = ROOT / 'Engine/Content/StandardSingleBattle.xml'
+                self.reply(200, path.read_bytes(), 'application/xml'); return
             if route in files:
                 filename, mime = files[route]
                 self.reply(200, (HERE / 'web' / filename).read_bytes(), mime); return
+            asset = presentation_asset(route)
+            if asset:
+                path, mime = asset
+                self.reply(200, path.read_bytes(), mime); return
             self.reply(404, {'error': '未找到页面。'})
 
         def do_POST(self):

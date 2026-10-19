@@ -57,6 +57,9 @@ namespace PokerEngine
             });
             var players = ReadPlayers(section("Players"), hands);
             var enemies = ReadEnemies(section("Enemies"));
+            foreach (var enemy in enemies.Values)
+                foreach (var summon in (enemy.Behavior?.Stages.SelectMany(s => s.Actions).SelectMany(a => a.WorldEffects) ?? Enumerable.Empty<EnemyWorldEffect>()).Where(e => e.EnemyRef != null))
+                    Reference(section("Enemies"), "enemyRef", summon.EnemyRef, enemies);
             var decks = ReadDecks(section("Decks"));
             var loadouts = ReadLoadouts(section("Loadouts"), relics, decks);
             var locations = new Dictionary<string, BattleSourceLocation>(StringComparer.Ordinal);

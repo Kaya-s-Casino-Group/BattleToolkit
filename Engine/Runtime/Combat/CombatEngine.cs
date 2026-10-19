@@ -105,7 +105,7 @@ namespace PokerEngine
     /// <summary>Shared deterministic authority resolver. No turn, AI, card score, faction targeting or reward policy.</summary>
     public static class CombatEngine
     {
-        public const string RulesVersion = "combat.10";
+        public const string RulesVersion = "combat.11";
         public static CombatTransition Resolve(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects, IIncomingDamageModifier incomingDamage = null,
             CombatStatusCatalog statusCatalog = null, ICombatReactionProvider reactionProvider = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null)
@@ -297,6 +297,19 @@ namespace PokerEngine
                                         effect.Source, effect.Target, settledAmount, effect.Attack,
                                         provenance.SourcePolicy == CombatReactionSourcePolicy.AllowDefeated)), settledAmount, effect.Attack);
                                     settledAmount = incoming.OutputAmount;
+                                    if (effect.Amount > 0 && statusCatalog != null)
+                                        foreach (var armor in statuses.Where(s => CombatStatusRules.Targets(s, effect.Target)).ToArray())
+                                        {
+                                            var spec = statusCatalog.Get(armor.DefinitionId).Behaviors.OfType<HitArmorSpec>().SingleOrDefault();
+                                            if (spec == null || spec.PrimaryOnly && provenance.Origin != CombatEffectOrigin.Primary) continue;
+                                            settledAmount = Math.Max(0, checked((long)decimal.Floor(settledAmount * spec.Multiplier)) - spec.Reduction);
+                                            incoming = new DamageModification("incoming.hit-armor.1", "护甲减伤并消耗层数", incoming.InputAmount, settledAmount, incoming.Triggers);
+                                            int remainingStacks = Math.Max(0, armor.Stacks - spec.ConsumeStacks);
+                                            var afterArmor = remainingStacks == 0 ? null : new StatusInstance(armor.Id, armor.DefinitionId, armor.Source, armor.Target, remainingStacks, armor.Duration);
+                                            int armorIndex = statuses.IndexOf(armor);
+                                            if (afterArmor == null) statuses.RemoveAt(armorIndex); else statuses[armorIndex] = afterArmor;
+                                            events.Add(new CombatStatusChangedEvent(revision, effectIndex, events.Count, effect, armor, afterArmor, CombatStatusChangeReason.Consumed, provenance: provenance));
+                                        }
                                 }
                                 catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidDamageModifier); }
                             }

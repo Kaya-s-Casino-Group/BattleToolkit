@@ -74,8 +74,8 @@ function renderNode(node,host,depth){
  for(const child of node.children){if(node===doc.documentElement&&sections.some(s=>s[0]===child.tagName))continue;if(!spec.children.includes(child.tagName))body.append(el('div','unknown','保留的子项 '+child.tagName+' 不适用于当前选项，可检查后移除。'));renderNode(child,body,depth+1);}
  const choices=spec.children.filter(name=>!exclusiveChildren.has(name)||![...node.children].some(c=>c.tagName===name));
  if(choices.length){const row=el('div','add-row');const pick=el('select');pick.setAttribute('aria-label','添加子项类型 '+path);for(const name of choices)pick.append(new Option(tr(name),name));row.append(pick,btn('+ 添加',async()=>{
-  if(node.tagName==='Enemy'&&pick.value==='Effects'&&node.hasAttribute('damage')&&!await confirmDialog('切换敌人行动方式','改用效果列表后，将移除固定 damage='+node.getAttribute('damage')+'。可以撤销此修改。'))return;
-  mutate(()=>{if(node.tagName==='Enemy'&&pick.value==='Effects')node.removeAttribute('damage');const n=addChild(doc,node,pick.value);if(n.tagName==='Effects')addChild(doc,n,'Effect');expanded.add(pathOf(n));});
+  if(node.tagName==='Enemy'&&['Effects','Behavior'].includes(pick.value)&&(node.hasAttribute('damage')||node.querySelector('Behavior,Effects'))&&!await confirmDialog('切换敌人行动方式','将替换当前敌人行动配置。可以撤销此修改。'))return;
+  mutate(()=>{if(node.tagName==='Enemy'&&['Effects','Behavior'].includes(pick.value)){node.removeAttribute('damage');for(const c of [...node.children])if(['Effects','Behavior'].includes(c.tagName))c.remove();}const n=addChild(doc,node,pick.value);if(n.tagName==='Effects')addChild(doc,n,'Effect');expanded.add(pathOf(n));});
  }));body.append(row);}
  if(depth>0){const controls=el('div','node-controls');const prev=node.previousElementSibling,next=node.nextElementSibling;const up=btn('↑ 上移',()=>mutate(()=>node.parentElement.insertBefore(node,prev)));up.disabled=!prev;const down=btn('↓ 下移',()=>mutate(()=>node.parentElement.insertBefore(next,node)));down.disabled=!next;controls.append(up,down,btn('移除',async()=>{if(await confirmDialog('移除'+tr(node.tagName),'将移除此项及其子项，可通过撤销恢复。'+(stepUses(node).length?' 可能影响遗物条目：'+stepUses(node).join('、'):'')))mutate(()=>node.remove());},'danger'));body.append(controls);}
 }
@@ -175,7 +175,7 @@ async function importXml(xml,{confirm=true,pending=null}={}){
  }finally{importing=false;renderSummary();}
 }
 function bind(){
- playtest=createPlaytest($('playtest-view'),{getConfig:()=>({xml:snapshot(),sourceDirty,importing,encounters:definitions(doc,'Encounters').map(node=>({id:node.getAttribute('id')||'',name:label(node)}))}),getToken:()=>token});
+ playtest=createPlaytest($('playtest-view'),{getConfig:()=>({xml:snapshot(),sourceDirty,importing,encounters:definitions(doc,'Encounters').map(node=>({id:node.getAttribute('id')||'',name:label(node)}))}),getToken:()=>token,onLoadStandard:async()=>{const response=await fetch('/api/standard');if(!response.ok)throw new Error('标准对局加载失败');if(await importXml(await response.text())){playtestMode=true;xmlMode=false;render();}}});
  $('playtest-tab').onclick=()=>{playtestMode=true;render();};
  $('search').addEventListener('input',renderNavigation);$('pack-settings').onclick=()=>{selected=doc.documentElement;section=null;xmlMode=false;playtestMode=false;render();};
  $('save').onclick=()=>saveDraft(true);$('validate').onclick=()=>validate().catch(e=>notify(e.message));$('export').onclick=()=>validate(true).catch(e=>notify(e.message));
@@ -199,6 +199,7 @@ async function boot(){
  const response=await fetch('/api/bootstrap');if(!response.ok)throw new Error('无法连接本机配置服务');const config=await response.json();token=config.token;initialize(config.metadata);
  doc=parse('<BattleContent schemaVersion="1" id="new-content" version="1" name="新内容包"/>');bind();render();$('connection').textContent='● C# 校验器已连接';
  let saved;try{saved=localStorage.getItem(DRAFT_KEY);}catch{notify('浏览器存储不可用，请使用下载草稿备份。');}
+ if(!saved){const version=revision,generation=loadGeneration;try{const standard=await fetch('/api/standard');if(standard.ok){const xml=await standard.text();if(revision===version&&loadGeneration===generation&&!sourceDirty){doc=parse(xml);selected=null;render();}}}catch{notify('标准试炼暂时无法载入，可稍后重试或导入 XML。');}}
  if(saved){draftBlocked=true;const banner=$('restore-banner');banner.hidden=false;banner.append(document.createTextNode('检测到本浏览器保存的草稿。恢复前不会自动覆盖。'),btn('恢复草稿',async()=>{try{const data=JSON.parse(saved);if(data.schema!==1||typeof data.xml!=='string')throw new Error('草稿格式无效，可下载备份检查。');const restored=await importXml(data.xml,{confirm:false,pending:data.pendingXml});if(restored){draftBlocked=false;banner.hidden=true;saveDraft(false);}}catch(error){notify(error.message);}}),btn('下载已有草稿',()=>download(saved,'recovered-draft.json','application/json')),btn('放弃旧草稿',async()=>{if(await confirmDialog('放弃旧草稿','建议先下载已有草稿。确认后使用当前内容替换浏览器中的草稿。')){draftBlocked=false;banner.hidden=true;saveDraft(false);}}));}
  await validate();
 }

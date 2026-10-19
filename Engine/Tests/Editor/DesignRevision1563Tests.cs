@@ -204,11 +204,14 @@ namespace PokerEngine.Tests
             var score = ScoreEngine.EvaluateBattle("six", profile, pattern, 1, cards, Array.Empty<ScoringRelic>(), KickerScoring.ChipsOnly, true);
             Assert.AreEqual(10, score.Points); Assert.AreEqual(14, score.UnmultipliedPoints); Assert.AreEqual(54, score.Total);
         }
-        [Test] public void StandardXmlStartsEmptyAndUsesTheDesignDefaults()
+        [TestCase("standard-single-battle")]
+        [TestCase("standard-armored-summoner")]
+        [TestCase("standard-gluttony-boss")]
+        public void StandardXmlStartsEmptyAndUsesTheDesignDefaults(string encounter)
         {
             var build = BattleContentCompiler.CompileXml(ToolkitTestFiles.Read("Engine/Content/StandardSingleBattle.xml"));
             Assert.IsTrue(build.Success, string.Join("; ", build.Diagnostics.Select(d => d.Message)));
-            var created = BattleContentFactory.Create(build.Content, new BattleSetupRequest("standard-single-battle", "standard-test", HmacDeckShuffler.FromSeed(new byte[32])));
+            var created = BattleContentFactory.Create(build.Content, new BattleSetupRequest(encounter, "standard-test", HmacDeckShuffler.FromSeed(new byte[32])));
             Assert.IsTrue(created.Success); var s = created.Session; var player = s.State.Duel.PlayerId;
             Assert.IsTrue(s.Execute(s.State.Revision, player, CardDuelAction.Start).Accepted);
             Assert.IsEmpty(s.State.Zone(CardZoneKinds.Hand, player).Cards); Assert.AreEqual(5, s.Engine.DrawLimit(s.State, player));

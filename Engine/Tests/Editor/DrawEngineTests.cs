@@ -163,7 +163,7 @@ namespace PokerEngine.Tests
         {
             var f = new Fixture(cardMap: c => c.AddEffects(CardEffects.Enhanced | CardEffects.Laminated | CardEffects.Ineffective));
             var json = f.Json;
-            Assert.Throws<SnapshotException>(() => DrawSnapshotCodec.Deserialize(json.Replace("\"Effects\":7", "\"Effects\":8"), f.Engine));
+            Assert.Throws<SnapshotException>(() => DrawSnapshotCodec.Deserialize(json.Replace("\"Effects\":7", "\"Effects\":16"), f.Engine));
             Assert.Throws<SnapshotException>(() => DrawSnapshotCodec.Deserialize(json.Replace("\"SchemaVersion\":2", "\"SchemaVersion\":1"), f.Engine));
             f.State = DrawSnapshotCodec.Deserialize(json, f.Engine);
             f.Do(DrawAction.Discard, f.Hand.Take(1));

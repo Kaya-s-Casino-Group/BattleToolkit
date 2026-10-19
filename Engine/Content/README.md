@@ -1,8 +1,16 @@
 # 单对局配置
 
-`StandardSingleBattle.xml` 对齐[《德州+肉鸽》](https://moonton.feishu.cn/wiki/KZGawy0ypiSMPtkmqwDcAKLFnle) revision 1563（2026-10-19）。编成为 `standard-single-battle`：一名玩家、一名普通敌人、标准 52 张牌，初始无遗物、无牌型升级。生命、攻击等未定数值是测试占位。
+`StandardSingleBattle.xml` 对齐[《德州+肉鸽》](https://moonton.feishu.cn/wiki/KZGawy0ypiSMPtkmqwDcAKLFnle) revision 1563（2026-10-19）的玩家流程，并内置三个可选怪物对局。三种对局共用一名玩家、标准 52 张牌、计分与牌型规则，初始无遗物、无牌型升级。生命、攻击和怪物行为数值是机制验证用的测试占位。
 
-现有 `SingleBattleDemoNew.xml` 和[六份玩法模板](Templates/README.md) 已原地迁移到手动摸牌、保留手牌和弃牌结束回合的流程；不另存旧 XML。主题模板保留各自的数值和牌型技能，不作为标准平衡表。
+| 编成 ID | 怪物 | 行为 |
+| --- | --- | --- |
+| `standard-single-battle`（默认） | 轮换小怪，600 生命 | 40 伤害 → 70 伤害 → 90 护盾，循环执行 |
+| `standard-armored-summoner` | 护甲召唤精英，1800 生命 | 开局三层护甲，前 3 次主动命中各减伤 75% 并消耗一层；缺护卫时召唤两只轮换小怪，否则造成 90 群体伤害；同屏存活上限 3 |
+| `standard-gluttony-boss` | 暴食Boss，2400 生命 | 常态 60 伤害并塞入 1 张废牌；生命不高于 50% 后，下次规划意图改为 120 伤害和 3 张废牌 |
+
+在 H5 配置工具载入标准 XML 后，可在对局模拟的编成选择中切换以上三种对局并重新开局，无需换 XML。敌人意图在玩家回合开始时锁定；召唤出的怪物从下轮开始行动。暴食产生的废牌进入弃牌堆，可弃置、不可出牌与计分，在牌库耗尽回收弃牌堆后才能抽到。独立的 [07—09 怪物模板](Templates/README.md) 继续保留，便于单独修改实验。
+
+现有 `SingleBattleDemoNew.xml` 和[玩法模板](Templates/README.md) 已原地迁移到手动摸牌、保留手牌和弃牌结束回合的流程；不另存旧 XML。主题模板保留各自的数值和牌型技能，不作为标准平衡表。
 
 ## 标准回合
 
@@ -36,10 +44,10 @@
 
 手牌上限、出牌最小/最大张数、行动次数、摸牌张数/次数/提示阈值、开局发牌、效果摸牌溢出、弃牌是否消耗行动/结束回合、结束时防御和强制弃牌收益都在 Player 中配置。牌型步骤、目标、筹码表、倍率、流血伤害/减层和遗物计分也可独立配置。完整字段见[内容配置说明](../Runtime/Composition/Content/README.md)。
 
-单体连续攻击用重复 Effect 步骤配置段数，遗物也可 AddHits。标准暂配顺子 3 段、每段总分 × 1；策划未明确段数，可直接调整。玩家生命 800、敌人生命 1200/攻击 240、20 回合上限、同花基础倍率 4及升级增量仍是测试配置，未做平衡验证。
+单体连续攻击用重复 Effect 步骤配置段数，遗物也可 AddHits。标准暂配顺子 3 段、每段总分 × 1；策划未明确段数，可直接调整。玩家生命 800、三种怪物的生命/攻击/召唤参数、20 回合上限、同花基础倍率 4 及升级增量仍是测试配置，未做平衡验证。
 
-- 配置工具：导入 XML，进入对局试玩，选择摸牌张数或跳过，之后按窗口出牌/弃牌。
+- 配置工具：导入标准 XML，进入对局模拟，先选择轮换小怪、护甲召唤精英或暴食Boss，再开局；选择摸牌张数或跳过，之后按窗口出牌/弃牌。H5 展示独立于 Unity 工程。
 - Unity：包路径 `Packages/com.kaya.battle-engine/Content/StandardSingleBattle.xml`，Host 编成 ID 为 `standard-single-battle`。Scene3D 适配器新增 `DrawCards`、`SkipDraw`、`DiscardBeforeDraw`、`ConfirmOverflow`，HUD 提供对应入口。
 - 规则层：`BattleContentCompiler.CompileXml` → `BattleContentFactory.Create` → `BattleSession.Execute(Start)`；新增命令 `Draw`（drawCount）、`SkipDraw`、`DiscardForDraw`、`ConfirmOverflow`、`FinishTurn`。`EndTurn` 请求结束出牌阶段，最后用 `FinishTurn` 确认结束。非法提交不改变状态。
 
-规则契约 `battle-content.3`、战斗规则 `combat.10`，加载新配置后重新开局。绝杀和局外流程本次不改；召唤、废牌/消耗牌、自由脚本公式及专用美术动画不包含在本次补齐范围内。
+规则契约 `battle-content.4`、战斗规则 `combat.11`，加载新配置或切换编成后重新开局。怪物轮换、条件选招、护甲、召唤和废牌使用[可配置行为契约](../Runtime/Composition/Content/EnemyBehavior.md)。绝杀、局外流程和自由脚本公式未改；本次 H5 占位图与动画不接入 Unity 表现层。

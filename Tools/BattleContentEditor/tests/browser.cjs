@@ -22,6 +22,40 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
  try{
  await page.goto(base);await clean();
  await test('十类目录和本机 C# 校验在线',async()=>{assert.equal(await page.locator('.section-button').count(),10);assert.match(await page.locator('#connection').innerText(),/已连接/);});
+ await test('首访延迟标准响应不得覆盖表单编辑或未应用源码',async()=>{
+  const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
+  for(const mode of ['form','source']){
+   const isolated=await browser.newContext({viewport:{width:1440,height:1000}});
+   const fresh=await isolated.newPage();fresh.on('pageerror',e=>errors.push(e.message));
+   let release,received;const gate=new Promise(resolve=>release=resolve),requested=new Promise(resolve=>received=resolve);
+   await fresh.route('**/api/standard',async route=>{received();await gate;await route.fulfill({status:200,contentType:'application/xml',body:standard});});
+   try{
+    await fresh.goto(base,{waitUntil:'domcontentloaded'});await requested;
+    if(mode==='form'){
+     await fresh.locator('#pack-settings').click();
+     const name=fresh.locator('#editor > .field-grid [data-key="name"]');
+     await name.fill('标准加载期间手动编辑');await name.press('Tab');
+    }else{
+     await fresh.locator('#xml-tab').click();
+     await fresh.locator('#xml-source').fill('<BattleContent id="pending-before-standard"');
+    }
+    const defaultResponse=fresh.waitForResponse(response=>response.url().endsWith('/api/standard'));
+    const validated=fresh.waitForResponse(response=>response.url().endsWith('/api/validate'));
+    release();await (await defaultResponse).finished();await validated;
+    await fresh.waitForLoadState('networkidle');
+    if(mode==='form'){
+     await fresh.locator('#xml-tab').click();
+     assert.match(await fresh.locator('#xml-source').inputValue(),/name="标准加载期间手动编辑"/);
+    }else assert.equal(await fresh.locator('#xml-source').inputValue(),'<BattleContent id="pending-before-standard"');
+    // The authoritative document must remain the initial pack in both cases;
+    // preserving only the pending text while replacing its backing doc is unsafe.
+    await fresh.locator('#playtest-tab').click();
+    assert.equal(await fresh.locator('#playtest-encounter option').count(),0,mode+' was overwritten by delayed defaults');
+    await fresh.locator('#form-tab').click();
+    assert.match(await fresh.locator('#breadcrumb').innerText(),mode==='form'?/标准加载期间手动编辑/:/新内容包/);
+   }finally{release();await isolated.close();}
+  }
+ });
  await test('示例导入通过权威校验',async()=>{await load(example);await clean();assert.match(await page.locator('#pack-summary').innerText(),/12 项配置/);});
  await test('十类配置表单完整可打开',async()=>{
   for(const [title,id]of [['对局配置','example-fight'],['玩家模板','hero'],['敌人模板','guard'],['初始构筑','example-build'],['初始牌组','small-deck'],['牌型效果','example-hands'],['状态配置','stun'],['遗物配置','example-relic'],['公共战斗规则','standard-battle'],['计分规则','standard-score']]){await open(title,id);assert.ok(await page.locator('#editor [data-key="id"]').count());}
@@ -68,6 +102,19 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
  await test('删除缺少 ID 的草稿不会改写未设置的可选引用',async()=>{await load(example.replace('</Loadouts>','<Loadout id="empty-build"/></Loadouts>'));await nav('初始牌组');await page.getByRole('button',{name:'+ 新建初始牌组',exact:true}).click();await edit('id','');await page.locator('#delete').click();assert.equal(await page.locator('#modal select').count(),0);await confirm();await clean();await page.locator('#xml-tab').click();assert.match(await page.locator('#xml-source').inputValue(),/<Loadout id="empty-build"\s*\/>/);await load(example);});
  await test('导入期间新增的编辑不会被旧导入覆盖',async()=>{await open('玩家模板','hero');let delayed=false;await page.route('**/api/validate',async route=>{if(!delayed){delayed=true;await new Promise(r=>setTimeout(r,1500));}await route.continue();});await page.locator('#xml-file').setInputFiles({name:'replacement.xml',mimeType:'application/xml',buffer:Buffer.from(example.replace('id="content-example"','id="replacement"'))});await confirm();await page.waitForFunction(()=>document.querySelector('#import').disabled);await edit('maxHealth','125');await page.waitForFunction(()=>!document.querySelector('#import').disabled,{},{timeout:30000});await settle();assert.equal(await page.locator('#editor > .field-grid [data-key="maxHealth"]').inputValue(),'125');assert.match(await page.locator('#breadcrumb').innerText(),/content-example/i);await page.unroute('**/api/validate');await edit('maxHealth','100');await clean();});
  await test('修改被匹配的牌型步骤会提示遗物影响',async()=>{await open('牌型效果','example-hands');const hand=page.locator('#editor > details.node-card').nth(1);await hand.locator('summary').first().click();const effect=hand.locator('details.node-card').first();await effect.locator('summary').first().click();await effect.locator('[data-key="id"]').fill('new-step');await effect.locator('[data-key="id"]').press('Tab');await page.waitForSelector('#modal[open]');assert.match(await page.locator('#modal-body').innerText(),/example-relic/);await page.getByRole('button',{name:'取消',exact:true}).click();await clean();});
+ await test('三个怪物模板支持行为表单与无损导出',async()=>{
+  for(const [file,id] of [['07_RotationGrunt','rotator'],['08_ArmoredSummoner','summoner'],['09_GluttonyBoss','gluttony']]){
+   const xml=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/Templates/'+file+'.xml'),'utf8');
+   await load(xml);await clean();await nav('敌人模板');await page.locator('.definition-button[title="'+id+'"]').click();
+   assert.equal(await page.locator('#editor .unknown').count(),0);
+   assert.ok(await page.locator('#editor [data-key="mode"]').count()>0);
+   const event=page.waitForEvent('download');await page.locator('#export').click();
+   const saved=await fs.readFile(await (await event).path(),'utf8');assert.match(saved,/<Behavior/);assert.match(saved,/<Stage/);
+   if(file==='08_ArmoredSummoner')assert.match(saved,/enemyRef="rotator"/);
+   if(file==='09_GluttonyBoss')assert.match(saved,/Unplayable/);
+  }
+  await load(example);await clean();
+ });
  await open('牌型效果','example-hands');await page.screenshot({path:process.env.EDITOR_SCREENSHOT||path.join(os.tmpdir(),'battle-content-editor-form.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log(`Browser: ${passes} passed, 0 failed.`);
  }finally{await context.close();await browser.close();}

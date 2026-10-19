@@ -29,13 +29,14 @@ namespace PokerEngine
     }
     public sealed class BattleEnemyContentDefinition
     {
+        public EnemyBehaviorDefinition Behavior { get; }
         public CombatantDefinition Definition { get; }
         public long Damage { get; }
         public BattleActorDamageRules DamageRules { get; }
         public BattleActorTargetRules TargetRules { get; }
         public IEnemyBattleEffectRule EffectRule { get; }
-        internal BattleEnemyContentDefinition(CombatantDefinition definition, long damage, BattleActorDamageRules damageRules, BattleActorTargetRules targetRules, IEnemyBattleEffectRule effectRule)
-        { Definition = definition; Damage = damage; DamageRules = damageRules; TargetRules = targetRules; EffectRule = effectRule; }
+        internal BattleEnemyContentDefinition(CombatantDefinition definition, long damage, BattleActorDamageRules damageRules, BattleActorTargetRules targetRules, IEnemyBattleEffectRule effectRule, EnemyBehaviorDefinition behavior = null)
+        { Definition = definition; Damage = damage; DamageRules = damageRules; TargetRules = targetRules; EffectRule = effectRule; Behavior = behavior; }
     }
     public sealed class BattleLoadoutContentDefinition
     {
@@ -71,7 +72,7 @@ namespace PokerEngine
     /// <summary>Validated immutable definitions. Every assembly creates new battle-owned state.</summary>
     public sealed class CompiledBattleContent
     {
-        public const string CurrentRulesContractVersion = "battle-content.3";
+        public const string CurrentRulesContractVersion = "battle-content.4";
         public string Id { get; }
         public string Version { get; }
         public int SchemaVersion => 1;

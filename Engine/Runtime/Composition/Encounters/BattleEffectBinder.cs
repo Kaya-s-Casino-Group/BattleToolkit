@@ -26,7 +26,7 @@ namespace PokerEngine
                 state.DamageRulesFor(source).AttackDamage));
         }
         internal static BattleEffectBinding Bind(TeamBattleState state, ParticipantId source, BattleEffectSequence sequence,
-            IEnumerable<ParticipantId> requestedTargets, BattleTargetBindings bindings, HandAttackInfo hand, AttackOrigin? origin = null)
+            IEnumerable<ParticipantId> requestedTargets, BattleTargetBindings bindings, HandAttackInfo hand, AttackOrigin? origin = null, EnemyBehaviorRuntime intent = null)
         {
             try
             {
@@ -59,6 +59,15 @@ namespace PokerEngine
                     if (step.Target.RequestSlot != null && bindings != null)
                         bindings.Slots.TryGetValue(step.Target.RequestSlot, out selected);
                     var targets = BattleTargetResolver.Resolve(state, source, step.Target, selected);
+                    if (intent != null && stepIndex < intent.Targets.Count)
+                    {
+                        var locked = intent.Targets[stepIndex];
+                        var alive = locked.Where(id => state.Combat.Get(id).IsAlive).ToList();
+                        if (intent.Intent.DeadTargetPolicy == EnemyDeadTargetPolicy.Retarget && alive.Count < locked.Count)
+                            alive.AddRange(targets.Where(id => !alive.Contains(id)).Take(locked.Count - alive.Count));
+                        targets = alive.AsReadOnly();
+                        if (targets.Count == 0) continue;
+                    }
                     if (step.Target.RetargetChain != null && targets.Count != 1) return new BattleEffectBinding(CardDuelError.InvalidTarget);
                     if (effects.Count + targets.Count > 64) return new BattleEffectBinding(CardDuelError.InvalidEffectPlan);
                     for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
@@ -67,7 +76,7 @@ namespace PokerEngine
                         if (spec.Kind == CombatEffectKind.ApplyStatus)
                         {
                             // Use the action revision: card-only/empty-reward actions need not advance Combat.Revision.
-                            var id = new StatusInstanceId(state.Combat.Id + "/status/action/" + state.Revision.ToString(CultureInfo.InvariantCulture) +
+                            var id = new StatusInstanceId(state.Combat.Id + "/status/source/" + source.Value.Length.ToString(CultureInfo.InvariantCulture) + ":" + source.Value + "/action/" + state.Revision.ToString(CultureInfo.InvariantCulture) +
                                 "/" + stepIndex.ToString(CultureInfo.InvariantCulture) + "/" + targetIndex.ToString(CultureInfo.InvariantCulture));
                             // Capacity and instance uniqueness are checked only when Combat actually applies the status.
                             // An earlier effect may defeat this target, in which case this status will be skipped.

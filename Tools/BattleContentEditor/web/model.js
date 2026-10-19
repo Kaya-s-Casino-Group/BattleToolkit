@@ -73,10 +73,17 @@ export function addChild(doc,parent,name) {
  if(name==='Status'){set({tags:'Control',lifetime:'TriggerCount',count:'1'});addChild(doc,node,'BlockActionWindow');}
  if(name==='Effect') {
   set({kind:'Damage',amount:'10'});
-  if(['Hand','Effects'].includes(parentName))set({id:id('damage')});
+  if(['Hand','Effects','OpeningEffects'].includes(parentName))set({id:id('damage')});
   if(['FactTrigger','BoundaryTrigger','ActionTrigger'].includes(parentName))set({target:'Self'});
   else if(parentName!=='HandModifier'||parent.getAttribute('operation')!=='ReplaceEffect')set({target:'Opponents'});
  }
+ if(name==='Behavior'){parent.removeAttribute('damage');for(const child of [...parent.children])if(child.tagName==='Effects')child.remove();addChild(doc,node,'Stage');}
+ if(name==='Stage'){set({id:id('stage'),mode:'Sequence'});addChild(doc,node,'Action');}
+ if(name==='Action'){set({id:id('action'),name:'攻击'});addChild(doc,addChild(doc,node,'Effects'),'Effect');}
+ if(name==='When')set({kind:'Always'});
+ if(name==='Summon')set({count:'1',livingLimit:'4'});
+ if(name==='AddCards')set({face:meta.cards[0].id,count:'1',zone:'discard',disabled:'false',effects:'Ineffective,Unplayable'});
+ if(name==='HitArmor')set({multiplier:'0.5',consumeStacks:'1',primaryOnly:'true'});
  if(name==='PeriodicDamage')set({timing:'ActionCompleted',amount:'2'});
  if(['ReflectBlockedDamage','LifeSteal','OverhealDamage'].includes(name))set({ratio:'0.2'});
  if(name==='Numeric')set({id:id('numeric'),stat:'DamageDealt',operation:'AddFlat',value:'1'});

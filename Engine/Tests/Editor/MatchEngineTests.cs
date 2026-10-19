@@ -70,7 +70,7 @@ namespace PokerEngine.Tests
                 Assert.AreEqual(entry.DefinitionId, card.DefinitionId); Assert.AreEqual(entry.Effects, card.Effects);
                 Assert.AreEqual(entry.IsDisabled, card.IsDisabled);
             }
-            Assert.Throws<SnapshotException>(() => MatchSnapshotCodec.Deserialize(json.Replace("\"Effects\":3", "\"Effects\":8"), g.Catalog, g.State.Definition));
+            Assert.Throws<SnapshotException>(() => MatchSnapshotCodec.Deserialize(json.Replace("\"Effects\":3", "\"Effects\":16"), g.Catalog, g.State.Definition));
             Assert.Throws<SnapshotException>(() => MatchSnapshotCodec.Deserialize(json.Replace("\"SchemaVersion\":5", "\"SchemaVersion\":4"), g.Catalog, g.State.Definition));
         }
 

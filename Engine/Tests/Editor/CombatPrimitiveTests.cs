@@ -251,7 +251,7 @@ namespace PokerEngine.Tests
             {
                 serializer.WriteObject(stream, result.State); json = Encoding.UTF8.GetString(stream.ToArray()); stream.Position = 0;
                 var restored = (CombatState)serializer.ReadObject(stream); CombatEngine.Validate(restored);
-                Assert.AreEqual(result.State.Revision, restored.Revision); Assert.AreEqual("combat.10", restored.RulesVersion);
+                Assert.AreEqual(result.State.Revision, restored.Revision); Assert.AreEqual(CombatEngine.RulesVersion, restored.RulesVersion);
                 Assert.AreEqual(0, restored.Get(Enemy).Health); Assert.AreEqual(3, restored.Get(Enemy).Block);
                 Assert.AreEqual(status.Id, restored.Statuses.Single().Id); Assert.AreEqual(status.DefinitionId, restored.Statuses[0].DefinitionId);
                 Assert.AreEqual(status.Source.Kind, restored.Statuses[0].Source.Kind); Assert.AreEqual(status.Source.Id, restored.Statuses[0].Source.Id);
