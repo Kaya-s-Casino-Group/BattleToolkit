@@ -9,15 +9,15 @@ namespace PokerEngine
     public sealed class CombatantDefinition
     {
         public string Id { get; }
-        public int MaxHealth { get; }
-        public int InitialBlock { get; }
-        public CombatantDefinition(string id, int maxHealth, int initialBlock = 0)
+        public long MaxHealth { get; }
+        public long InitialBlock { get; }
+        public CombatantDefinition(string id, long maxHealth, long initialBlock = 0)
         {
             Id = Guard.Text(id, nameof(id));
             if (maxHealth <= 0 || initialBlock < 0) throw new ArgumentException("Invalid combatant template.");
             MaxHealth = maxHealth; InitialBlock = initialBlock;
         }
-        public CombatantState Create(ParticipantId id, string teamId, int? health = null) =>
+        public CombatantState Create(ParticipantId id, string teamId, long? health = null) =>
             new CombatantState(id, Id, teamId, MaxHealth, health ?? MaxHealth, InitialBlock);
     }
 
@@ -28,18 +28,18 @@ namespace PokerEngine
         [DataMember(Order = 1, IsRequired = true)] public ParticipantId Id { get; private set; }
         [DataMember(Order = 2, IsRequired = true)] public string DefinitionId { get; private set; }
         [DataMember(Order = 3, IsRequired = true)] public string TeamId { get; private set; }
-        [DataMember(Order = 4, IsRequired = true)] public int MaxHealth { get; private set; }
-        [DataMember(Order = 5, IsRequired = true)] public int Health { get; private set; }
-        [DataMember(Order = 6, IsRequired = true)] public int Block { get; private set; }
+        [DataMember(Order = 4, IsRequired = true)] public long MaxHealth { get; private set; }
+        [DataMember(Order = 5, IsRequired = true)] public long Health { get; private set; }
+        [DataMember(Order = 6, IsRequired = true)] public long Block { get; private set; }
         public bool IsAlive => Health > 0;
-        public CombatantState(ParticipantId id, string definitionId, string teamId, int maxHealth, int health, int block = 0)
+        public CombatantState(ParticipantId id, string definitionId, string teamId, long maxHealth, long health, long block = 0)
         {
             if (!id.IsValid || maxHealth <= 0 || health < 0 || health > maxHealth || block < 0)
                 throw new ArgumentException("Combat units require bounded health and nonnegative block.");
             Id = id; DefinitionId = Guard.Text(definitionId, nameof(definitionId)); TeamId = Guard.Text(teamId, nameof(teamId));
             MaxHealth = maxHealth; Health = health; Block = block;
         }
-        internal CombatantState WithVitals(int health, int block) => new CombatantState(Id, DefinitionId, TeamId, MaxHealth, health, block);
+        internal CombatantState WithVitals(long health, long block) => new CombatantState(Id, DefinitionId, TeamId, MaxHealth, health, block);
     }
 
     /// <summary>Common combat state. No player/monster subclasses or duplicate AbilityWorld are stored.</summary>

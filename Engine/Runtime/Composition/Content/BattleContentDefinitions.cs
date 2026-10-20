@@ -44,7 +44,7 @@ namespace PokerEngine
             return new CardPointProfile(ranks, faces);
         }
         private static readonly string[] ActorAttributes = { "id", "name", "maxHealth", "initialBlock", "attackMultiplier", "attackFlat", "incomingMultiplier", "incomingFlat", "attackTarget", "allowRequestedTargets" };
-        private CombatantDefinition ReadActor(BattleContentNode node) => new CombatantDefinition(Text(node, "id"), Int(node, "maxHealth", 100), Int(node, "initialBlock", 0));
+        private CombatantDefinition ReadActor(BattleContentNode node) => new CombatantDefinition(Text(node, "id"), Long(node, "maxHealth", 100), Long(node, "initialBlock", 0));
         private BattleActorDamageRules ReadDamageRules(BattleContentNode node) => new BattleActorDamageRules(
             Optional(node, "attackMultiplier") == null && Optional(node, "attackFlat") == null ? null : new ScaledAttackDamageModifier(Decimal(node, "attackMultiplier", 1), Long(node, "attackFlat", 0)),
             Optional(node, "incomingMultiplier") == null && Optional(node, "incomingFlat") == null ? null : new ScaledIncomingDamageModifier(Decimal(node, "incomingMultiplier", 1), Long(node, "incomingFlat", 0)));
@@ -54,7 +54,7 @@ namespace PokerEngine
         private Dictionary<string, BattlePlayerContentDefinition> ReadPlayers(BattleContentNode section, Dictionary<string, ConfiguredHandEffectRule> hands) =>
             ReadDefinitions(section, "Player", node =>
             {
-                Check(node, ActorAttributes.Concat(new[] { "handRuleRef", "maxEnergy", "initialEnergy", "playEnergyCost", "discardEnergyCost", "handSize", "discards", "unlimitedDiscards", "maxPlayCards", "maxDiscardCards", "playRefill", "discardRefill", "discardBlockPerCard", "pointsPerDamage", "manualDraw", "autoDrawToLimit", "openingDeal", "drawCount", "drawUses", "drawWarningThreshold", "minPlayCards", "effectDrawOverflow", "discardEndsTurn", "discardCostsAction", "endDefense", "overflowTriggersDefense", "kickerScoring", "layeredScoreRelics", "discardBlockPerPoint", "actionsPerTurn", "minFlushCards", "minStraightCards" }).ToArray(), new string[0]);
+                Check(node, ActorAttributes.Concat(new[] { "handRuleRef", "maxEnergy", "initialEnergy", "playEnergyCost", "discardEnergyCost", "handSize", "discards", "unlimitedDiscards", "maxPlayCards", "maxDiscardCards", "playRefill", "discardRefill", "discardBlockPerCard", "pointsPerDamage", "manualDraw", "autoDrawToLimit", "openingDeal", "drawCount", "drawUses", "drawWarningThreshold", "minPlayCards", "effectDrawOverflow", "discardEndsTurn", "discardCostsAction", "endDefense", "overflowTriggersDefense", "forceDiscardOverflow", "kickerScoring", "layeredScoreRelics", "discardBlockPerPoint", "actionsPerTurn", "minFlushCards", "minStraightCards" }).ToArray(), new string[0]);
                 ConfiguredHandEffectRule effect = null; string reference = Optional(node, "handRuleRef");
                 if (reference != null)
                 {
@@ -66,11 +66,11 @@ namespace PokerEngine
                 var playerRules = new BattlePlayerRules(Int(node, "maxEnergy", 3), Int(node, "initialEnergy", 3), Int(node, "playEnergyCost", 1), Int(node, "discardEnergyCost", 1),
                     Int(node, "handSize", 8), Int(node, "discards", 3), new CardDuelDealPolicy(Enum(node, "playRefill", CardDuelRefillTiming.NextPlayerTurn), Enum(node, "discardRefill", CardDuelRefillTiming.AfterAction)),
                     Bool(node, "unlimitedDiscards", false), Int(node, "maxPlayCards", 5), Int(node, "maxDiscardCards", 5),
-                    Optional(node, "discardBlockPerPoint") != null ? (IDiscardRewardRule)new ChipBlockRewardRule(Decimal(node, "discardBlockPerPoint", 0)) : Optional(node, "discardBlockPerCard") == null ? null : new PerCardBlockRewardRule(Int(node, "discardBlockPerCard", 0)),
+                    Optional(node, "discardBlockPerPoint") != null ? (IDiscardRewardRule)new ChipBlockRewardRule(Decimal(node, "discardBlockPerPoint", 0)) : Optional(node, "discardBlockPerCard") == null ? null : new PerCardBlockRewardRule(Long(node, "discardBlockPerCard", 0)),
                     Optional(node, "pointsPerDamage") == null ? null : new ScoreDamagePolicy(Long(node, "pointsPerDamage", 1)), effectRule: effect, flow: new BattleTurnFlowRules(Bool(node, "manualDraw", false), Bool(node, "openingDeal", false),
                         Int(node, "drawCount", 5), Int(node, "drawUses", 1), Int(node, "drawWarningThreshold", 3), Int(node, "minPlayCards", 1),
                         Bool(node, "effectDrawOverflow", true), Bool(node, "discardEndsTurn", true), Bool(node, "discardCostsAction", true),
-                        Bool(node, "endDefense", true), Bool(node, "overflowTriggersDefense", false), Enum(node, "kickerScoring", KickerScoring.None), Bool(node, "layeredScoreRelics", false), Int(node, "actionsPerTurn", 3), Int(node, "minFlushCards", 5), Int(node, "minStraightCards", 5), Bool(node, "autoDrawToLimit", false)));
+                        Bool(node, "endDefense", true), Bool(node, "overflowTriggersDefense", false), Enum(node, "kickerScoring", KickerScoring.None), Bool(node, "layeredScoreRelics", false), Int(node, "actionsPerTurn", 3), Int(node, "minFlushCards", 5), Int(node, "minStraightCards", 5), Bool(node, "autoDrawToLimit", false), Bool(node, "forceDiscardOverflow", true)));
                 return new BattlePlayerContentDefinition(ReadActor(node), playerRules, ReadDamageRules(node), ReadTargetRules(node));
             });
         private Dictionary<string, BattleEnemyContentDefinition> ReadEnemies(BattleContentNode section) => ReadDefinitions(section, "Enemy", node =>

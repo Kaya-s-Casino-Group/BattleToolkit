@@ -28,14 +28,14 @@ namespace PokerEngine.Tests
             var result = engine.Execute(state, state.Revision, id, action, count == 0 ? null : state.Zone(CardZoneKinds.Hand, id).Cards.Take(count), targets);
             Assert.IsTrue(result.Accepted, action + ": " + result.Error); result.State.Table.Validate(); return result;
         }
-        [Test] public void DefaultsRemainCompatibleAndLimitsClampToHandSize()
+        [Test] public void DefaultsRemainCompatibleAndDiscardLimitIsIndependentOfHandSize()
         {
             var rules = new BattlePlayerRules();
             Assert.AreEqual(8, rules.HandSize); Assert.AreEqual(3, rules.Discards); Assert.IsFalse(rules.UnlimitedDiscards);
             Assert.AreEqual(5, rules.MaxPlayCards); Assert.AreEqual(5, rules.MaxDiscardCards);
             Assert.AreEqual(PlayerBlockExpiry.Retain, Engine().Duel.Definition.PlayerBlockExpiry);
             var small = new BattlePlayerRules(handSize: 2, maxDiscardCards: 52);
-            Assert.AreEqual(2, small.MaxPlayCards); Assert.AreEqual(2, small.MaxDiscardCards);
+            Assert.AreEqual(2, small.MaxPlayCards); Assert.AreEqual(52, small.MaxDiscardCards);
             var engine = Engine(); var state = Start(engine);
             state = Do(engine, state, CardDuelAction.Play, 1).State;
             Assert.AreEqual(7, state.Zone(CardZoneKinds.Hand).Cards.Count);
@@ -44,7 +44,7 @@ namespace PokerEngine.Tests
             Assert.AreEqual(8, discarded.State.Zone(CardZoneKinds.Hand).Cards.Count);
             Assert.AreEqual(2, discarded.State.DiscardsRemaining); Assert.IsEmpty(discarded.Events);
         }
-        [TestCase(0, 5)] [TestCase(11, 5)] [TestCase(5, 0)] [TestCase(5, 53)]
+        [TestCase(0, 5)] [TestCase(11, 5)] [TestCase(5, 0)] [TestCase(5, 513)]
         public void InvalidLimitsAreRejected(int play, int discard) =>
             Assert.Throws<ArgumentException>(() => new BattlePlayerRules(maxPlayCards: play, maxDiscardCards: discard));
         [Test] public void InvalidRewardAndExpiryAreRejected()
@@ -85,12 +85,13 @@ namespace PokerEngine.Tests
             Assert.IsEmpty(result.Events); Assert.IsEmpty(result.DiscardReward.Plan.Effects); Assert.AreEqual(2, result.State.DiscardsRemaining);
         }
         [TestCase(0, 2)] [TestCase(int.MaxValue, 1)]
-        public void BlockOverflowRejectsAllCostsCardsAndRandomChanges(int initialBlock, int count)
+        public void BlockAboveIntRangeSettlesExactlyAndPaysNormalCosts(int initialBlock, int count)
         {
             var engine = Engine(); var state = Start(engine, new BattlePlayerRules(discardReward: new PerCardBlockRewardRule(int.MaxValue)), block: initialBlock);
             var result = engine.PreviewDiscard(state, state.Revision, P, state.Zone(CardZoneKinds.Hand).Cards.Take(count));
-            Assert.AreEqual(CardDuelError.Overflow, result.Error); Assert.AreSame(state, result.State);
-            Assert.IsEmpty(result.Events); Assert.AreEqual(3, state.DiscardsRemaining); Assert.AreEqual(3, state.Duel.Player(P).Energy.Energy);
+            Assert.IsTrue(result.Accepted, result.Error.ToString());
+            Assert.AreEqual(initialBlock + (long)int.MaxValue * count, result.State.Duel.Combat.Get(P).Block);
+            Assert.AreEqual(2, result.State.DiscardsRemaining); Assert.AreEqual(2, result.State.Duel.Player(P).Energy.Energy);
         }
         [Test] public void PlayAndDiscardLimitsAreIndependentlyEnforcedInPreviewAndExecution()
         {

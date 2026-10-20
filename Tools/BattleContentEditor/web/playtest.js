@@ -8,6 +8,8 @@ const rankNames={Ace:'A',Jack:'J',Queen:'Q',King:'K',Two:'2',Three:'3',Four:'4',
 
 const icon=(name,cls='')=>{const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('battle-icon');if(cls)svg.classList.add(cls);svg.setAttribute('aria-hidden','true');const use=document.createElementNS(svg.namespaceURI,'use');use.setAttribute('href','/assets/icons.svg#'+name);svg.append(use);return svg;};
 const artFor=(value,isPlayer=false)=>isPlayer?'hero':/glutton|暴食|boss/i.test(value)?'gluttony':/summon|召唤|精英/i.test(value)?'summoner':'grunt';
+// Authoritative quantities arrive as decimal strings; never round them through Number.
+const compact=value=>{try{const n=BigInt(value),a=n<0n?-n:n;for(const [scale,suffix]of [[1000000000n,'B'],[1000000n,'M'],[1000n,'K']])if(a>=scale){const tenths=a*10n/scale;return(n<0n?'-':'')+(tenths/10n)+(tenths%10n?'.'+tenths%10n:'')+suffix;}return String(n);}catch{return String(value);}};
 const unitName=unit=>unit.displayName||unit.name||unit.id;
 const stateIcon=status=>{const keys=(status.behaviorKeys||[]).join(' ');return /HitArmor/.test(keys)?'armor':/PeriodicDamage/.test(keys)?'bleed':/BlockActionWindow/.test(keys)?'stun':/PreventStatus/.test(keys)?'cleanse':/LifeSteal|Overheal/.test(keys)?'heal':/Reflect/.test(keys)?'shield':status.isNegative?'curse':'spark';};
 export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=null}) {
@@ -16,6 +18,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  let busy=false,previewBusy=false,uncertain=false,logs=[],startXml=null,configKey='',message='',diagnostics=[];
  let encounterValue='',newBattleSequence=0,renderedLogKey='',renderedUnitsKey='';
  let effects=new Map(),effectTime=0,inspectZone='',creationNotice='';
+ let itemId='',itemTarget='',itemPreview=null,itemPreviewBusy=false,itemSequence=0;
  let motion=!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  const refs={};
  const put=(id,n)=>{n.id='playtest-'+id;refs[id]=n;return n;};
@@ -50,7 +53,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  const drawBar=put('draw-bar',node('div','playtest-draw-bar'));
  const count=node('input');count.type='number';count.min='1';count.value='5';count.setAttribute('aria-label','主动摸牌张数');put('draw-count',count);
  drawBar.append(icon('draw'),node('span','','本轮摸牌'),count,put('draw',button('摸牌',()=>command('Draw'),'primary')),put('skip-draw',button('跳过',()=>command('SkipDraw'))),put('replace-draw',button('先弃掉所选手牌',()=>command('DiscardForDraw'))),put('overflow',button('确认强制弃牌',()=>command('ConfirmOverflow'))));
- handPanel.append(drawBar,actionBar,put('preview',node('div','playtest-preview')));
+ handPanel.append(put('items',node('section','playtest-items')),drawBar,actionBar,put('preview',node('div','playtest-preview')));
  const logSection=node('details','playtest-log-section');logSection.append(node('summary','','战斗记录 · 展开查看每一步结算'),put('log',node('div','playtest-log')));live.append(logSection);
  refs.encounter.addEventListener('change',()=>{encounterValue=refs.encounter.value;updateConfig();});
  refs.actor.addEventListener('change',()=>{actor=refs.actor.value;selected.clear();bindings={};queuePreview();render();});
@@ -91,9 +94,9 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
     for(const unit of [...next.players,...next.enemies]){
      const before=previous.get(unit.id);const fx=[];
      if(!before)fx.push({kind:'spawn',text:'召唤'});
-     else{const hp=Number(unit.health)-Number(before.health),shield=Number(unit.block)-Number(before.block);
-      if(hp)fx.push({kind:hp<0?'hurt':'heal',text:(hp>0?'+':'')+hp});
-      if(shield>0)fx.push({kind:'guard',text:'+'+shield});
+     else{const hp=BigInt(unit.health)-BigInt(before.health),shield=BigInt(unit.block)-BigInt(before.block);
+      if(hp)fx.push({kind:hp<0?'hurt':'heal',text:(hp>0n?'+':'')+compact(hp)});
+      if(shield>0)fx.push({kind:'guard',text:'+'+compact(shield)});
       if((unit.statuses?.length||0)>(before.statuses?.length||0))fx.push({kind:'status',text:'状态'});
      }
      if(fx.length)effects.set(unit.id,fx);
@@ -102,7 +105,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   }
   battle=next;
   if(!battle.players.some(p=>p.id===actor&&p.canAct))actor=battle.actors?.find(id=>battle.players.some(p=>p.id===id&&p.canAct))||battle.players.find(p=>p.canAct)?.id||battle.players[0]?.id||'';
-  if(changed){selected.clear();bindings={};invalidatePreviews();}
+  if(changed){selected.clear();bindings={};invalidatePreviews();itemPreview=null;itemPreviewBusy=false;itemSequence++;}
  }
  function addSteps(steps){
   const units=[...(battle?.players||[]),...(battle?.enemies||[])];const name=id=>unitName(units.find(unit=>unit.id===id)||{id});
@@ -152,11 +155,11 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   try{const data=await request('close',{runId:battle.runId,revision:battle.revision});if(data.success){forgetExpired({error:'SessionNotFound'});message='试玩已结束，可以重新选择配置开局。';diagnostics=[];}else{adopt(data.battle);setResponseError(data);}}
   catch{await recover();}finally{busy=false;render();queuePreview();}
  }
- async function command(action){
+ async function command(action,extra={}){
   const player=currentPlayer();if(busy||uncertain||!battle||battle.finished||!player?.canAct)return;
   if(['Play','Discard'].includes(action)&&(previewBusy||!previews[action]?.legal))return;
   if(action==='EndTurn'&&player.turnFlow&&player.window==='Ending')action='FinishTurn';
-  const payload=actionPayload(action);busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
+  const payload={...actionPayload(action),...extra};busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
   try{
    const data=await request('command',payload);adopt(data.battle);
    if(data.success){addSteps(data.steps);selected.clear();bindings={};message=battle?.finished?(external?'战斗已结算，可以继续旅程。':'对局已结束，可使用同一种子重开。'):'结算完成。';}
@@ -228,7 +231,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   if(!isPlayer&&unit.alive){
    const intent=node('div','playtest-intent');const meta=unit.intentMeta,world=meta?.worldEffects||[];
    const intentKind=meta?.skipped?'stun':world.some(e=>e.kind==='Summon')?'summon':Number(meta?.damage)>0?'sword':world.some(e=>e.kind==='AddCards')?'curse':/盾|block/i.test((unit.intent||[]).join(' '))?'shield':'spark';
-   const main=node('div','intent-main');main.append(icon(intentKind),node('b','',meta?.skipped?'跳过':Number(meta?.damage)>0?meta.damage:world.length?'×'+world[0].count:'准备'));
+   const main=node('div','intent-main');main.append(icon(intentKind),node('b','',meta?.skipped?'跳过':Number(meta?.damage)>0?compact(meta.damage):world.length?'×'+world[0].count:'准备'));
    intent.append(main,node('span','intent-name',meta?.name||(unit.intent||[])[0]||'等待'));intent.tabIndex=0;
    const description=(unit.intent||[]).join('；');intent.title=description;intent.setAttribute('aria-label','行动意图：'+description);
    intent.append(node('span','battle-tooltip',description));box.append(intent);
@@ -240,16 +243,49 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   box.append(figure);
   const heading=node('div','playtest-unit-heading');heading.append(node('strong','',unitName(unit)));if(!unit.alive)heading.append(node('small','','已倒下'));box.append(heading);
   const vitals=node('div','unit-vitals-row');const hp=node('div','unit-hp');hp.setAttribute('role','progressbar');hp.setAttribute('aria-label',unitName(unit)+'生命');hp.setAttribute('aria-valuenow',unit.health);hp.setAttribute('aria-valuemax',unit.maxHealth);hp.setAttribute('aria-valuemin','0');
-  hp.style.setProperty('--health',Math.max(0,Math.min(100,Number(unit.health)/Number(unit.maxHealth)*100))+'%');hp.append(node('span','hp-fill'),node('span','hp-label',unit.health+' / '+unit.maxHealth));
-  const shield=node('span','unit-shield');shield.title='护盾 '+unit.block;shield.append(icon('shield'),node('b','',unit.block));shield.classList.toggle('zero-block',Number(unit.block)===0);vitals.append(hp,shield);box.append(vitals);appendStatuses(box,unit);
+  hp.style.setProperty('--health',Math.max(0,Math.min(100,Number(unit.health)/Number(unit.maxHealth)*100))+'%');hp.append(node('span','hp-fill'),node('span','hp-label',compact(unit.health)+' / '+compact(unit.maxHealth)));
+  hp.title='生命 '+unit.health+' / '+unit.maxHealth;
+  const shield=node('span','unit-shield');shield.title='护盾 '+unit.block;shield.append(icon('shield'),node('b','',compact(unit.block)));shield.classList.toggle('zero-block',Number(unit.block)===0);vitals.append(hp,shield);box.append(vitals);appendStatuses(box,unit);
   return box;
  }
  function renderRelics(){
-  const relics=currentPlayer()?.relics||[];refs['relic-tray'].replaceChildren(node('small','relic-caption','遗物'));
-  for(const relic of relics){const info=(relic.displayName||relic.name)+' · 等级 '+relic.level+' · 冷却 '+relic.cooldown+' · 次数 '+(relic.charges??'不限')+(relic.description?' / '+relic.description:'');
-   const tile=node('span','battle-relic'+(relic.cooldown>0?' cooling':''));tile.title=info;tile.tabIndex=0;tile.setAttribute('aria-label',info);tile.append(icon('relic'),node('span','battle-tooltip',info));if(relic.level>1)tile.append(node('b','',relic.level));refs['relic-tray'].append(tile);
+  const relics=currentPlayer()?.relics||[];refs['relic-tray'].replaceChildren(node('small','relic-caption','道具'));
+  for(const relic of relics){const info=(relic.displayName||relic.name)+' · 剩余 '+(relic.charges??'不限')+' 次'+(Number(relic.cooldownBattles)?' · 冷却 '+relic.cooldownBattles+' 场':'')+(relic.rouletteActive?' · 转盘第 '+relic.rouletteTurn+' 回合':'')+(relic.description?' / '+relic.description:'');
+   const active=relic.activation&&relic.activation!=='None';
+   const tile=active?button('',()=>{itemId=relic.id;itemTarget='';previewItem();},'battle-relic item-button'):node('span','battle-relic');
+   tile.classList.toggle('cooling',Number(relic.cooldownBattles)>0);tile.title=info;tile.tabIndex=0;tile.dataset.itemId=relic.id;tile.setAttribute('aria-label',info);tile.append(icon('relic'),node('span','battle-tooltip',info));
+   if(active){tile.disabled=busy||uncertain;tile.append(node('b','',relic.charges??'用'));}else if(relic.level>1)tile.append(node('b','',relic.level));refs['relic-tray'].append(tile);
   }
-  if(!relics.length){const empty=node('span','battle-relic empty-slot');empty.append(icon('relic'));refs['relic-tray'].append(empty,node('span','relic-empty-label','当前构筑无遗物'));}
+  if(!relics.length){const empty=node('span','battle-relic empty-slot');empty.append(icon('relic'));refs['relic-tray'].append(empty,node('span','relic-empty-label','当前构筑无道具'));}
+ }
+ async function previewItem(){
+  const item=currentPlayer()?.relics.find(r=>r.id===itemId);itemPreview=null;
+  const sequence=++itemSequence,runId=battle?.runId,revision=battle?.revision;
+  if(!item?.canUse||busy||uncertain||item.activation==='ReplaceHeld'&&!itemTarget){itemPreviewBusy=false;render();return;}
+  itemPreviewBusy=true;render();
+  try{const data=await request('preview',{...actionPayload('UseItem'),itemInstanceId:itemId,...(itemTarget?{targetItemInstanceId:itemTarget}:{})});
+   if(sequence!==itemSequence||battle?.runId!==runId||battle?.revision!==revision)return;
+   itemPreview=data.success&&data.preview?data.preview:{legal:false,message:data.message||'无法预览道具。'};
+  }catch(error){if(sequence===itemSequence)itemPreview={legal:false,message:error.message};}
+  finally{if(sequence===itemSequence){itemPreviewBusy=false;render();}}
+ }
+ function renderItems(){
+  const host=refs.items,player=currentPlayer(),relics=player?.relics||[],active=relics.filter(r=>r.activation&&r.activation!=='None');host.replaceChildren();host.hidden=!active.length;if(!active.length)return;
+  const bar=node('div','playtest-item-controls'),choose=node('select');choose.setAttribute('aria-label','选择主动道具');choose.append(new Option('选择主动道具…',''));
+  for(const r of active)choose.append(new Option((r.displayName||r.name)+' · '+(r.charges??'不限')+'次',r.id));
+  if(!active.some(r=>r.id===itemId)){itemId='';itemTarget='';itemPreview=null;}choose.value=itemId;choose.disabled=busy||uncertain;
+  choose.addEventListener('change',()=>{itemId=choose.value;itemTarget='';previewItem();});bar.append(label('主动道具 · 不消耗行动点',choose));
+  const item=active.find(r=>r.id===itemId);
+  if(item?.activation==='ReplaceHeld'){
+   const target=node('select');target.setAttribute('aria-label','要替换的持有道具');target.append(new Option('选择另一件持有道具…',''));
+   for(const [i,r]of relics.entries())if(r.id!==item.id)target.append(new Option((r.displayName||r.name)+' · 第'+(i+1)+'件 · '+(r.charges??'不限')+'次',r.id));target.value=itemTarget;target.disabled=busy||uncertain;
+   target.addEventListener('change',()=>{itemTarget=target.value;previewItem();});bar.append(label('替换目标',target));
+  }
+  const preview=button(itemPreviewBusy?'正在预览…':'预览道具',previewItem);preview.disabled=busy||uncertain||!item?.canUse||itemPreviewBusy||item.activation==='ReplaceHeld'&&!itemTarget;
+  const use=button('使用道具',()=>command('UseItem',{itemInstanceId:itemId,...(itemTarget?{targetItemInstanceId:itemTarget}:{})}),'primary');use.disabled=busy||uncertain||!item?.canUse||itemPreviewBusy||!itemPreview?.legal;use.dataset.itemId=itemId;bar.append(preview,use);host.append(bar);
+  if(item){host.append(node('p','muted',item.rouletteActive?'转盘状态生效中，第 '+item.rouletteTurn+' 回合。':Number(item.cooldownBattles)>0?'还需完成 '+item.cooldownBattles+' 场战斗。':!item.canUse?'仅可在玩家行动阶段、有剩余行动点时使用。':item.activation==='ReplaceHeld'?'在全部等级中等概率替换为另一件道具，排除原道具、六面骰及已持有的唯一道具。':'次数按每件道具记录，消耗品用完移除。'));
+   if(itemPreview){const details=node('div','playtest-item-preview');if(!itemPreview.legal)details.append(node('p','playtest-invalid',itemPreview.message));else for(const line of (itemPreview.steps||[]).flatMap(s=>s.lines||[]))details.append(node('p','',line));host.append(details);}
+  }
  }
  function togglePile(zone){inspectZone=inspectZone===zone?'':zone;renderPiles();}
  function renderPiles(){
@@ -276,7 +312,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   refs.actor.parentElement.hidden=battle.players.length<2;
   refs.energy.replaceChildren(icon('spark'),node('strong','',player?.energy??'0'),node('span','','/ '+(player?.maxEnergy??'0')));refs.energy.title='本轮能量';
   renderPiles();
-  renderRelics();
+  renderRelics();renderItems();
   refs['hand-count'].textContent=player?'已选 '+selected.size+' / '+player.hand.length+' 张 · 手牌上限 '+player.handLimit:'';
   for(const [cardIndex,card] of (player?.hand||[]).entries()){
    const chosen=selected.has(card.id),red=/Heart|Diamond/i.test(card.suit);

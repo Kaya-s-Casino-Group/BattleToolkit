@@ -116,7 +116,7 @@ internal static partial class AdventureBridge
         var actor = new ParticipantId(Text(request, "actor", 1024));
         if (actor != before.State.Duel.PlayerId) return Failure("InvalidActor", "只能操作当前玩家。", entry);
         string actionName = Text(request, "action", 32);
-        if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn" }.Contains(actionName) ||
+        if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn", "UseItem" }.Contains(actionName) ||
             !Enum.TryParse(actionName, out CardDuelAction action))
             return Failure("InvalidAction", "此操作不能由玩家提交。", entry);
         var cards = StringArray(request, "selected", 512, 2048).Select(id => new CardInstanceId(id)).ToArray();
@@ -124,7 +124,9 @@ internal static partial class AdventureBridge
         int count = request.ContainsKey("drawCount") ? checked((int)Revision(request, "drawCount")) : 0;
         if (count > 512) return Failure("InvalidAmount", "摸牌张数无效。", entry);
         var next = Copy(entry, entry.Session.Fork());
-        var result = next.Session.ExecuteBattle(revision, action, cards, targetBindings: targets, drawCount: count);
+        var result = action == CardDuelAction.UseItem
+            ? next.Session.UseBattleItem(revision, Text(request, "itemInstanceId", 2048), Optional(request, "targetItemInstanceId", 2048))
+            : next.Session.ExecuteBattle(revision, action, cards, targetBindings: targets, drawCount: count);
         if (preview)
         {
             var response = Response(entry, includeSave: false);

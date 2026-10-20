@@ -28,8 +28,16 @@ namespace PokerEngine
         [DataMember(Order = 8)] public string[] Targets;
         [DataMember(Order = 9)] public AdventureTargetSlot[] Bindings;
         [DataMember(Order = 10, IsRequired = true)] public int DrawCount;
+        [DataMember(Order = 11)] public string ItemInstanceId;
+        [DataMember(Order = 12)] public string TargetItemInstanceId;
         internal static AdventureLogEntry ForCommand(long revision, AdventureCommand command) =>
             new AdventureLogEntry { Revision = revision, Kind = command.Kind, Id = command.Id, Suit = command.Suit };
+        internal static AdventureLogEntry ForItem(long revision, string instanceId, string targetInstanceId)
+        {
+            var entry = new AdventureLogEntry { Revision = revision, IsBattle = true, Action = CardDuelAction.UseItem,
+                ItemInstanceId = instanceId, TargetItemInstanceId = targetInstanceId };
+            entry.Validate(); return entry;
+        }
         internal static AdventureLogEntry ForBattle(long revision, CardDuelAction action, IEnumerable<CardInstanceId> cards,
             IEnumerable<ParticipantId> targets, BattleTargetBindings bindings, int drawCount)
         {
@@ -46,10 +54,19 @@ namespace PokerEngine
                 Suit.HasValue && !Enum.IsDefined(typeof(Suit), Suit.Value) || DrawCount < 0 || DrawCount > 512 ||
                 IsBattle && Action != CardDuelAction.Play && Action != CardDuelAction.Discard && Action != CardDuelAction.EndTurn &&
                     Action != CardDuelAction.Draw && Action != CardDuelAction.SkipDraw && Action != CardDuelAction.DiscardForDraw &&
-                    Action != CardDuelAction.ConfirmOverflow && Action != CardDuelAction.FinishTurn ||
+                    Action != CardDuelAction.ConfirmOverflow && Action != CardDuelAction.FinishTurn && Action != CardDuelAction.UseItem ||
                 !IsBattle && (!Enum.IsDefined(typeof(AdventureCommandKind), Kind) || Action != 0 || Cards != null || Targets != null || Bindings != null || DrawCount != 0) ||
                 IsBattle && (Id != null || Suit.HasValue || Kind != 0))
                 throw new ArgumentException("Invalid adventure log command.");
+            if (Action == CardDuelAction.UseItem)
+            {
+                if (!IsBattle || string.IsNullOrWhiteSpace(ItemInstanceId) || ItemInstanceId.Length > 2048 ||
+                    TargetItemInstanceId != null && (string.IsNullOrWhiteSpace(TargetItemInstanceId) || TargetItemInstanceId.Length > 2048) ||
+                    Cards != null || Targets != null || Bindings != null || DrawCount != 0)
+                    throw new ArgumentException("Invalid item command.");
+            }
+            else if (ItemInstanceId != null || TargetItemInstanceId != null)
+                throw new ArgumentException("Item selection requires an item command.");
             // Ordinary play/discard caps are enforced by BattleSession; overflow/effect draws can hold 512.
             CheckIds(Cards, 512); CheckIds(Targets, 64);
             if (Bindings != null)
@@ -68,7 +85,7 @@ namespace PokerEngine
     }
     public sealed partial class BattleAdventureSession
     {
-        public const int SnapshotSchemaVersion = 1;
+        public const int SnapshotSchemaVersion = 2;
         public const int MaxCommands = 8192;
         public const int MaxSnapshotBytes = 8 * 1024 * 1024;
         private static readonly UTF8Encoding SnapshotUtf8 = new UTF8Encoding(false, true);
@@ -190,7 +207,12 @@ namespace PokerEngine
                     writer.Write(deck.Count);
                     foreach (var card in deck) { writer.Write(card.Id); writer.Write(card.DefinitionId.Value); writer.Write((int)card.Effects); writer.Write(card.IsDisabled); }
                     writer.Write(relics.Count);
-                    foreach (var relic in relics) { writer.Write(relic.Id); writer.Write(relic.DefinitionId); writer.Write(relic.Level); writer.Write(relic.Growth); writer.Write(relic.Charges ?? -1); }
+                    foreach (var relic in relics)
+                    {
+                        writer.Write(relic.Id); writer.Write(relic.DefinitionId); writer.Write(relic.Level);
+                        writer.Write(relic.Growth); writer.Write(relic.Charges ?? -1); writer.Write(relic.CooldownRounds);
+                        WriteDigestContract(writer, relic.Memory);
+                    }
                     foreach (var values in new[] { visited, available, purchased })
                     { writer.Write(values.Count); foreach (string value in values) writer.Write(value); }
                     writer.Write(serviceUses.Count);
@@ -205,9 +227,28 @@ namespace PokerEngine
                         foreach (var zone in state.Table.Zones)
                         { writer.Write(zone.Id.Value); writer.Write(zone.Cards.Count); foreach (var card in zone.Cards) writer.Write(card.Value); }
                         foreach (byte value in state.Random.StateBytes) writer.Write(value);
+                        WriteDigestContract(writer, state.Duel.Combat);
+                        writer.Write(state.Duel.Players.Count);
+                        foreach (var player in state.Duel.Players)
+                        {
+                            writer.Write(player.Id.Value); writer.Write(player.Relics.Fingerprint);
+                            writer.Write(player.Relics.Relics.Count);
+                            foreach (var relic in player.Relics.Relics) WriteDigestContract(writer, relic);
+                            writer.Write(player.Energy.Energy);
+                            writer.Write((int)state.FlowFor(player.Id).Window);
+                            writer.Write(state.FlowFor(player.Id).ActionsRemaining);
+                        }
                     }
                 }
                 return BattleAdventureXml.Hash(Convert.ToBase64String(stream.ToArray()));
+            }
+        }
+        private static void WriteDigestContract<T>(BinaryWriter writer, T value)
+        {
+            using (var stream = new MemoryStream())
+            {
+                new DataContractJsonSerializer(typeof(T)).WriteObject(stream, value);
+                var bytes = stream.ToArray(); writer.Write(bytes.Length); writer.Write(bytes);
             }
         }
     }

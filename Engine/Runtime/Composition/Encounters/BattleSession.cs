@@ -99,8 +99,7 @@ namespace PokerEngine
                     var pending = next.Duel.Players.FirstOrDefault(p => next.Duel.HasPlayerWindow(p.Id) && p.Rules.Flow.UsesTurnFlow &&
                         (next.FlowFor(p.Id).Window == BattlePlayerWindow.Ending && (next.FlowFor(p.Id).FinishAfterOverflow || !p.Rules.Flow.EndDefense ||
                             next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 || next.Duel.IsActionBlocked(p.Id)) ||
-                        next.FlowFor(p.Id).Window == BattlePlayerWindow.Action && (next.Duel.IsActionBlocked(p.Id) ||
-                            next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 && next.Zone(CardZoneKinds.Deck, p.Id).Cards.Count == 0 && next.Zone(CardZoneKinds.Discard, p.Id).Cards.Count == 0)));
+                        next.FlowFor(p.Id).Window == BattlePlayerWindow.Action && next.Duel.IsActionBlocked(p.Id)));
                     if (pending != null)
                     {
                         automaticActor = pending.Id;
@@ -133,6 +132,14 @@ namespace PokerEngine
             var committed = new BattleSessionResult(before, next, CardDuelError.None, steps);
             State = next;
             return committed;
+        }
+
+        public BattleSessionResult UseItem(long expectedRevision, ParticipantId actor, string instanceId, string targetInstanceId = null)
+        {
+            var before = State; var result = Engine.UseItem(before, expectedRevision, actor, instanceId, targetInstanceId);
+            if (!result.Accepted) return Reject(before,result.Error);
+            State = result.State;
+            return new BattleSessionResult(before, State, CardDuelError.None, new[] { new BattleSessionStep(CardDuelAction.UseItem, actor, before, result) });
         }
 
         private static BattleSessionResult Reject(CardDuelState before, CardDuelError error) =>

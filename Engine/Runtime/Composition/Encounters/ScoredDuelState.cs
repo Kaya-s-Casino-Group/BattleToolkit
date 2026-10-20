@@ -83,7 +83,7 @@ namespace PokerEngine
         [DataMember(Order = 2, IsRequired = true)] public CombatState Combat { get; private set; }
         [DataMember(Order = 3, IsRequired = true)] public ParticipantId PlayerId { get; private set; }
         [DataMember(Order = 4, IsRequired = true)] public ParticipantId EnemyId { get; private set; }
-        [DataMember(Order = 5, IsRequired = true)] public int InitialPlayerHealth { get; private set; }
+        [DataMember(Order = 5, IsRequired = true)] public long InitialPlayerHealth { get; private set; }
         [DataMember(Order = 6, IsRequired = true)] public ScoredDuelPhase Phase { get; private set; }
         [DataMember(Name = "Scores", Order = 7, IsRequired = true)] private ScoreResult[] scores;
         public IReadOnlyList<ScoreResult> Scores => Guard.View(scores);
@@ -95,7 +95,7 @@ namespace PokerEngine
         public bool IsFinished => Phase == ScoredDuelPhase.Won || Phase == ScoredDuelPhase.Lost;
         public long TotalScore => scores.Aggregate(0L, (sum, score) => checked(sum + score.Total));
         internal ScoredDuelState(string fingerprint, CombatState combat, ParticipantId player, ParticipantId enemy,
-            int initialPlayerHealth, ScoredDuelPhase phase, IEnumerable<ScoreResult> scores, long revision,
+            long initialPlayerHealth, ScoredDuelPhase phase, IEnumerable<ScoreResult> scores, long revision,
             int completedRounds, PlayerTurnState playerTurn, IEnumerable<ScoredDuelActionRecord> actions)
         {
             DefinitionFingerprint = fingerprint; Combat = combat; PlayerId = player; EnemyId = enemy;

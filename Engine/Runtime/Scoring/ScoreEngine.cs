@@ -73,7 +73,10 @@ namespace PokerEngine
         public CardFace Face { get; }
         /// <summary>Default-profile value. Use GetBasePoints with the active profile for gameplay/UI queries.</summary>
         public long BasePoints => GetBasePoints(CardPointProfile.Default);
-        public long GetBasePoints(CardPointProfile profile) => (profile ?? throw new ArgumentNullException(nameof(profile))).GetBasePoints(Face);
+        public long GetBasePoints(CardPointProfile profile) => profile == null ? throw new ArgumentNullException(nameof(profile)) :
+            BasePointsOverride ?? profile.GetBasePoints(Face);
+        /// <summary>Mode-owned contextual value, e.g. the ace in an ace-high straight.</summary>
+        public long? BasePointsOverride { get; }
         public long GetPointsPerTrigger(CardPointProfile profile) => checked(GetBasePoints(profile) + BonusPoints);
         public long BonusPoints { get; }
         /// <summary>Nominal points for one trigger: base + bonus. Excludes multipliers, retriggers, relics and hand points.
@@ -85,12 +88,13 @@ namespace PokerEngine
         public CardEffects Effects { get; }
         public bool CanScore => CardEffectRules.CanScore(Effects);
         public ScoringCard(string id, CardFace face, long bonusPoints = 0, decimal bonusMultiplier = 0, decimal multiplierFactor = 1, int retriggers = 0,
-            CardEffects effects = CardEffects.None)
+            CardEffects effects = CardEffects.None, long? basePointsOverride = null)
         {
             Id = Guard.Text(id, nameof(id)); Face = face ?? throw new ArgumentNullException(nameof(face));
             CardEffectRules.Validate(effects); Effects = effects;
-            if (bonusPoints < 0 || bonusMultiplier < 0 || multiplierFactor < 0 || retriggers < 0 || retriggers > 8) throw new ArgumentException("Invalid card enhancement.");
+            if (bonusPoints < 0 || bonusMultiplier < 0 || multiplierFactor < 0 || retriggers < 0 || retriggers > 8 || basePointsOverride < 0) throw new ArgumentException("Invalid card enhancement.");
             BonusPoints = bonusPoints; BonusMultiplier = bonusMultiplier; MultiplierFactor = multiplierFactor; Retriggers = retriggers;
+            BasePointsOverride = basePointsOverride;
         }
     }
     public sealed class ScoringRelic
@@ -198,6 +202,36 @@ namespace PokerEngine
         {
             if (points < 0) throw new ArgumentOutOfRangeException(nameof(points));
             return new ScoreResult(id, HandCategory.HighCard, points, 1, points, 1, new ScoreStep[0]);
+        }
+
+        /// <summary>Append one final scoring multiplier, including independently scored full-house components.</summary>
+        public static ScoreResult ScaleMultiplier(ScoreResult score, decimal factor, string sourceId)
+        {
+            if (score == null || factor < 0) throw new ArgumentException("A score and nonnegative factor are required.");
+            Guard.Text(sourceId, nameof(sourceId));
+            if (factor == 1) return score;
+            decimal multiplier = checked(score.Multiplier * factor);
+            var steps = score.Steps.Concat(new[] {
+                new ScoreStep(sourceId, null, ScoreOperation.MultiplyMultiplier, factor, score.Points, multiplier)
+            });
+            return new ScoreResult(score.Id, score.Category, score.BasePoints, score.BaseMultiplier, score.Points,
+                multiplier, steps, score.UnmultipliedPoints,
+                score.Components.Select(component => ScaleMultiplier(component, factor, sourceId)));
+        }
+
+        /// <summary>Remove an appended display multiplier before applying it once to settled damage.</summary>
+        public static ScoreResult RemoveFinalMultiplier(ScoreResult score, string sourceId)
+        {
+            if (score == null) throw new ArgumentNullException(nameof(score));
+            Guard.Text(sourceId, nameof(sourceId));
+            var finalStep = score.Steps.LastOrDefault();
+            if (finalStep == null || finalStep.SourceId != sourceId ||
+                finalStep.Operation != ScoreOperation.MultiplyMultiplier || finalStep.CardId != null) return score;
+            var steps = score.Steps.Take(score.Steps.Count - 1).ToArray();
+            decimal multiplier = steps.Length == 0 ? score.BaseMultiplier : steps[steps.Length - 1].MultiplierAfter;
+            return new ScoreResult(score.Id, score.Category, score.BasePoints, score.BaseMultiplier, score.Points,
+                multiplier, steps, score.UnmultipliedPoints,
+                score.Components.Select(component => RemoveFinalMultiplier(component, sourceId)));
         }
 
         /// <summary>Verify an authoritative persisted arithmetic trace, independently of the mode that produced it.</summary>

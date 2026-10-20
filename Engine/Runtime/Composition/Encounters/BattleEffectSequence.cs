@@ -39,6 +39,8 @@ namespace PokerEngine
     {
         public CombatEffectKind Kind { get; }
         public long Amount { get; }
+        /// <summary>Optional exact healing amount retained until healing-ratio modifiers have been applied.</summary>
+        public decimal? UnroundedAmount { get; private set; }
         public StatusApplicationSpec Status { get; }
         public StatusApplicationSpec OnHitStatus { get; }
         private BattleEffectSpec(CombatEffectKind kind, long amount = 0, StatusApplicationSpec status = null, StatusApplicationSpec onHitStatus = null)
@@ -48,6 +50,11 @@ namespace PokerEngine
         }
         public static BattleEffectSpec Damage(long amount, StatusApplicationSpec onHitStatus = null) => new BattleEffectSpec(CombatEffectKind.Damage, amount, onHitStatus: onHitStatus);
         public static BattleEffectSpec Heal(long amount) => new BattleEffectSpec(CombatEffectKind.Heal, amount);
+        public static BattleEffectSpec HealExact(decimal amount)
+        {
+            if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+            return new BattleEffectSpec(CombatEffectKind.Heal, checked((long)decimal.Floor(amount))) { UnroundedAmount = amount };
+        }
         public static BattleEffectSpec GainBlock(long amount) => new BattleEffectSpec(CombatEffectKind.GainBlock, amount);
         public static BattleEffectSpec ApplyStatus(StatusApplicationSpec status) =>
             new BattleEffectSpec(CombatEffectKind.ApplyStatus, status: status ?? throw new ArgumentNullException(nameof(status)));

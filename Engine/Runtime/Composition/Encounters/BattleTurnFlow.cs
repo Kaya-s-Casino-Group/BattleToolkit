@@ -26,18 +26,20 @@ namespace PokerEngine
         public bool DiscardCostsAction { get; }
         public bool EndDefense { get; }
         public bool OverflowTriggersDefense { get; }
+        public bool ForceDiscardOverflow { get; }
         public KickerScoring KickerScoring { get; }
         public bool LayeredScoreRelics { get; }
         public BattleTurnFlowRules(bool manualDraw = false, bool openingDeal = false, int drawCount = 5, int drawUses = 1,
             int drawWarningThreshold = 3, int minPlayCards = 1, bool effectDrawOverflow = true, bool discardEndsTurn = true,
             bool discardCostsAction = true, bool endDefense = true, bool overflowTriggersDefense = false,
-            KickerScoring kickerScoring = KickerScoring.None, bool layeredScoreRelics = false, int actionsPerTurn = 3, int minFlushCards = 5, int minStraightCards = 5, bool autoDrawToLimit = false)
+            KickerScoring kickerScoring = KickerScoring.None, bool layeredScoreRelics = false, int actionsPerTurn = 3, int minFlushCards = 5, int minStraightCards = 5, bool autoDrawToLimit = false, bool forceDiscardOverflow = true)
         {
             if (minFlushCards < 3 || minFlushCards > 5 || minStraightCards < 3 || minStraightCards > 5 || actionsPerTurn < 1 || actionsPerTurn > 64 || drawCount < 0 || drawCount > 512 || drawUses < 0 || drawUses > 64 || drawWarningThreshold < 0 || drawWarningThreshold > 512 ||
                 minPlayCards < 1 || minPlayCards > 10 || !Enum.IsDefined(typeof(KickerScoring), kickerScoring))
                 throw new ArgumentException("Invalid configurable turn flow.");
             if (manualDraw && autoDrawToLimit) throw new ArgumentException("Choose manual or automatic draw.");
             AutoDrawToLimit = autoDrawToLimit;
+            ForceDiscardOverflow = forceDiscardOverflow;
             MinFlushCards = minFlushCards; MinStraightCards = minStraightCards; ActionsPerTurn = actionsPerTurn; ManualDraw = manualDraw; OpeningDeal = openingDeal; DrawCount = drawCount; DrawUses = drawUses;
             DrawWarningThreshold = drawWarningThreshold; MinPlayCards = minPlayCards; EffectDrawOverflow = effectDrawOverflow;
             DiscardEndsTurn = discardEndsTurn; DiscardCostsAction = discardCostsAction; EndDefense = endDefense;

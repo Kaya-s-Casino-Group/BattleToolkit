@@ -79,11 +79,17 @@ namespace PokerEngine
         }
         public IEnumerable<BattleEffectStep> ResolveAll(ScoreResult score, HandAttackInfo hand)
         {
+            if (hand?.ModernScoring == true && Kind == CombatEffectKind.Heal && Amount?.Kind == EffectAmountKind.FlushBaseTotalScale)
+            {
+                yield return new BattleEffectStep(Id, BattleEffectSpec.HealExact(checked(hand.FlushBaseTotal.Value * Amount.Value)), Target);
+                yield break;
+            }
             if (!PerSubmittedCard) { yield return Resolve(score, hand?.FlushBaseTotal); yield break; }
             if (hand == null) throw new ArgumentException("Repeated effects require submitted hand facts.");
-            for (int i = 0; i < hand.SubmittedCards.Count; i++)
+            var cards = hand.ModernScoring ? hand.AttackCards : hand.SubmittedCards;
+            for (int i = 0; i < cards.Count; i++)
             {
-                var step = Resolve(score, hand.FlushBaseTotal, hand.SubmittedCards[i].Id.Value, i == 0);
+                var step = Resolve(score, hand.FlushBaseTotal, cards[i].Id.Value, i == 0);
                 yield return i == 0 ? step : new BattleEffectStep(Id + "/card/" + (i + 1), step.Effect, step.Target);
             }
         }
@@ -118,7 +124,9 @@ namespace PokerEngine
         public bool CombineCompatibleEffects { get; }
         public bool FlushAsAttribute { get; }
         public bool FullHouseComponentDamage { get; }
-        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false)
+        public bool ModernScoring { get; }
+        public decimal FlushDamageMultiplier { get; }
+        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false, bool modernScoring = false, decimal flushDamageMultiplier = 2m)
         {
             Version = Guard.Text(version, nameof(version));
             var copy = Guard.Copy(entries, nameof(entries));
@@ -138,6 +146,11 @@ namespace PokerEngine
                 throw new ArgumentException("Invalid flush bonus effects.");
             FlushUsesRankEffects = flushUsesRankEffects;
             CombineCompatibleEffects = combineCompatibleEffects; FlushAsAttribute = flushAsAttribute; FullHouseComponentDamage = fullHouseComponentDamage;
+            ModernScoring = modernScoring;
+            if (flushDamageMultiplier < 0) throw new ArgumentOutOfRangeException(nameof(flushDamageMultiplier));
+            FlushDamageMultiplier = flushDamageMultiplier;
+            if (modernScoring && (!combineCompatibleEffects || !flushAsAttribute))
+                throw new ArgumentException("Modern scoring requires compatible mechanisms and flush as an attribute.");
             if ((flushAsAttribute || fullHouseComponentDamage) && !combineCompatibleEffects) throw new ArgumentException("Composition options require compatible effects.");
             if (flushUsesRankEffects && combineCompatibleEffects) throw new ArgumentException("Choose one hand composition mode.");
             if (combineCompatibleEffects && (copy.Any(entry => !(fullHouseComponentDamage && entry.Category == HandCategory.FullHouse) && entry.Effects.Count(e => e.Kind == CombatEffectKind.Damage) > 1) ||
@@ -158,7 +171,7 @@ namespace PokerEngine
                 bool royal = context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace;
                 entry = matches.Single(item => item.Variant == (royal ? HandEffectVariant.Royal : HandEffectVariant.Ordinary));
             }
-            bool flush = context.Hand?.IsFlush == true && !(context.Score.Category == HandCategory.StraightFlush && context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace);
+            bool flush = context.Hand?.IsFlush == true && (ModernScoring || !(context.Score.Category == HandCategory.StraightFlush && context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace));
             if (flush && FlushUsesRankEffects)
                 entry = Entries.Single(item => item.Category == context.Hand.RankPattern.Category);
             var effects = entry.Effects.SelectMany(item => item.ResolveAll(context.Score, context.Hand)).ToList();

@@ -186,7 +186,7 @@ class AdventureHttpTests(unittest.TestCase):
             self.assertEqual('adventure.http-custom.1', ET.fromstring(catalog['configXml']).attrib['version'])
             self.assertEqual((server.ROOT / 'Engine/Content/StandardAdventure.xml').read_text(encoding='utf-8'),
                              catalog['standardConfigXml'])
-            self.assertEqual((server.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8'),
+            self.assertEqual(max((server.ROOT / 'Engine/Content').glob('StandardSingleBattle-????-??-??.xml')).read_text(encoding='utf-8'),
                              catalog['standardBattleXml'])
 
     def test_invalid_selection_cannot_start(self):

@@ -5,7 +5,7 @@ using System.Linq;
 namespace PokerEngine
 {
     public enum BattleRoundLimitBehavior { Lose, Enrage }
-    public enum PlayerBlockExpiry { Retain = 0, AfterEnemyPhase = 1 }
+    public enum PlayerBlockExpiry { Retain = 0, AfterEnemyPhase = 1, PlayerTurnStart = 2 }
 
     /// <summary>Shared encounter rules only. No character stats, player energy or enemy attacks.</summary>
     public sealed class BattleRules
@@ -71,7 +71,7 @@ namespace PokerEngine
             if (maxEnergy < 1 || initialEnergy < 0 || playEnergyCost < 0 || discardEnergyCost < 0 || handSize < 1 || handSize > 52 || discards < 0 || discards > 1000)
                 throw new ArgumentException("Invalid player card/action budget.");
             // Poker classification accepts at most five submitted cards. Discard has no poker-pattern constraint.
-            if (maxPlayCards < 1 || maxPlayCards > 10 || maxDiscardCards < 1 || maxDiscardCards > 52)
+            if (maxPlayCards < 1 || maxPlayCards > 10 || maxDiscardCards < 1 || maxDiscardCards > 512)
                 throw new ArgumentException("Invalid play/discard card limit.");
             if (damagePolicy != null && effectRule != null) throw new ArgumentException("Choose either a damage policy or a scored-hand effect rule.");
             MaxEnergy = maxEnergy; InitialEnergy = initialEnergy; PlayEnergyCost = playEnergyCost; DiscardEnergyCost = discardEnergyCost;
@@ -83,7 +83,7 @@ namespace PokerEngine
             Flow = flow ?? new BattleTurnFlowRules();
             if (Flow.MinPlayCards > maxPlayCards) throw new ArgumentException("Minimum play cards exceeds maximum.");
             UnlimitedDiscards = unlimitedDiscards;
-            MaxPlayCards = Math.Min(maxPlayCards, handSize); MaxDiscardCards = Math.Min(maxDiscardCards, handSize);
+            MaxPlayCards = Math.Min(maxPlayCards, handSize); MaxDiscardCards = maxDiscardCards;
         }
     }
     /// <summary>Encounter input. Deck entries belong to this player; no Unity or presentation references.</summary>
@@ -91,13 +91,13 @@ namespace PokerEngine
     {
         public ParticipantId Id { get; }
         public CombatantDefinition Definition { get; }
-        public int? InitialHealth { get; }
+        public long? InitialHealth { get; }
         public IReadOnlyList<DeckEntry> Deck { get; }
         public BattlePlayerRules Rules { get; }
         public BattleActorDamageRules DamageRules { get; }
         public BattleActorTargetRules TargetRules { get; }
         public IReadOnlyList<BattleRelicSetup> Relics { get; }
-        public BattlePlayerSetup(ParticipantId id, CombatantDefinition definition, IEnumerable<DeckEntry> deck = null, int? initialHealth = null,
+        public BattlePlayerSetup(ParticipantId id, CombatantDefinition definition, IEnumerable<DeckEntry> deck = null, long? initialHealth = null,
             BattlePlayerRules rules = null, BattleActorDamageRules damageRules = null, BattleActorTargetRules targetRules = null,
             IEnumerable<BattleRelicSetup> relics = null)
         {
@@ -227,9 +227,11 @@ namespace PokerEngine
         public IReadOnlyList<RelicTriggerActivation> RelicActivations { get; }
         public BattleActionCompletion ActionCompletion { get; }
         public IReadOnlyList<EnemyWorldEffect> GeneratedCards { get; }
+        public RandomState ItemRandom { get; }
         internal TeamBattleTransition(TeamBattleState state, CardDuelError error = CardDuelError.None, IEnumerable<CombatRuleEvent> events = null, DamagePlan damage = null, DiscardRewardResolution discardReward = null, BattleEffectPlan effectPlan = null,
-            BattleActionCostResolution actionCost = null, IEnumerable<RelicTriggerActivation> relicActivations = null, BattleActionCompletion actionCompletion = null, IEnumerable<EnemyWorldEffect> generatedCards = null)
+            BattleActionCostResolution actionCost = null, IEnumerable<RelicTriggerActivation> relicActivations = null, BattleActionCompletion actionCompletion = null, IEnumerable<EnemyWorldEffect> generatedCards = null, RandomState itemRandom = null)
         {
+            ItemRandom = itemRandom;
             GeneratedCards = Array.AsReadOnly((generatedCards ?? Array.Empty<EnemyWorldEffect>()).ToArray());
             State = state; Error = error; Damage = damage; DiscardReward = discardReward; EffectPlan = effectPlan;
             ActionCost = actionCost; ActionCompletion = actionCompletion;
@@ -371,7 +373,7 @@ namespace PokerEngine
         internal TeamBattleTransition ExecuteObserved(TeamBattleState state, long revision, ParticipantId actor, ScoredDuelActionKind action,
             ScoreResult score = null, IEnumerable<ParticipantId> requestedTargets = null, HandAttackInfo hand = null,
             IEnumerable<DiscardCardSnapshot> discardedCards = null, BattleTargetBindings targetBindings = null,
-            BattleTimelineRecorder timeline = null, bool freeDiscard = false, Action<EnemyWorldEffect, TeamBattleState> worldObserver = null, IEnumerable<Suit> dominantDiscardSuits = null)
+            BattleTimelineRecorder timeline = null, bool freeDiscard = false, Action<EnemyWorldEffect, TeamBattleState> worldObserver = null, IEnumerable<Suit> dominantDiscardSuits = null, RandomState itemRandom = null)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             if (!ReferenceEquals(state.Rules, Definition)) return new TeamBattleTransition(state, CardDuelError.InvalidState);
@@ -428,7 +430,8 @@ namespace PokerEngine
                     // while retaining the active phase until the normal closing/terminal path below.
                     state = WindowState(entering.State, combat, players, state.Phase, state.CompletedRounds, state.PendingEnemies);
                 }
-                bool stoppedAtStart = !combat.Get(actor).IsAlive || IsFinished(combat, players, state.Enemies);
+                bool revivedAtStart = enemy && turnEvents.OfType<CombatEvent>().Any(e => e.Effect.Kind == CombatEffectKind.Revive && players.Any(p => p.Id == e.Effect.Target));
+                bool stoppedAtStart = revivedAtStart || !combat.Get(actor).IsAlive || IsFinished(combat, players, state.Enemies);
                 var amountModifier = new RelicCombatAmountModifier(state, hand == null ? (ParticipantId?)null : actor, hand);
                 IReadOnlyList<CombatRuleEvent> events = turnEvents; DamagePlan damagePlan = null; DiscardRewardResolution discardReward = null; BattleEffectPlan effectPlan = null;
                 if (skipPlayer || enemy && blocked && !stoppedAtStart)
@@ -448,6 +451,7 @@ namespace PokerEngine
                         checked { _ = state.TotalScore + score.Total; }
                         scores = scores.Concat(new[] { score }).ToArray();
                     }
+                    var effectScore = enemy || score == null ? score : ScoreEngine.RemoveFinalMultiplier(score, "item/roulette");
                     IEnumerable<CombatEffect> baseEffects; string ruleVersion, explanation;
                     HandEffectModification handModification = null;
                     var effectRule = enemy ? null : state.Player(actor).Rules.EffectRule;
@@ -458,7 +462,7 @@ namespace PokerEngine
                         try
                         {
                             sequence = enemy ? enemyEffectRule.Resolve(new EnemyBattleEffectContext(combat, actor))
-                                : effectRule.Resolve(new ScoredHandEffectContext(combat, actor, score, hand));
+                                : effectRule.Resolve(new ScoredHandEffectContext(combat, actor, effectScore, hand));
                             if (sequence == null || sequence.RuleVersion != (enemy ? enemyEffectRule.Version : effectRule.Version))
                                 return new TeamBattleTransition(originalState, CardDuelError.InvalidEffectPlan);
                         }
@@ -468,9 +472,9 @@ namespace PokerEngine
                             try
                             {
                                 var modified = new RelicHandEffectModifier().Modify(new HandEffectModifierContext(state.Player(actor).Relics,
-                                    new ScoredHandEffectContext(combat, actor, score, hand), sequence));
+                                    new ScoredHandEffectContext(combat, actor, effectScore, hand), sequence));
                                 if (!modified.IsIdentity) { handModification = modified; sequence = modified.Output; }
-                                sequence = RelicPrograms.Sequence(state.Player(actor).Relics, new ScoredHandEffectContext(combat, actor, score, hand), sequence);
+                                sequence = RelicPrograms.Sequence(state.Player(actor).Relics, new ScoredHandEffectContext(combat, actor, effectScore, hand), sequence);
                             }
                             catch (ArgumentException) { return new TeamBattleTransition(originalState, CardDuelError.InvalidHandEffectModifier); }
                         }
@@ -487,7 +491,7 @@ namespace PokerEngine
                         if (enemy) requests = targets.Select(target => new DamageRequest(actor, target, state.Enemies.Single(x => x.Id == actor).Damage));
                         else
                         {
-                            var context = new ScoredHandDamageContext(combat, actor, score, targets, hand);
+                            var context = new ScoredHandDamageContext(combat, actor, effectScore, targets, hand);
                             try
                             {
                                 var damageRule = state.Player(actor).Rules.DamagePolicy;
@@ -539,7 +543,8 @@ namespace PokerEngine
                     long extra = checked((long)RelicPrograms.Entries(state.Player(actor).Relics).Where(e=>e.Item2.Kind==RelicProgramKind.DiscardSuitBlock).Sum(e=>e.Item2.Amount) * discardedCards.Count(c=>suits.Contains(c.Face.Suit)));
                     effectPlan = new BattleEffectPlan(plan.RuleVersion, plan.Explanation, plan.Effects.Concat(extra==0?Array.Empty<CombatEffect>():new[]{new CombatEffect(CombatEffectKind.GainBlock,actor,actor,extra)}));
                 }
-                var triggerRuntime = RelicReactionRuntime.Create(state, actor, action, hand, discardReward?.Context.Cards.Count);
+                var triggerRuntime = RelicReactionRuntime.Create(state, actor, action, hand, discardReward?.Context.Cards.Count, itemRandom);
+                if (triggerRuntime != null) amountModifier.RouletteWasCleared = triggerRuntime.RouletteWasCleared;
                 var timelineSource = new TeamBattleState(state.Rules, combat, players, state.Enemies, state.Phase,
                     state.PendingEnemies, state.Revision, state.CompletedRounds, scores, state.Actions);
                 timeline?.SetTeam(timelineSource);
@@ -555,7 +560,7 @@ namespace PokerEngine
                 var stageFacts = new List<CombatRuleEvent>();
                 state = EnterEnemyStages(WindowState(state, combat, players, state.Phase, state.CompletedRounds, state.PendingEnemies), stageFacts, timeline, (amountModifier as RelicCombatAmountModifier)?.EnteredStages);
                 combat = state.Combat; events = events.Concat(stageFacts).ToArray();
-                if (enemy && !blocked && !stoppedAtStart && state.Enemies.Single(e => e.Id == actor).Behavior != null)
+                if (enemy && !blocked && !stoppedAtStart && triggerRuntime?.AbortEnemyPhase != true && state.Enemies.Single(e => e.Id == actor).Behavior != null)
                 {
                     var worldFacts = new List<CombatRuleEvent>();
                     state = CompleteEnemyBehavior(WindowState(state, combat, players, state.Phase, state.CompletedRounds, state.PendingEnemies), actor, generatedCards, timeline, worldObserver, worldFacts);
@@ -585,7 +590,7 @@ namespace PokerEngine
                 // Explicit end/skip commands are boundaries, not completed actions. A finished battle starts no new clock.
                 bool finished = IsFinished(combat, players, state.Enemies);
                 bool hasCompletion = RelicReactionRuntime.HandlesAction(state, actor, action);
-                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked && !stoppedAtStart) &&
+                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked && !stoppedAtStart && triggerRuntime?.AbortEnemyPhase != true) &&
                     (hasCompletion || HasPeriodic(combat, new[] { actor }, CombatTimingKind.ActionCompleted)))
                 {
                     if (hasCompletion) triggerRuntime = triggerRuntime.WithCompletion(new BattleActionCompletionContext(state, actor, action,
@@ -604,7 +609,7 @@ namespace PokerEngine
                 if (triggerRuntime != null) activations.AddRange(triggerRuntime.Activations);
                 players = ApplyRuntime(players, triggerRuntime);
                 if(action == ScoredDuelActionKind.ScoredHand && hand != null) players = players.Select(p => p.Id != actor ? p : new BattlePlayerTurn(p.Id,p.Energy,p.HasEnded,p.Rules,p.DamageRules,p.TargetRules,RelicPrograms.Complete(p.Relics,hand),p.Limits)).ToArray();
-                var pending = enemy ? state.PendingEnemies.Where(id => id != actor && combat.Get(id).IsAlive).ToArray() : state.PendingEnemies.ToArray();
+                var pending = enemy && (revivedAtStart || triggerRuntime?.AbortEnemyPhase == true) ? Array.Empty<ParticipantId>() : enemy ? state.PendingEnemies.Where(id => id != actor && combat.Get(id).IsAlive).ToArray() : state.PendingEnemies.ToArray();
                 bool playerPhaseEnded = !enemy && (finished || players.All(x => x.HasEnded || !combat.Get(x.Id).IsAlive));
                 bool enemyPhaseEnded = enemy && (pending.Length == 0 || finished);
                 bool ranPhaseEnding = !finished && (playerPhaseEnded || enemyPhaseEnded);
@@ -693,6 +698,21 @@ namespace PokerEngine
                 }
                 if ((phase == ScoredDuelPhase.AwaitingPlayerHand || phase == ScoredDuelPhase.AwaitingEnemyAction) && phase != state.Phase)
                 {
+                    // Old shields expire before any new player-start grants or periodic statuses.
+                    if (phase == ScoredDuelPhase.AwaitingPlayerHand && Definition.PlayerBlockExpiry == PlayerBlockExpiry.PlayerTurnStart)
+                    {
+                        var clear = players.Where(p => combat.Get(p.Id).IsAlive && combat.Get(p.Id).Block > 0 &&
+                            BattleRuleResolver.Value(p.Rules, p.Relics, BattleRuleValueKey.RetainBlock).Value == 0)
+                            .Select(p => new CombatEffect(CombatEffectKind.ClearBlock, p.Id, p.Id)).ToArray();
+                        if (clear.Length > 0)
+                        {
+                            var expired = CombatEngine.Resolve(combat, combat.Revision, clear, new ActorIncomingDamageModifier(state),
+                                Definition.StatusCatalog, Definition.ReactionProvider, Definition.ReactionLimits);
+                            if (!expired.Accepted) return new TeamBattleTransition(originalState, EffectFailure(expired.Error));
+                            timeline?.ObserveCombat(expired.RuleEvents);
+                            combat = expired.State; events = events.Concat(expired.RuleEvents).ToArray();
+                        }
+                    }
                     var window = WindowState(state, combat, players, phase, rounds, pending);
                     timeline?.SetTeam(WindowState(timelineSource, window.Combat, window.Players, window.Phase,
                         window.CompletedRounds, window.PendingEnemies));
@@ -707,7 +727,7 @@ namespace PokerEngine
                         var turns = ResolveBoundary(WindowState(window, combat, players, phase, rounds, pending),
                             CombatTimingSignal.TurnStarted(BattleStatusTiming.RoundScope(window) + "/turn/player", players.Select(p => p.Id)));
                         if (!turns.Accepted) return new TeamBattleTransition(originalState, turns.Error);
-                        timeline?.ObserveCombat(turns.RuleEvents); combat = turns.State.Combat; events = events.Concat(turns.RuleEvents).ToArray();
+                        timeline?.ObserveCombat(turns.RuleEvents); combat = turns.State.Combat; players = turns.State.Players.ToArray(); events = events.Concat(turns.RuleEvents).ToArray();
                     }
                     pending = pending.Where(id => combat.Get(id).IsAlive).ToArray();
                     if (IsFinished(combat, players, state.Enemies))
@@ -729,7 +749,7 @@ namespace PokerEngine
                     next = ended.State; events = events.Concat(ended.RuleEvents).ToArray(); activations.AddRange(ended.RelicActivations); timeline?.ObserveCombat(ended.RuleEvents, ended.RelicActivations);
                 }
                 return new TeamBattleTransition(next, events: events, damage: damagePlan, discardReward: discardReward, effectPlan: effectPlan, actionCost: actionCost,
-                    relicActivations: activations, actionCompletion: triggerRuntime?.Completion, generatedCards: generatedCards);
+                    relicActivations: activations, actionCompletion: triggerRuntime?.Completion, generatedCards: generatedCards, itemRandom: triggerRuntime?.ItemRandom);
             }
             catch (OverflowException) { return new TeamBattleTransition(originalState, CardDuelError.Overflow); }
             catch (ArgumentException) { return new TeamBattleTransition(originalState, CardDuelError.InvalidTarget); }
@@ -745,11 +765,12 @@ namespace PokerEngine
                     if (enemy.Behavior?.OpeningEffects == null) continue;
                     var bound = BattleEffectBinder.Bind(draft, enemy.Id, enemy.Behavior.OpeningEffects, null, null, null);
                     if (bound.Error != CardDuelError.None) return new TeamBattleTransition(state, bound.Error);
-                    var applied = CombatEngine.Resolve(draft.Combat, draft.Combat.Revision, bound.Effects, statusCatalog: Definition.StatusCatalog);
+                    var openingRuntime = RelicReactionRuntime.Create(draft, enemy.Id, ScoredDuelActionKind.EnemyAction, null, null);
+                    var applied = CombatEngine.Resolve(draft.Combat, draft.Combat.Revision, bound.Effects, statusCatalog: Definition.StatusCatalog, reactionRuntime: openingRuntime);
                     if (!applied.Accepted) return new TeamBattleTransition(state, EffectFailure(applied.Error));
                     timeline?.SetTeam(draft); timeline?.ObserveCombat(applied.RuleEvents);
                     events.AddRange(applied.RuleEvents);
-                    draft = WindowState(draft, applied.State, draft.Players, draft.Phase, draft.CompletedRounds, draft.PendingEnemies);
+                    draft = WindowState(draft, applied.State, ApplyRuntime(draft.Players, (RelicReactionRuntime)applied.ReactionRuntime), draft.Phase, draft.CompletedRounds, draft.PendingEnemies);
                 }
                 var signals = new[] {
                     CombatTimingSignal.BattleStarted(state.Combat.Id + "/start", state.Players.Select(x => x.Id).Concat(state.Enemies.Select(x => x.Id))),
@@ -819,16 +840,24 @@ namespace PokerEngine
         internal TeamBattleTransition ResolveBoundary(TeamBattleState state, CombatTimingSignal signal, ICombatAmountModifier amountModifier = null)
         {
             var programEvents = new List<CombatRuleEvent>();
+            var itemBoundary = ResolveItemBoundary(state, signal);
+            if (!itemBoundary.Accepted) return itemBoundary;
+            state = itemBoundary.State; programEvents.AddRange(itemBoundary.RuleEvents);
             if(signal.Kind==CombatTimingKind.TurnStarted) {
                 var effects=state.Players.Where(p=>signal.Participants.Contains(p.Id)).SelectMany(p=>RelicPrograms.Entries(p.Relics).Where(e=>e.Item2.Kind==RelicProgramKind.TurnHealthLoss).Select(e=>new CombatEffect(CombatEffectKind.LoseHealth,p.Id,p.Id,(long)e.Item2.Amount))).ToArray();
-                if(effects.Length>0) {var result=CombatEngine.Resolve(state.Combat,state.Combat.Revision,effects); if(!result.Accepted)return new TeamBattleTransition(state,EffectFailure(result.Error)); programEvents.AddRange(result.RuleEvents);state=WindowState(state,result.State,state.Players,state.Phase,state.CompletedRounds,state.PendingEnemies);}
+                if(effects.Length>0) {
+                    var lifeRuntime = RelicReactionRuntime.Create(state,effects[0].Source,ScoredDuelActionKind.EndPlayerTurn,null,null);
+                    var result=CombatEngine.Resolve(state.Combat,state.Combat.Revision,effects,reactionRuntime:lifeRuntime);
+                    if(!result.Accepted)return new TeamBattleTransition(state,EffectFailure(result.Error));
+                    programEvents.AddRange(result.RuleEvents);state=WindowState(state,result.State,ApplyRuntime(state.Players,(RelicReactionRuntime)result.ReactionRuntime),state.Phase,state.CompletedRounds,state.PendingEnemies);
+                }
             }
             bool boundary = RelicReactionRuntime.Handles(state, signal);
             if (!boundary && !HasPeriodic(state.Combat, signal.Participants, signal.Kind) && programEvents.Count==0) return new TeamBattleTransition(state);
             amountModifier = amountModifier ?? new RelicCombatAmountModifier(state);
             var resolved = CombatEngine.ResolveTiming(state.Combat, state.Combat.Revision, signal,
                 new ActorIncomingDamageModifier(state), Definition.StatusCatalog, Definition.ReactionLimits,
-                amountModifier ?? new RelicCombatAmountModifier(state), boundary ? RelicReactionRuntime.CreateBoundary(state, signal) : null,
+                amountModifier ?? new RelicCombatAmountModifier(state), RelicReactionRuntime.CreateBoundary(state, signal),
                 boundary ? Definition.ReactionProvider : null);
             if (!resolved.Accepted) return new TeamBattleTransition(state, EffectFailure(resolved.Error));
             var runtime = (RelicReactionRuntime)resolved.ReactionRuntime;

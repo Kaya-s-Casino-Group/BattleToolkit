@@ -115,7 +115,7 @@ namespace PokerEngine.Tests
             var state = Create();
             var result = CombatEngine.Resolve(state, 0, new[] {
                 Damage(100), Damage(1), new CombatEffect(CombatEffectKind.GainBlock, Player, Player, 2),
-                new CombatEffect(CombatEffectKind.GainBlock, Player, Player, int.MaxValue)
+                new CombatEffect(CombatEffectKind.GainBlock, Player, Player, long.MaxValue)
             });
             Assert.AreEqual(CombatError.Overflow, result.Error); Assert.AreSame(state, result.State);
             Assert.IsEmpty(result.Events); Assert.IsEmpty(result.RuleEvents);
@@ -124,7 +124,7 @@ namespace PokerEngine.Tests
         [Test] public void OverflowAndStaleCommandsProduceNoPartialEffects()
         {
             var before = Create();
-            var result = CombatEngine.Resolve(before, 0, new[] { Damage(1), new CombatEffect(CombatEffectKind.GainBlock, Player, Enemy, int.MaxValue) });
+            var result = CombatEngine.Resolve(before, 0, new[] { Damage(1), new CombatEffect(CombatEffectKind.GainBlock, Player, Enemy, long.MaxValue) });
             Assert.That(result.Error, Is.EqualTo(CombatError.Overflow)); Assert.That(result.State, Is.SameAs(before)); Assert.That(result.Events, Is.Empty);
             Assert.That(CombatEngine.Resolve(before, 1, new[] { Damage(1) }).Error, Is.EqualTo(CombatError.StaleRevision));
             var max = new CombatState(before.Id, long.MaxValue, before.Combatants);

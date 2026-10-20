@@ -4,6 +4,14 @@ using System.Collections.Generic;
 namespace PokerEngine
 {
     /// <summary>Settlement provenance, independent of damage's AttackOrigin and target selection.</summary>
+    /// <summary>Death handling remains eligible for leaf effects such as poison, without enabling ordinary reactions.</summary>
+    public interface ICombatDeathReactionRuntime : ICombatReactionRuntime { }
+
+    public interface ICombatSettlementControl
+    {
+        bool CancelEffect(CombatEffect effect, CombatEffectProvenance provenance);
+    }
+
     public enum CombatEffectOrigin { Primary = 0, Triggered = 1, Periodic = 2, Reflection = 3, Lifesteal = 4, Overheal = 5 }
     public enum CombatReactionSourcePolicy { RequireLiving = 0, AllowDefeated = 1 }
 

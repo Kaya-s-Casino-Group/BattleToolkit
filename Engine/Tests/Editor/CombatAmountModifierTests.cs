@@ -82,7 +82,7 @@ namespace PokerEngine.Tests
         {
             var before = State(); var modifier = new Modifier(context => new CombatAmountModification(context.Amount,
                 context.Effect.Kind == CombatEffectKind.GainBlock && context.Stage == CombatAmountStage.Incoming
-                    ? new[] { new CombatAmountContribution("r", "huge-shield", int.MaxValue) } : null));
+                    ? new[] { new CombatAmountContribution("r", "huge-shield", long.MaxValue) } : null));
             var result = CombatEngine.Resolve(before, before.Revision, new[] {
                 new CombatEffect(CombatEffectKind.Damage, A, B, 10), new CombatEffect(CombatEffectKind.GainBlock, A, A, 1)
             }, amountModifier: modifier);

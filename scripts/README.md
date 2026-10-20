@@ -24,7 +24,7 @@ Windows 只对本次 PowerShell 子进程使用 `ExecutionPolicy Bypass`，不�
 | `--install-only` | 只检查或安装 .NET 10 SDK，不构建、不启动服务 |
 | `--check` | 准备环境、构建工具并执行宿主自检，不启动服务 |
 | `--no-browser` | 启动服务，但不自动打开浏览器 |
-| `--port 18888` | 指定服务端口；默认 18765 |
+| `--port 18888` | 指定服务端口；默认 18767 |
 | `--help` | 显示帮助 |
 
 例如：

@@ -211,3 +211,9 @@ CardDuelEngine.Create 只创建独立牌组与四区（Hand/Played/Discard 为 0
 ### 净化
 
 `CombatEffect.Cleanse(source, target)` 在当前批次状态上移除目标全部 Negative 或 Control 状态，需要显式状态目录。Control 自动可净化，其他负面状态用 Negative 标签声明；不会根据定义 ID、来源阵营或行为类型猜测正负。增益和其他单位状态保留。每个被移除实例生成 `CombatStatusChangedEvent(Reason=Cleansed, StatusAfter=null)`，保留效果归因和顺序，不生成生命事件。无匹配状态不生成移除事实，死目标按已有规则跳过；后续非法效果仍回滚整个批次。净化不提供持续免疫，之后仍可重新施加负面状态。
+
+
+当前 `combat.15` 将生命、生命上限、护盾及相应事件量扩展为 long，ScoredDuel 快照升至 schema v5。过期 schema / 规则指纹明确拒绝；极值溢出保持原子回滚。主动道具的死亡/复活结算使用同一战斗反应链。
+
+
+`long` 接口迁移：Unity 宿主的 `BattleActor.RecordBlockEffect` 与 `ShieldLedger.Apply(int,int)` 需要同步改用 long，护盾账本的 InitialBlock / RemainingBlock、增减量及相关构造参数也应保持 long；不要把新状态 checked 转回 int。`SingleBattleXmlPlayValidation`、`SceneTimelinePlaybackTests` 等验证脚本保存生命值的局部变量需改用 long 或 var。进度条百分比可在展示边界转为浮点数，战斗数值与回放事件不能窄化。此仓库未修改 Unity 工程调用方，更新该版本子仓库时需一并适配。

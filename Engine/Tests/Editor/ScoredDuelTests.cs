@@ -103,7 +103,7 @@ namespace PokerEngine.Tests
             Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize(json.Replace("\"Health\":6", "\"Health\":7"), engine));
             Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize(json.Replace("\"Phase\":2", "\"Phase\":3"), engine));
             Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize(json.Replace("\"Revision\":1", "\"Revision\":2"), engine));
-            Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize(json.Replace("\"SchemaVersion\":4", "\"SchemaVersion\":3"), engine));
+            Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize(json.Replace("\"SchemaVersion\":5", "\"SchemaVersion\":4"), engine));
             Assert.Throws<SnapshotException>(() => ScoredDuelSnapshotCodec.Deserialize("{}", engine));
         }
         [Test] public void DamagedPlayerStartsFromExplicitRunInputWithoutSharingItsMutableState()

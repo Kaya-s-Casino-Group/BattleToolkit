@@ -122,7 +122,7 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
 
-当前规则契约为 battle-content.8、Combat 为 combat.14（XML schemaVersion 仍为 1）。日期版标准按策划 revision 1726 使用自动补牌、同花属性、葫芦三条＋对子分别计伤，并接入 30 件遗物草案和千手联动。配置与取舍见 [本次对齐说明](DesignAlignment1726.md)。旧绑定/规则快照不自动迁移。
+当前规则契约为 battle-content.9、Combat 为 combat.15（XML schemaVersion 仍为 1）。日期版标准按策划 revision 2951 使用限量补牌、同花属性、葫芦分项计伤、当前 12 件道具。旧 30 件草案与 Boss 配置历史见 [此前对齐说明](DesignAlignment1726.md)。旧绑定/规则快照不自动迁移。
 
 ## 可配置怪物（battle-content.4）
 
@@ -158,3 +158,17 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 兼容识别检查本次提交牌中合法的牌型子集，使用同样的 `minStraightCards` / `minFlushCards`。三条含对子机制、葫芦含三条、两对及对子机制，四条含三条及对子机制，每个类别只计一次。高牌仅在没有更高牌型时生效，不把保底平 A 叠入高级牌型。缩短顺子不改变同花顺必须五张的现有分类门槛：三张同花连续牌可同时触发顺子和同花机制，最高计伤类别仍为同花。
 
 新模式每个 Hand 分支至多一个基础 Damage，FlushBonus 只放非伤害效果，不能使用旧葫芦分项金额。合并后的伤害金额取最高的伤害分支，使用最高牌型计分；逐张与群攻可组合成逐张群攻。逐张分配依据各牌计分贡献，以累计取整分配尾差，保证合计等于这份总伤害。不同命中状态或互不相容的单体选敌、目标组、转火链会明确拒绝本次操作，不能静默覆盖。跨牌型遗物若对同一合并步骤进行互斥替换，同样拒绝且不消耗行动。
+
+
+## revision 2951 字段与道具接口
+
+- `HandRule.modernScoring=true` 启用最新计分口径，`flushDamageMultiplier=2` 控制同花额外乘数；旧模板缺省关闭。
+- `Player.discardRefill=DiscardedCount` 限定主动弃牌最多补回实际弃牌数且不超过手牌上限；`forceDiscardOverflow=false` 允许超限留手牌。弃牌张数上限独立于手牌上限，最大 512。
+- `Rules.blockExpiry=PlayerTurnStart` 在玩家新回合开始清盾；`clearEnemyBlockAtTurnStart=true` 在敌人自身窗口开始清盾。
+- 每个 `Relic` 最多一个 `Item`，主动模式 `activation=None|Effects|ReplaceHeld|Roulette`。Effects 内支持固定 Heal / Damage / GainBlock，可选择 Self / Opponents / Allies 及自动选敌。只设置本模式适用的能力，原有 Numeric / Program 等机制可同时组合。
+- Item 通用字段：`removeOnDepleted`、`cooldownBattles`、`reviveRatio`、`executeChance`、`reflectRatio`、`locationEnterHeal`、`locationLeaveGoldRatio`、`rouletteBase`、`rouletteTurns`、`explosionDamage`。次数在 Relic.charges / 构筑实例配置，唯一性由 maxCopies=1 配置。
+- `BattleSession.UseItem(revision, actor, instanceId, targetInstanceId=null)` 是主动道具入口，冒险通过 `BattleAdventureSession.UseBattleItem` 记录并重放。同一场规则引擎创建时传入 `itemCatalog` 供替换随机池使用，`BattleContentFactory` 自动提供全部已编译道具定义。
+- `BattleItemRuntime.CanUse` 提供权威可用性；替换仅可指向其他持有实例，排除原道具、替换型道具以及已持有的唯一道具，各剩余定义等概率，获得全新实例。
+- 替死鬼按获取顺序每次只消费一件；恢复 floor(最大生命×比例)，清空所有状态和护盾。极端配置最大生命为 1 且比例 0.6 时恢复 0，仍判失败。超回合判负不触发复活。
+- 反甲对主攻击实际挡伤反伤，不产生反射递归；13002 只判定出牌造成的实际生命伤害，每段/每目标一次，毒伤、道具和反射不触发。
+- 生命、最大生命、护盾、固定战斗效果与弃牌护盾参数为 `long`，上层不要窄化为 int。内容契约升级会拒绝旧规则指纹，不提供自动存档迁移。

@@ -15,6 +15,12 @@ spec.loader.exec_module(server)
 
 class NativeHost:
     def __init__(self):
+        self.folder = None
+        self.process = None
+        self.log = None
+        if os.environ.get('EDITOR_URL'):
+            self.base = os.environ['EDITOR_URL'].rstrip('/')
+            return
         self.folder = tempfile.TemporaryDirectory(prefix='battle-toolkit-native-')
         self.process = None
         self.log = None
@@ -55,4 +61,5 @@ class NativeHost:
                 self.process.wait(timeout=10)
         if self.log is not None:
             self.log.close()
-        self.folder.cleanup()
+        if self.folder is not None:
+            self.folder.cleanup()

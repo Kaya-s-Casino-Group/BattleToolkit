@@ -80,7 +80,7 @@ internal static partial class PlaytestBridge
         if (!state.Duel.Players.Any(player => player.Id == actor)) return Fail("InvalidActor", "只能操作本局的玩家。", entry);
         CardDuelAction action;
         string actionName = Text(request, "action", 16);
-        if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn" }.Contains(actionName) || !Enum.TryParse(actionName, false, out action))
+        if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn", "UseItem" }.Contains(actionName) || !Enum.TryParse(actionName, false, out action))
             return Fail("InvalidAction", "此动作不属于玩家可提交的战斗输入。", entry);
         var cards = Strings(request, "selected", 512, 2048).Select(id => new CardInstanceId(id)).ToArray();
         var bindings = ReadBindings(request);
@@ -96,7 +96,9 @@ internal static partial class PlaytestBridge
         int drawCount = 0;
         if (request.ContainsKey("drawCount") && (!int.TryParse(Convert.ToString(request["drawCount"], CultureInfo.InvariantCulture), out drawCount) || drawCount < 0 || drawCount > 512))
             return Fail("InvalidSelection", "摸牌张数无效。", entry);
-        var result = candidate.Execute(revision, actor, action, cards, legacyTargets, bindings, drawCount);
+        var result = action == CardDuelAction.UseItem
+            ? candidate.UseItem(revision, actor, Text(request, "itemInstanceId", 2048), OptionalText(request, "targetItemInstanceId", 2048))
+            : candidate.Execute(revision, actor, action, cards, legacyTargets, bindings, drawCount);
         if (op == "preview")
         {
             var hand = entry.Session.Engine.PreviewHand(state, actor, cards);

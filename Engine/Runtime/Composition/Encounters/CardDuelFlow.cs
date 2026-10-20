@@ -176,7 +176,7 @@ namespace PokerEngine
                     else if (action == CardDuelAction.EndTurn)
                     {
                         hook(CombatTimingKind.PlayPhaseEnd, actor, Array.Empty<CardInstanceId>(), null);
-                        flows[actor] = flow.With(zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == actor).Cards.Count > player.Limits.HandLimit.Value ? BattlePlayerWindow.ForcedDiscard : BattlePlayerWindow.Ending);
+                        flows[actor] = flow.With(player.Rules.Flow.ForceDiscardOverflow && zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == actor).Cards.Count > player.Limits.HandLimit.Value ? BattlePlayerWindow.ForcedDiscard : BattlePlayerWindow.Ending);
                     }
                     else if (action == CardDuelAction.ConfirmOverflow) flows[actor] = flow.With(
                         zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == actor).Cards.Count > player.Limits.HandLimit.Value ? BattlePlayerWindow.ForcedDiscard : BattlePlayerWindow.Ending);
@@ -217,7 +217,7 @@ namespace PokerEngine
                     discardReward: resolved.DiscardReward, effectPlan: resolved.EffectPlan, actionCost: resolved.ActionCost, draws: resolved.Draws.Concat(closing.Draws),
                     relicActivations: resolved.RelicActivations.Concat(closing.RelicActivations), actionCompletion: resolved.ActionCompletion, timeline: resolved.Timeline.Concat(closing.Timeline));
             }
-            if (manual && flows[actor].Window == BattlePlayerWindow.Ending && RequiredDiscards(next, actor) > 0)
+            if (manual && player.Rules.Flow.ForceDiscardOverflow && flows[actor].Window == BattlePlayerWindow.Ending && RequiredDiscards(next, actor) > 0)
                 flows[actor] = flows[actor].With(BattlePlayerWindow.ForcedDiscard);
             next = new CardDuelState(next.Table, next.Duel, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, flows);
             return CopyTransition(resolved, next);

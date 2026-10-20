@@ -217,8 +217,14 @@ namespace PokerEngine
     }
 
     /// <summary>One immutable runtime per action or boundary window. Persistent budgets survive window changes.</summary>
-    internal sealed class RelicReactionRuntime : ICombatBoundaryReactionRuntime, ICombatActionCompletionReactionRuntime
+    internal sealed class RelicReactionRuntime : ICombatBoundaryReactionRuntime, ICombatActionCompletionReactionRuntime, ICombatSettlementControl, ICombatDeathReactionRuntime
     {
+        private readonly BattleItemResolution itemResolution;
+        internal RandomState ItemRandom => itemResolution.Random;
+        internal bool AbortEnemyPhase => itemResolution.AbortEnemyPhase;
+        internal bool RouletteWasCleared(ParticipantId owner) => itemResolution.ClearedRouletteOwners.Contains(owner);
+        public bool CancelEffect(CombatEffect effect, CombatEffectProvenance provenance) => itemResolution.AbortEnemyPhase &&
+            provenance.Origin == CombatEffectOrigin.Primary && actionStart.Enemies.Any(e => e.Id == effect.Source);
         private readonly TeamBattleState actionStart;
         private readonly ParticipantId actor;
         private readonly ScoredDuelActionKind action;
@@ -237,18 +243,18 @@ namespace PokerEngine
         private RelicReactionRuntime(TeamBattleState state, ParticipantId actor, ScoredDuelActionKind action, HandAttackInfo hand, int? discardedCount,
             Dictionary<ParticipantId, BattleRelicLoadout> loadouts, Dictionary<string, int> uses, HashSet<Tuple<string, string>> used,
             IEnumerable<RelicTriggerActivation> activations, CombatTimingSignal boundary = null, bool boundaryDispatched = false,
-            BattleActionCompletionContext completionContext = null, bool completionDispatched = false, BattleActionCompletion completion = null)
+            BattleActionCompletionContext completionContext = null, bool completionDispatched = false, BattleActionCompletion completion = null, BattleItemResolution itemResolution = null)
         {
-            actionStart = state; this.actor = actor; this.action = action; this.hand = hand; this.discardedCount = discardedCount;
+            actionStart = state; this.itemResolution = itemResolution ?? new BattleItemResolution(null, state); this.actor = actor; this.action = action; this.hand = hand; this.discardedCount = discardedCount;
             this.loadouts = loadouts; this.uses = uses; this.used = used; Activations = Guard.View(activations.ToArray());
             this.boundary = boundary; this.boundaryDispatched = boundaryDispatched;
             this.completionContext = completionContext; this.completionDispatched = completionDispatched; Completion = completion;
         }
-        internal static RelicReactionRuntime Create(TeamBattleState state, ParticipantId actor, ScoredDuelActionKind action, HandAttackInfo hand, int? discardedCount)
+        internal static RelicReactionRuntime Create(TeamBattleState state, ParticipantId actor, ScoredDuelActionKind action, HandAttackInfo hand, int? discardedCount, RandomState random = null)
         {
-            if (!state.Players.Any(player => player.Relics.Relics.Any(relic => player.Relics.RulesFor(relic.InstanceId).HasTriggers))) return null;
+            if (!state.Players.Any(player => player.Relics.Relics.Any(relic => (player.Relics.RulesFor(relic.InstanceId).HasTriggers || player.Relics.RulesFor(relic.InstanceId).Item != null)))) return null;
             return new RelicReactionRuntime(state, actor, action, hand, discardedCount, state.Players.ToDictionary(player => player.Id, player => player.Relics),
-                new Dictionary<string, int>(StringComparer.Ordinal), new HashSet<Tuple<string, string>>(), Array.Empty<RelicTriggerActivation>());
+                new Dictionary<string, int>(StringComparer.Ordinal), new HashSet<Tuple<string, string>>(), Array.Empty<RelicTriggerActivation>(), itemResolution: new BattleItemResolution(random, state));
         }
         internal static RelicReactionRuntime CreateBoundary(TeamBattleState state, CombatTimingSignal signal) =>
             new RelicReactionRuntime(state, default(ParticipantId), ScoredDuelActionKind.EndPlayerTurn, null, null,
@@ -266,7 +272,7 @@ namespace PokerEngine
             if (context == null || boundary != null || completionContext != null || context.Actor != actor ||
                 context.Signal.ActionKey != action.ToString()) throw new ArgumentException("Completion must belong to this action runtime.");
             return new RelicReactionRuntime(actionStart, actor, action, hand, discardedCount, loadouts, uses, used, Activations,
-                completionContext: context);
+                completionContext: context, itemResolution: itemResolution);
         }
 
         public CombatReactionEvaluation ReactActionCompleted(CombatActionCompletionReactionContext context)
@@ -302,7 +308,7 @@ namespace PokerEngine
             }
             return new CombatReactionEvaluation(new RelicReactionRuntime(actionStart, actor, action, hand, discardedCount,
                 nextLoadouts, nextUses, nextUsed, reports, completionContext: completionContext, completionDispatched: true,
-                completion: finished ? null : new BattleActionCompletion(completionContext, context.Event)), batches);
+                completion: finished ? null : new BattleActionCompletion(completionContext, context.Event), itemResolution: itemResolution), batches);
         }
 
         public CombatReactionEvaluation ReactBoundary(CombatBoundaryReactionContext context)
@@ -336,7 +342,7 @@ namespace PokerEngine
                 nextUses[entry.Source] = checked(count + 1); nextUsed.Add(Tuple.Create(entry.Source, spec.Id)); reports.Add(activation); batches.Add(batch);
             }
             return new CombatReactionEvaluation(new RelicReactionRuntime(actionStart, actor, action, hand, discardedCount,
-                nextLoadouts, nextUses, nextUsed, reports, boundary, true), batches);
+                nextLoadouts, nextUses, nextUsed, reports, boundary, true, itemResolution: itemResolution), batches);
         }
         public CombatReactionEvaluation React(CombatReactionContext context)
         {
@@ -344,7 +350,8 @@ namespace PokerEngine
             var nextLoadouts = new Dictionary<ParticipantId, BattleRelicLoadout>(loadouts);
             var nextUses = new Dictionary<string, int>(uses, StringComparer.Ordinal); var nextUsed = new HashSet<Tuple<string, string>>(used);
             var reports = Activations.ToList(); var batches = new List<CombatReactionBatch>(); var resolver = new BattleRelicTriggerResolver();
-            var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
+            batches.AddRange(BattleItemRuntime.React(context, actionStart, actor, action, hand, nextLoadouts, itemResolution));
+            var entries = actionStart.Players.Select(player => nextLoadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
                 loadout.RulesFor(relic.InstanceId).Triggers.OrderBy(trigger => trigger.Priority)
                 .Select(trigger => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Trigger = trigger })));
             foreach (var entry in entries)
@@ -357,8 +364,8 @@ namespace PokerEngine
                 nextLoadouts[entry.Owner] = loadout.WithRuntime(loadout.Relics.Select(item => item.InstanceId == entry.Source ? activation.After : item));
                 nextUses[entry.Source] = checked(count + 1); nextUsed.Add(key); reports.Add(activation); batches.Add(activation.Batch);
             }
-            return new CombatReactionEvaluation(batches.Count == 0 ? this : new RelicReactionRuntime(actionStart, actor, action, hand, discardedCount,
-                nextLoadouts, nextUses, nextUsed, reports, boundary, boundaryDispatched, completionContext, completionDispatched, Completion), batches);
+            return new CombatReactionEvaluation(new RelicReactionRuntime(actionStart, actor, action, hand, discardedCount,
+                nextLoadouts, nextUses, nextUsed, reports, boundary, boundaryDispatched, completionContext, completionDispatched, Completion, itemResolution), batches);
         }
     }
 

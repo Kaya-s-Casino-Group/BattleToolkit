@@ -9,7 +9,7 @@ namespace PokerEngine
     /// <summary>Duel snapshot; restore checks pinned rules and replays its score/action ledger.</summary>
     public static class ScoredDuelSnapshotCodec
     {
-        public const int SchemaVersion = 4;
+        public const int SchemaVersion = 5;
         public const int MaxUtf8Bytes = 16 * 1024 * 1024;
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         [DataContract] private sealed class Envelope

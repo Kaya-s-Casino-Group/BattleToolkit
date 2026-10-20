@@ -36,7 +36,7 @@ namespace PokerEngine
      bool match=!p.Hand.HasValue||(p.Hand==HandCategory.Flush?hand.IsFlush:hand.MatchesCategory(p.Hand.Value));
      if(p.ExcludeHand)match=!match;
      if(!match||hand.SubmittedCards.Count<p.MinCards||hand.SubmittedCards.Count>p.MaxCards)continue;
-     if(hand.Pattern.Category==HandCategory.StraightFlush&&p.Hand.HasValue&&!p.ExcludeHand&&!dual)continue;
+     if(!hand.ModernScoring&&hand.Pattern.Category==HandCategory.StraightFlush&&p.Hand.HasValue&&!p.ExcludeHand&&!dual)continue;
      if(p.HighAceOrKing&&!hand.SubmittedCards.Any(c=>c.Rank==Rank.King||c.Rank==Rank.Ace))continue;
      string key=p.History==RelicHistoryCondition.PreviousStraight?"previous-straight":p.History==RelicHistoryCondition.EarlierStraight?"straight":"flush";
      if(p.History!=RelicHistoryCondition.None&&r.Memory.CounterValue("program/"+key)==0)continue;
@@ -56,12 +56,12 @@ namespace PokerEngine
    decimal ratioSet=entries.Where(e=>e.Item2.Kind==RelicProgramKind.HealRatioSet).Select(e=>e.Item2.Amount).DefaultIfEmpty(-1).Max();
    foreach(var step in input.Steps){var effect=step.Effect;
     if(effect.Kind==CombatEffectKind.Heal&&c.Hand?.IsFlush==true&&c.Hand.FlushBaseTotal.HasValue){
-     decimal basis=c.Hand.FlushBaseTotal.Value;decimal amount=ratioSet>=0?basis*ratioSet:effect.Amount;
+     decimal basis=c.Hand.FlushBaseTotal.Value;decimal amount=ratioSet>=0?basis*ratioSet:effect.UnroundedAmount??effect.Amount;
      amount+=basis*entries.Where(e=>e.Item2.Kind==RelicProgramKind.HealRatioAdd).Sum(e=>e.Item2.Amount);
      foreach(var e in entries.Where(e=>e.Item2.Kind==RelicProgramKind.HealRatioMultiply||e.Item2.Kind==RelicProgramKind.HealMultiply))amount*=e.Item2.Amount;
      effect=BattleEffectSpec.Heal(checked((long)decimal.Floor(amount)));
     }
-    steps.Add(new BattleEffectStep(step.Id,effect,step.Target,step.SourceAliases));
+    steps.Add(step.Id == null ? new BattleEffectStep(effect,step.Target) : new BattleEffectStep(step.Id,effect,step.Target,step.SourceAliases));
     if(step==first&&!repeated){repeated=true;foreach(var e in entries.Where(e=>e.Item2.Kind==RelicProgramKind.RepeatFirstHit))for(int i=0;i<(int)e.Item2.Amount;i++)steps.Add(new BattleEffectStep("program/"+e.Item1.InstanceId+"/repeat/"+i,effect,step.Target));}
    }
    if(first!=null)foreach(var e in entries.Where(e=>e.Item2.Kind==RelicProgramKind.ExtraHit))steps.Add(new BattleEffectStep("program/"+e.Item1.InstanceId+"/hit",BattleEffectSpec.Damage(checked((long)decimal.Floor(c.Score.Total*e.Item2.Amount)),first.Effect.OnHitStatus),first.Target));

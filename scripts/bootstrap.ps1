@@ -33,7 +33,7 @@ try {
                 $hostArguments += @('--port', [string]$args[$index])
             }
             { $_ -eq '--help' -or $_ -eq '-h' } {
-                Write-Host '用法：start.cmd [--check | --install-only] [--no-browser] [--port 18765]'
+                Write-Host '用法：start.cmd [--check | --install-only] [--no-browser] [--port 18767]'
                 Write-Host '首次启动自动安装缺失的 .NET 10 SDK；--check 构建并检查，不启动服务。'
                 exit 0
             }

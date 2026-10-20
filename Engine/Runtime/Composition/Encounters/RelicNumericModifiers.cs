@@ -46,6 +46,7 @@ namespace PokerEngine
         public IReadOnlyList<RelicActionTriggerSpec> ActionTriggers { get; }
         public RelicTriggerBudgetSpec TriggerBudget { get; }
         public IReadOnlyList<RelicProgramSpec> Programs { get; }
+        public BattleItemSpec Item { get; }
         internal bool HasTriggers => Triggers.Count > 0 || BoundaryTriggers.Count > 0 || ActionTriggers.Count > 0;
         internal bool HasBoundaryConfiguration => BoundaryTriggers.Count > 0 || TriggerBudget?.MaxUsesPerBoundary != null ||
             Triggers.Any(trigger => trigger.Occurrence == RelicTriggerOccurrence.PerBoundary);
@@ -54,9 +55,9 @@ namespace PokerEngine
             IEnumerable<RelicHandEffectModifierSpec> handEffects = null, IEnumerable<RelicRuleValueSpec> ruleValues = null,
             IEnumerable<RelicRefillRuleSpec> refillRules = null, IEnumerable<RelicTriggerSpec> triggers = null,
             RelicTriggerBudgetSpec triggerBudget = null, IEnumerable<RelicBoundaryTriggerSpec> boundaryTriggers = null,
-            IEnumerable<RelicActionTriggerSpec> actionTriggers = null, IEnumerable<RelicProgramSpec> programs = null)
+            IEnumerable<RelicActionTriggerSpec> actionTriggers = null, IEnumerable<RelicProgramSpec> programs = null, BattleItemSpec itemSpec = null)
         {
-            Version = Guard.Text(version, nameof(version));
+            Version = Guard.Text(version, nameof(version)); Item = itemSpec;
             Programs = Guard.View((programs ?? Array.Empty<RelicProgramSpec>()).ToArray());
             var items = Guard.Copy(modifiers ?? Array.Empty<RelicNumericModifierSpec>(), nameof(modifiers));
             var structural = Guard.Copy(handEffects ?? Array.Empty<RelicHandEffectModifierSpec>(), nameof(handEffects));
@@ -102,6 +103,7 @@ namespace PokerEngine
                 {
                     Write(writer);
                     WritePrograms(writer);
+                    if (Item != null) { writer.Write("battle-item.1"); Item.Write(writer); }
                     if (HandEffects.Count != 0) { writer.Write("battle-relic.hand-effects.1"); WriteHandEffects(writer); }
                     if (RuleValues.Count != 0 || RefillRules.Count != 0) { writer.Write("battle-relic.rules.1"); WriteRules(writer); }
                     if (Triggers.Count != 0) { writer.Write("battle-relic.triggers.1"); WriteTriggers(writer); }
@@ -196,6 +198,7 @@ namespace PokerEngine
         public bool BypassBlock(CombatState c, CombatEffect e) => links.BypassBlock(c, e);
         public IEnumerable<CombatReaction> React(CombatReactionContext c) => links.React(c).Concat(loadouts.Values.SelectMany(l => RelicPrograms.Reactions(l, hand, c)));
         public int StatusStacks(StatusInstance status) { BattleRelicLoadout l; if(!loadouts.TryGetValue(new ParticipantId(status.Source.Id),out l)) return status.Stacks; return checked(status.Stacks+(int)RelicPrograms.Entries(l,hand).Where(e=>e.Item2.Kind==RelicProgramKind.PoisonStacks&&e.Item2.StatusRef==status.DefinitionId.Value).Sum(e=>e.Item2.Amount)); }
+        internal Func<ParticipantId, bool> RouletteWasCleared { get; set; }
         private readonly BattleNumericResolver resolver = new BattleNumericResolver();
         public RelicCombatAmountModifier(TeamBattleState state, ParticipantId? handSource = null, HandAttackInfo hand = null)
         {
@@ -222,7 +225,14 @@ namespace PokerEngine
             }
             var primaryHand = context.Provenance.Origin == CombatEffectOrigin.Primary && context.Effect.Source == handSource ? hand : null;
             var result = resolver.Resolve(new BattleNumericQuery(loadout, stat, context.Amount, context.Provenance.Origin, primaryHand));
-            return new CombatAmountModification(context.Amount, result.Contributions.Concat(links.Contributions(context)).Concat(RelicPrograms.Amounts(loadout,primaryHand,context,start)), true);
+            var contributions = result.Contributions.Concat(links.Contributions(context)).Concat(RelicPrograms.Amounts(loadout,primaryHand,context,start));
+            // Roulette multiplies the completed outgoing hand damage once, after ordinary item rounding.
+            // Item, periodic, reflection and self-cost effects never acquire this multiplier.
+            decimal finalFactor = RouletteWasCleared?.Invoke(context.Effect.Source) != true && outgoing && primaryHand != null && context.Effect.Kind == CombatEffectKind.Damage &&
+                context.Effect.Attack?.Origin == AttackOrigin.ScoredHand && context.Combat.Get(context.Effect.Target).TeamId != context.Combat.Get(context.Effect.Source).TeamId
+                ? BattleItemRuntime.HandMultiplier(loadout) : 1;
+            if (finalFactor != 1) contributions = contributions.Concat(new[] { new CombatAmountContribution("item/roulette", "hand-final", rateAdjustment: finalFactor - 1) });
+            return new CombatAmountModification(context.Amount, contributions, true);
         }
     }
 }

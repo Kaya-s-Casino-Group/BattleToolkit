@@ -32,6 +32,11 @@ internal static class NativeServer
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly JsonSerializerOptions WorkerJson = new JsonSerializerOptions
     { MaxDepth = 100, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    // Editor and adventure must resolve the same standard rules package.
+    private static string StandardBattleFile(string root) =>
+        Directory.GetFiles(Path.Combine(root, "Engine", "Content"), "StandardSingleBattle-????-??-??.xml")
+            .OrderByDescending(path => path, StringComparer.Ordinal).FirstOrDefault()
+        ?? Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml");
     private static readonly Dictionary<string, (string File, string Mime)> Files = new Dictionary<string, (string, string)>
     {
         ["/"] = ("index.html", "text/html"), ["/app.js"] = ("app.js", "text/javascript"),
@@ -50,7 +55,7 @@ internal static class NativeServer
         try
         {
             string root = null;
-            int port = 18765;
+            int port = 18767;
             bool open = false, check = false;
             for (int i = 0; i < args.Length; i++)
             {
@@ -197,7 +202,7 @@ internal static class NativeServer
                 }
                 if (path == "/api/standard")
                 {
-                    await FileReply(context, Directory.GetFiles(Path.Combine(root,"Engine","Content"),"StandardSingleBattle-????-??-??.xml").OrderByDescending(p=>p,StringComparer.Ordinal).FirstOrDefault() ?? Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), "application/xml");
+                    await FileReply(context, StandardBattleFile(root), "application/xml");
                     return;
                 }
                 if (Files.TryGetValue(path, out var file))
@@ -246,7 +251,7 @@ internal static class NativeServer
                     // Only the fixed repository defaults are read. Client XML is data, never a file path.
                     body = JsonSerializer.Serialize(new {
                         adventureRequest = json.RootElement,
-                        defaultBattleXml = await File.ReadAllTextAsync(Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), timeout.Token),
+                        defaultBattleXml = await File.ReadAllTextAsync(StandardBattleFile(root), timeout.Token),
                         defaultConfigXml = await File.ReadAllTextAsync(Path.Combine(root, "Engine", "Content", "StandardAdventure.xml"), timeout.Token)
                     }, WorkerJson);
                 }

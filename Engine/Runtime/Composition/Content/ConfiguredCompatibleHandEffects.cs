@@ -19,7 +19,8 @@ namespace PokerEngine
                 throw new ArgumentException("Compatible effects require authoritative compatible hand facts.");
             var branches = context.Hand.CompatibleCategories.Select(category => Entries.Single(entry =>
                 entry.Category == category && entry.Variant != HandEffectVariant.Royal)).ToArray();
-            var damage = branches.SelectMany(entry => entry.Effects.Where(step => step.Kind == CombatEffectKind.Damage)
+            var damage = branches.Where(entry => !context.Hand.ModernScoring || entry.Category != HandCategory.Flush)
+                .SelectMany(entry => entry.Effects.Where(step => step.Kind == CombatEffectKind.Damage)
                 .Select(step => new CompatibleDamage { Entry = entry, Step = step })).ToArray();
             var effects = new List<BattleEffectStep>();
             bool components = FullHouseComponentDamage && context.Score.Category == HandCategory.FullHouse;
@@ -44,7 +45,8 @@ namespace PokerEngine
                     effects.Add(new BattleEffectStep(primary.Id, BattleEffectSpec.Damage(total, status), target, aliases));
                 else
                 {
-                    var amounts = DivideDamage(total, context.Score, context.Hand);
+                    var amounts = context.Hand.ModernScoring ? CardDamage(primary.Amount.Value, context.Score, context.Hand) :
+                        DivideDamage(total, context.Score, context.Hand);
                     for (int i = 0; i < amounts.Length; i++)
                     {
                         string id = i == 0 ? primary.Id : primary.Id + "/card/" + (i + 1);
@@ -67,6 +69,11 @@ namespace PokerEngine
                             new[] { new HandEffectSourceAlias(HandCategory.Flush, "flush-bonus/" + step.Id) }));
             return new BattleEffectSequence(Version, (components ? "三条＋对子分别计伤：" : "最高牌型计伤：") + context.Score.Category + "；兼容机制：" +
                 string.Join("、", context.Hand.CompatibleCategories), effects);
+        }
+        private static long[] CardDamage(decimal factor, ScoreResult score, HandAttackInfo hand)
+        {
+            return hand.AttackCards.Select((card, index) => new EffectAmountSpec(EffectAmountKind.CardScoreScale, factor)
+                .Resolve(score, hand.FlushBaseTotal, card.Id.Value, index == 0)).ToArray();
         }
         private static long[] DivideDamage(long total, ScoreResult score, HandAttackInfo hand)
         {

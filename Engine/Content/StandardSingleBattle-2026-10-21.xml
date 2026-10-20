@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="utf-8"?>
+<BattleContent schemaVersion="1" id="standard-single-battle-2026-10-21" name="标准单对局·2026-10-21·策划2951" version="standard-single-battle.2026-10-21.1">
+  <!--策划 revision 2951：弃牌按张补牌、同花属性计伤、十二件道具和复活。Boss 专属行为及其回合上限配置保持原样；完整局外经济与绝杀暂缓。-->
+  <ScoringProfiles>
+    <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="Straight" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="3" />
+      <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
+      <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
+      <CardPoints>
+        <Rank rank="Two" points="2" />
+        <Rank rank="Three" points="3" />
+        <Rank rank="Four" points="4" />
+        <Rank rank="Five" points="5" />
+        <Rank rank="Six" points="6" />
+        <Rank rank="Seven" points="7" />
+        <Rank rank="Eight" points="8" />
+        <Rank rank="Nine" points="9" />
+        <Rank rank="Ten" points="10" />
+        <Rank rank="Jack" points="11" />
+        <Rank rank="Queen" points="12" />
+        <Rank rank="King" points="13" />
+        <Rank rank="Ace" points="1" />
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <BattleRules>
+    <Rules id="single-battle-rules" name="普通战·10回合" scoringRef="single-battle-score" roundLimit="10" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
+    <Rules id="elite-battle-rules" name="精英战·20回合" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
+    <Rules id="legacy-boss-rules" name="标准单局规则·20回合后狂暴" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Enrage" enrageDamagePerRound="20" clearEnemyBlock="false" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
+    <Rules id="thousand-hands-rules" name="击败千手本体获胜" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Enrage" enrageDamagePerRound="20" clearEnemyBlock="false" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" victoryEnemyRef="wrath" />
+  </BattleRules>
+  <Statuses>
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
+      <BlockActionWindow />
+    </Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
+      <PreventStatusApplication tags="Control" />
+    </Status>
+    <Status id="bleed" tags="Negative" name="中毒·按层数伤害并衰减" lifetime="UntilRemoved" reapply="AddStacks">
+      <PeriodicDamage timing="TurnStarted" timingSubject="Holder" amount="1" target="Self" stackDecay="1" />
+    </Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
+      <ReflectBlockedDamage ratio="1" target="EventSource" />
+    </Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved">
+      <OverhealDamage ratio="1" target="Opponents" selection="FirstLiving" />
+    </Status>
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
+      <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+    <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
+      <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
+    </Status>
+  </Statuses>
+  <HandRules>
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2951" modernScoring="true" flushDamageMultiplier="2" combineCompatibleEffects="true" flushAsAttribute="true" fullHouseComponentDamage="true">
+      <Hand category="HighCard">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="OnePair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="TwoPair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="ThreeOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="CardScoreScale" amount="1" perSubmittedCard="true" target="Opponents" selection="ActorPolicy" retargetChain="straight">
+          <OnHitStatus statusRef="bleed" stacks="1" />
+        </Effect>
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="triple" kind="Damage" amountKind="ThreeOfAKindTotalScale" amount="2" target="Opponents" selection="AllLiving" />
+        <Effect id="pair" kind="Damage" amountKind="OnePairTotalScale" amount="2" target="Opponents" selection="Requested" />
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="AllLiving" />
+        <Effect id="cleanse" kind="Cleanse" target="Self" />
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
+      </Hand>
+      <Hand category="FourOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Ordinary">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Royal">
+        <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="FiveOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <FlushBonus>
+        <Effect id="heal" kind="Heal" amountKind="FlushBaseTotalScale" amount="0.2" target="Self" />
+      </FlushBonus>
+    </HandRule>
+  </HandRules>
+  <Relics>
+    <Relic id="10001" name="10001·同花倍率" version="relic.2951.1" maxCopies="1" sellPrice="10">
+      <Program id="flush-multiplier" kind="ScoreMultiplier" amount="2" hand="Flush" />
+      <Program id="other-multiplier" kind="ScoreMultiplier" amount="-1" hand="Flush" excludeHand="true" />
+    </Relic>
+    <Relic id="10002" name="急救药水" version="relic.2951.1" maxCopies="32" charges="1" sellPrice="10">
+      <Item activation="Effects" removeOnDepleted="true"><Effect kind="Heal" amount="10" target="Self" /></Item>
+    </Relic>
+    <Relic id="11002" name="心连心" version="relic.2951.1" maxCopies="1" sellPrice="20">
+      <Program id="flush-heal-ratio" kind="HealRatioAdd" amount="0.3" hand="Flush" />
+    </Relic>
+    <Relic id="11003" name="存折" version="relic.2951.1" maxCopies="1" sellPrice="20">
+      <Item locationLeaveGoldRatio="0.1" />
+    </Relic>
+    <Relic id="11004" name="一串手雷" version="relic.2951.1" maxCopies="32" charges="3" sellPrice="20">
+      <Item activation="Effects" removeOnDepleted="true"><Effect kind="Damage" amount="20" target="Opponents" selection="AllLiving" /></Item>
+    </Relic>
+    <Relic id="12001" name="反甲" version="relic.2951.1" maxCopies="1" sellPrice="30">
+      <Item reflectRatio="0.2" />
+    </Relic>
+    <Relic id="13001" name="债券" version="relic.2951.1" maxCopies="1" sellPrice="50">
+      <Item locationEnterHeal="3" />
+    </Relic>
+    <Relic id="13002" name="13002·致命一击" version="relic.2951.1" maxCopies="1" sellPrice="50">
+      <Item executeChance="0.1" />
+    </Relic>
+    <Relic id="13003" name="13003·牌型倍率" version="relic.2951.1" maxCopies="1" sellPrice="50">
+      <Program id="hand-multiplier" kind="ScoreMultiplier" amount="5" />
+    </Relic>
+    <Relic id="13004" name="替死鬼" version="relic.2951.1" maxCopies="32" charges="1" sellPrice="50">
+      <Item reviveRatio="0.6" removeOnDepleted="true" />
+    </Relic>
+    <Relic id="14001" name="六面骰" version="relic.2951.1" maxCopies="1" sellPrice="100">
+      <Item activation="ReplaceHeld" cooldownBattles="6" />
+    </Relic>
+    <Relic id="15001" name="俄罗斯转盘" version="relic.2951.1" maxCopies="1" sellPrice="100">
+      <Item activation="Roulette" rouletteBase="10" rouletteTurns="6" explosionDamage="2147483647" />
+    </Relic>
+  </Relics>
+  <Players>
+    <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="512" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" />
+  </Players>
+  <Enemies>
+    <Enemy id="rotator" name="轮换小怪" maxHealth="600">
+      <Behavior consumeFailedSummon="false">
+        <Stage id="normal" mode="Sequence">
+          <Action id="jab" name="试探攻击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="40" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="重击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="70" />
+            </Effects>
+          </Action>
+          <Action id="guard" name="防御">
+            <Effects>
+              <Effect id="block" kind="GainBlock" amount="90" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="summoner" name="护甲召唤精英" maxHealth="1800">
+      <Behavior consumeFailedSummon="false">
+        <OpeningEffects>
+          <Effect id="armor" kind="ApplyStatus" statusRef="layer-armor" stacks="3" target="Self" />
+        </OpeningEffects>
+        <Stage id="normal" mode="Priority">
+          <Action id="summon" name="召唤护卫" cooldownRounds="1">
+            <When kind="AlliesBelow" value="2" />
+            <Summon enemyRef="rotator" count="2" livingLimit="3" limitScope="Summoner" />
+          </Action>
+          <Action id="strike" name="震击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="90" target="Opponents" selection="AllLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="gluttony" name="暴食Boss" maxHealth="2400">
+      <Behavior seed="17" intentPreviewTurns="8" refreshOnHealthThreshold="true" consumeFailedSummon="false">
+        <Stage id="hungry" mode="Sequence">
+          <When kind="HealthAtMost" value="0.5" />
+          <Action id="devour" name="暴食：重击并塞入三张废牌">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="120" />
+            </Effects>
+            <AddCards face="standard:1:2" count="3" zone="discard" disabled="false" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+        <Stage id="normal" mode="Sequence">
+          <Action id="pollute" name="吞食：攻击并塞入一张废牌">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="60" />
+            </Effects>
+            <AddCards face="standard:1:2" count="1" zone="discard" disabled="false" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath" name="暴怒·千手（测试数值）" maxHealth="4000">
+      <Behavior refreshOnHealthThreshold="true" recheckIntentOnAction="true">
+        <Link id="hands-reduction" kind="DamageTaken" targets="Self" countRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" snapshot="true" rate="-.1" />
+        <Link id="hands-attack" kind="DamageDone" targets="Self" countRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" rate=".15" />
+        <Stage id="rage" mode="Priority">
+          <When kind="HealthBelow" value="0.5" />
+          <OnEnter>
+            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" count="5" />
+          </OnEnter>
+          <Action id="all-hands" name="万手归一：五手存活时3倍攻击">
+            <Effects>
+              <Effect id="main" kind="Damage" amount="120" />
+            </Effects>
+            <When kind="UnitsAliveAtLeast" value="5" enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" />
+          </Action>
+          <Action id="strike" name="本体攻击">
+            <Effects>
+              <Effect id="main" kind="Damage" amount="40" />
+            </Effects>
+          </Action>
+        </Stage>
+        <Stage id="normal" mode="Priority">
+          <Action id="all-hands" name="万手归一：五手存活时3倍攻击">
+            <Effects>
+              <Effect id="main" kind="Damage" amount="120" />
+            </Effects>
+            <When kind="UnitsAliveAtLeast" value="5" enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" />
+          </Action>
+          <Action id="strike" name="本体攻击">
+            <Effects>
+              <Effect id="main" kind="Damage" amount="40" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-fist" name="铁拳之手" maxHealth="1">
+      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
+        <Link id="other-hands" kind="DamageDone" targets="Self" countRefs="wrath-shield,wrath-chain,wrath-blood,wrath-regen" rate=".2" />
+        <Link id="rage-damage" kind="DamageDone" targets="Self" rate=".5">
+          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
+        </Link>
+        <Stage id="normal" mode="Priority">
+          <Action id="punch" name="铁拳：随其他手臂增伤">
+            <Effects>
+              <Effect id="main" kind="Damage" amount="16" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-shield" name="护盾之手" maxHealth="1">
+      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
+        <Link id="guard" kind="Intercept" targets="wrath-fist,wrath-chain,wrath-blood,wrath-regen" />
+        <Link id="rage-shield" kind="BlockDone" targets="Self" rate=".5">
+          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
+        </Link>
+        <Stage id="normal" mode="Priority">
+          <Action id="shield" name="护盾：为本体加盾">
+            <Effects>
+              <Effect id="main" kind="GainBlock" amount="20" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-chain" name="锁链之手" maxHealth="1">
+      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
+        <Link id="chain-fist" kind="BypassBlock" targets="wrath-fist" />
+        <Link id="weaken-block" kind="BlockReceived" targets="Opponents" rate="-.5" />
+        <Stage id="rage" mode="Priority">
+          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
+          <Action id="junk" name="锁链：随机洗入废牌">
+            <AddCards face="standard:1:2" count="3" zone="deck" position="Shuffle" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+        <Stage id="normal" mode="Priority">
+          <Action id="junk" name="锁链：随机洗入废牌">
+            <AddCards face="standard:1:2" count="2" zone="deck" position="Shuffle" effects="Ineffective,Unplayable" />
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-blood" name="血祭之手" maxHealth="1">
+      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
+        <Link id="blood-fist" kind="DamageHeal" targets="wrath-fist" healTarget="wrath" rate=".5" />
+        <Link id="blood-heal" kind="HealFromMaxHealth" targets="wrath" rate=".03" />
+        <Link id="rage-heal" kind="HealingDone" targets="Self" rate=".5">
+          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
+        </Link>
+        <Stage id="normal" mode="Priority">
+          <Action id="heal" name="血祭：恢复本体最大生命3%">
+            <Effects>
+              <Effect id="main" kind="Heal" amount="0" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-regen" name="再生之手" maxHealth="1">
+      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
+        <Stage id="rage" mode="Priority">
+          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
+          <Action id="revive" name="再生：按编号复活一只手">
+            <When kind="RoundModulo" value="1" />
+            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood" count="1" />
+          </Action>
+          <Action id="rest" name="再生等待">
+            <Effects>
+              <Effect id="main" kind="GainBlock" amount="0" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+        <Stage id="normal" mode="Priority">
+          <Action id="revive" name="再生：按编号复活一只手">
+            <When kind="RoundModulo" value="2" />
+            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood" count="1" />
+          </Action>
+          <Action id="rest" name="再生等待">
+            <Effects>
+              <Effect id="main" kind="GainBlock" amount="0" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+  </Enemies>
+  <Decks>
+    <Deck id="standard-deck" name="标准52张牌">
+      <Card id="standard-1-2" face="standard:1:2" />
+      <Card id="standard-1-3" face="standard:1:3" />
+      <Card id="standard-1-4" face="standard:1:4" />
+      <Card id="standard-1-5" face="standard:1:5" />
+      <Card id="standard-1-6" face="standard:1:6" />
+      <Card id="standard-1-7" face="standard:1:7" />
+      <Card id="standard-1-8" face="standard:1:8" />
+      <Card id="standard-1-9" face="standard:1:9" />
+      <Card id="standard-1-10" face="standard:1:10" />
+      <Card id="standard-1-11" face="standard:1:11" />
+      <Card id="standard-1-12" face="standard:1:12" />
+      <Card id="standard-1-13" face="standard:1:13" />
+      <Card id="standard-1-14" face="standard:1:14" />
+      <Card id="standard-2-2" face="standard:2:2" />
+      <Card id="standard-2-3" face="standard:2:3" />
+      <Card id="standard-2-4" face="standard:2:4" />
+      <Card id="standard-2-5" face="standard:2:5" />
+      <Card id="standard-2-6" face="standard:2:6" />
+      <Card id="standard-2-7" face="standard:2:7" />
+      <Card id="standard-2-8" face="standard:2:8" />
+      <Card id="standard-2-9" face="standard:2:9" />
+      <Card id="standard-2-10" face="standard:2:10" />
+      <Card id="standard-2-11" face="standard:2:11" />
+      <Card id="standard-2-12" face="standard:2:12" />
+      <Card id="standard-2-13" face="standard:2:13" />
+      <Card id="standard-2-14" face="standard:2:14" />
+      <Card id="standard-3-2" face="standard:3:2" />
+      <Card id="standard-3-3" face="standard:3:3" />
+      <Card id="standard-3-4" face="standard:3:4" />
+      <Card id="standard-3-5" face="standard:3:5" />
+      <Card id="standard-3-6" face="standard:3:6" />
+      <Card id="standard-3-7" face="standard:3:7" />
+      <Card id="standard-3-8" face="standard:3:8" />
+      <Card id="standard-3-9" face="standard:3:9" />
+      <Card id="standard-3-10" face="standard:3:10" />
+      <Card id="standard-3-11" face="standard:3:11" />
+      <Card id="standard-3-12" face="standard:3:12" />
+      <Card id="standard-3-13" face="standard:3:13" />
+      <Card id="standard-3-14" face="standard:3:14" />
+      <Card id="standard-4-2" face="standard:4:2" />
+      <Card id="standard-4-3" face="standard:4:3" />
+      <Card id="standard-4-4" face="standard:4:4" />
+      <Card id="standard-4-5" face="standard:4:5" />
+      <Card id="standard-4-6" face="standard:4:6" />
+      <Card id="standard-4-7" face="standard:4:7" />
+      <Card id="standard-4-8" face="standard:4:8" />
+      <Card id="standard-4-9" face="standard:4:9" />
+      <Card id="standard-4-10" face="standard:4:10" />
+      <Card id="standard-4-11" face="standard:4:11" />
+      <Card id="standard-4-12" face="standard:4:12" />
+      <Card id="standard-4-13" face="standard:4:13" />
+      <Card id="standard-4-14" face="standard:4:14" />
+    </Deck>
+  </Decks>
+  <Loadouts>
+    <Loadout id="baseline" name="标准初始构筑·无遗物" deckRef="standard-deck" />
+    <Loadout id="item-lab" name="道具测试·十二件配置" deckRef="standard-deck">
+      <Relic ref="10001" instanceId="lab-10001" />
+      <Relic ref="10002" instanceId="lab-10002" />
+      <Relic ref="11002" instanceId="lab-11002" />
+      <Relic ref="11003" instanceId="lab-11003" />
+      <Relic ref="11004" instanceId="lab-11004" />
+      <Relic ref="12001" instanceId="lab-12001" />
+      <Relic ref="13001" instanceId="lab-13001" />
+      <Relic ref="13002" instanceId="lab-13002" />
+      <Relic ref="13003" instanceId="lab-13003" />
+      <Relic ref="13004" instanceId="lab-13004" />
+      <Relic ref="14001" instanceId="lab-14001" />
+      <Relic ref="15001" instanceId="lab-15001" />
+      <Relic ref="13004" instanceId="lab-revive-second" />
+    </Loadout>
+  </Loadouts>
+  <Encounters>
+    <Encounter id="standard-single-battle" name="轮换小怪 · 标准单对局" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="rotator" />
+    </Encounter>
+    <Encounter id="standard-armored-summoner" name="护甲召唤精英 · 标准单对局" rulesRef="elite-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="summoner" />
+    </Encounter>
+    <Encounter id="standard-gluttony-boss" name="暴食Boss · 标准单对局" rulesRef="legacy-boss-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="gluttony" />
+    </Encounter>
+    <Encounter id="standard-wrath-thousand-hands" name="暴怒·千手 · 本体与五手" rulesRef="thousand-hands-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="wrath" />
+      <Enemy id="hand-1" ref="wrath-fist" />
+      <Enemy id="hand-2" ref="wrath-shield" />
+      <Enemy id="hand-3" ref="wrath-chain" />
+      <Enemy id="hand-4" ref="wrath-blood" />
+      <Enemy id="hand-5" ref="wrath-regen" />
+    </Encounter>
+    <Encounter id="standard-item-lab" name="道具测试单局 · 十二件道具" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" initialHealth="600" loadoutRef="item-lab" />
+      <Enemy id="enemy" ref="rotator" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

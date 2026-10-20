@@ -52,11 +52,11 @@ namespace PokerEngine
     }
     public sealed class CombatEvent : CombatRuleEvent
     {
-        public int BlockAbsorbed { get; }
+        public long BlockAbsorbed { get; }
         /// <summary>Actual health decrease, including elimination. Damage reactions must use DamageToHealth instead.</summary>
-        public int HealthLost { get; }
-        public int DamageToHealth => Effect.Kind == CombatEffectKind.Damage ? HealthLost : 0;
-        public int HealthRestored { get; }
+        public long HealthLost { get; }
+        public long DamageToHealth => Effect.Kind == CombatEffectKind.Damage ? HealthLost : 0;
+        public long HealthRestored { get; }
         /// <summary>Accepted healing that exceeded missing health. Skipped heals produce no fact or overheal.</summary>
         public long Overheal => Effect.Kind == CombatEffectKind.Heal ? SettledAmount - HealthRestored : 0;
         public long Overkill { get; }
@@ -72,7 +72,7 @@ namespace PokerEngine
         public bool Died => Before.IsAlive && !After.IsAlive;
         public CombatDeathCause DeathCause => !Died ? CombatDeathCause.None :
             Effect.Kind == CombatEffectKind.Eliminate ? CombatDeathCause.Eliminate : CombatDeathCause.Damage;
-        internal CombatEvent(long revision, int index, CombatEffect effect, CombatantState before, CombatantState after, int absorbed, long overkill,
+        internal CombatEvent(long revision, int index, CombatEffect effect, CombatantState before, CombatantState after, long absorbed, long overkill,
             DamageModification incomingModification = null, int sequenceIndex = -1, CombatEffectProvenance provenance = null,
             CombatAmountModification outgoingAmountModification = null, CombatAmountModification incomingAmountModification = null)
             : base(revision, index, effect, sequenceIndex, provenance)
@@ -105,7 +105,7 @@ namespace PokerEngine
     /// <summary>Shared deterministic authority resolver. No turn, AI, card score, faction targeting or reward policy.</summary>
     public static class CombatEngine
     {
-        public const string RulesVersion = "combat.14";
+        public const string RulesVersion = "combat.15";
         public static CombatTransition Resolve(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects, IIncomingDamageModifier incomingDamage = null,
             CombatStatusCatalog statusCatalog = null, ICombatReactionProvider reactionProvider = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null)
@@ -247,6 +247,7 @@ namespace PokerEngine
                         continue;
                     }
                     var effect = queued.Effect; var provenance = queued.Provenance;
+                    if ((reactionRuntime as ICombatSettlementControl)?.CancelEffect(effect, provenance) == true) continue;
                     var originalChain = effect.TargetChain;
                     int effectIndex = provenance.RootEffectIndex;
                     // Identities are checked before enqueueing. Death is a normal settlement result, not an error.
@@ -290,7 +291,7 @@ namespace PokerEngine
                         }
                     }
                     int firstEvent = events.Count;
-                    var before = units[effect.Target]; int health = before.Health, block = before.Block, absorbed = 0; long overkill = 0;
+                    var before = units[effect.Target]; long health = before.Health, block = before.Block, absorbed = 0; long overkill = 0;
                     DamageModification incoming = null;
                     CombatAmountModification outgoingAmount = null, incomingAmount = null;
                     long settledAmount = effect.Amount;
@@ -340,12 +341,12 @@ namespace PokerEngine
                         switch (effect.Kind)
                         {
                             case CombatEffectKind.Damage:
-                                absorbed = interactions?.BypassBlock(new CombatState(state.Id, state.Revision, state.Combatants.Select(u => units[u.Id]), statuses), effect) == true ? 0 : (int)Math.Min(settledAmount, block); block -= absorbed;
-                                long remaining = settledAmount - absorbed; int lost = (int)Math.Min(remaining, health);
+                                absorbed = interactions?.BypassBlock(new CombatState(state.Id, state.Revision, state.Combatants.Select(u => units[u.Id]), statuses), effect) == true ? 0 : Math.Min(settledAmount, block); block -= absorbed;
+                                long remaining = settledAmount - absorbed; long lost = Math.Min(remaining, health);
                                 health -= lost; overkill = remaining - lost; break;
-                            case CombatEffectKind.LoseHealth: health -= (int)Math.Min(settledAmount,health); break;
-                            case CombatEffectKind.Heal: health += (int)Math.Min(settledAmount, before.MaxHealth - health); break;
-                            case CombatEffectKind.GainBlock: block = checked(block + checked((int)settledAmount)); break;
+                            case CombatEffectKind.LoseHealth: health -= Math.Min(settledAmount,health); break;
+                            case CombatEffectKind.Heal: health += Math.Min(settledAmount, before.MaxHealth - health); break;
+                            case CombatEffectKind.GainBlock: block = checked(block + settledAmount); break;
                             case CombatEffectKind.ClearBlock: block = 0; break;
                             case CombatEffectKind.DrawCards: if (effect.Amount > 512) throw new ArgumentException("Draw count exceeds card capacity."); break;
                             case CombatEffectKind.ApplyStatus:
@@ -358,7 +359,7 @@ namespace PokerEngine
                                 break;
                             case CombatEffectKind.Eliminate: health = 0; break;
                             case CombatEffectKind.Revive:
-                                health = (int)Math.Min(before.MaxHealth, Math.Max(1L, effect.Amount)); block = 0;
+                                health = Math.Min(before.MaxHealth, effect.Amount); block = 0;
                                 statuses.RemoveAll(s => CombatStatusRules.Targets(s, effect.Target)); break;
                             default: throw new ArgumentException("Unknown combat effect.");
                         }
@@ -372,7 +373,7 @@ namespace PokerEngine
                     catch (ArgumentException)
                     { return new CombatTransition(state, provenance.Depth == 0 ? CombatError.InvalidEffect : CombatError.InvalidReaction); }
 
-                    if ((statusReactions == null && reactionProvider == null && reactionRuntime == null && interactions == null) || !provenance.CanTriggerReactions) continue;
+                    if ((statusReactions == null && reactionProvider == null && reactionRuntime == null && interactions == null) || !provenance.CanTriggerReactions && !(reactionRuntime is ICombatDeathReactionRuntime && events.Skip(firstEvent).OfType<CombatEvent>().Any(e => e.Died))) continue;
                     // Complete all writes/facts for this effect before taking one reaction snapshot. For example,
                     // an immunity Blocked fact and its Consumed fact both see the already-consumed charge.
                     var settled = new CombatState(state.Id, state.Revision, state.Combatants.Select(unit => units[unit.Id]), statuses);
@@ -383,8 +384,8 @@ namespace PokerEngine
                         for (int eventIndex = firstEvent; eventIndex < parentEventsEnd; eventIndex++)
                         {
                             var parent = events[eventIndex];
-                            var reactions = Reactions(new CombatReactionContext(settled, parent), statusReactions, reactionProvider)
-                                .Concat(interactions?.React(new CombatReactionContext(settled, parent)) ?? Enumerable.Empty<CombatReaction>());
+                            var reactions = provenance.CanTriggerReactions ? Reactions(new CombatReactionContext(settled, parent), statusReactions, reactionProvider)
+                                .Concat(interactions?.React(new CombatReactionContext(settled, parent)) ?? Enumerable.Empty<CombatReaction>()) : Enumerable.Empty<CombatReaction>();
                             // Bound enumeration before materializing. Even skipped reactions spend the budget.
                             foreach (var reaction in reactions)
                             {

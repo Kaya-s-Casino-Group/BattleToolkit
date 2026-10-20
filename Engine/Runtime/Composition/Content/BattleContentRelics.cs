@@ -11,7 +11,7 @@ namespace PokerEngine
             return ReadDefinitions(section, "Relic", node =>
             {
                 Check(node, new[] { "id", "name", "version", "charges", "maxCopies", "maxLevel", "slots", "sellPrice", "upgradeCost", "growthPerScoredRound" },
-                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score", "Program" });
+                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score", "Program", "Item" });
                 var definition = new RelicDefinition(Text(node, "id"), node.Children.Where(item => item.Name == "Score").Select(item => {
                     Check(item, new[] { "operation", "amount", "hand" }, new string[0]);
                     Text(item, "amount");
@@ -27,13 +27,26 @@ namespace PokerEngine
                     ReadRelicEntries(node, "Numeric", ReadNumeric), ReadRelicEntries(node, "HandModifier", ReadHandModifier),
                     ReadRelicEntries(node, "RuleValue", ReadRuleValue), ReadRelicEntries(node, "Refill", ReadRefill),
                     ReadRelicEntries(node, "FactTrigger", ReadFactTrigger), budget,
-                    ReadRelicEntries(node, "BoundaryTrigger", ReadBoundaryTrigger), ReadRelicEntries(node, "ActionTrigger", ReadActionTrigger), ReadRelicEntries(node, "Program", ReadProgram));
+                    ReadRelicEntries(node, "BoundaryTrigger", ReadBoundaryTrigger), ReadRelicEntries(node, "ActionTrigger", ReadActionTrigger), ReadRelicEntries(node, "Program", ReadProgram), ReadItem(node));
                 return new BattleRelicContentDefinition(definition, rules);
             });
         }
         private T[] ReadRelicEntries<T>(BattleContentNode node, string name, Func<BattleContentNode, T> read) where T : class =>
             node.Children.Where(item => item.Name == name).Select(item => Capture(item, () => read(item))).Where(item => item != null).ToArray();
 
+        private BattleItemSpec ReadItem(BattleContentNode relic)
+        {
+            var entries = relic.Children.Where(c => c.Name == "Item").ToArray();
+            if (entries.Length == 0) return null;
+            if (entries.Length != 1) throw new ArgumentException("A relic has at most one Item configuration.");
+            var node = entries[0];
+            Check(node, new[] { "activation", "removeOnDepleted", "cooldownBattles", "reviveRatio", "executeChance", "reflectRatio", "locationEnterHeal", "locationLeaveGoldRatio", "rouletteBase", "rouletteTurns", "explosionDamage" }, new[] { "Effect" });
+            return new BattleItemSpec(Enum(node, "activation", BattleItemActivation.None),
+                node.Children.Select(e => new RelicTriggeredEffectSpec(ReadConstantEffect(e, true, false), ReadCombatTarget(e))),
+                Bool(node, "removeOnDepleted", false), Int(node, "cooldownBattles", 0), Decimal(node, "reviveRatio", 0), Decimal(node, "executeChance", 0),
+                Decimal(node, "reflectRatio", 0), Long(node, "locationEnterHeal", 0), Decimal(node, "locationLeaveGoldRatio", 0),
+                Decimal(node, "rouletteBase", 10), Int(node, "rouletteTurns", 6), Long(node, "explosionDamage", int.MaxValue));
+        }
         private RelicProgramSpec ReadProgram(BattleContentNode n) {
             Check(n,new[]{"id","kind","amount","hand","excludeHand","minCards","maxCards","history","oncePerRound","statusRef","statusThreshold","highAceOrKing"},Array.Empty<string>());
             var status=Optional(n,"statusRef"); if(status!=null && !Statuses.ContainsKey(status)) throw new ArgumentException("Unknown program status: "+status);

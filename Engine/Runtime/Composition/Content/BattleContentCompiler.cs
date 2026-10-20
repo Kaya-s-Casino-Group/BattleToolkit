@@ -81,7 +81,7 @@ namespace PokerEngine
                     Check(slot, new[] { "id", "ref", "loadoutRef", "initialHealth" }, new string[0]);
                     string template = Text(slot, "ref"), loadout = Optional(slot, "loadoutRef");
                     Reference(slot, "ref", template, players); if (loadout != null) Reference(slot, "loadoutRef", loadout, loadouts);
-                    return new BattlePlayerSlotDefinition(Text(slot, "id"), template, loadout, OptionalInt(slot, "initialHealth"));
+                    return new BattlePlayerSlotDefinition(Text(slot, "id"), template, loadout, OptionalLong(slot, "initialHealth"));
                 })).Where(item => item != null).ToArray();
                 var enemySlots = node.Children.Where(item => item.Name == "Enemy").Select(slot => Capture(slot, () =>
                 {
@@ -139,6 +139,7 @@ namespace PokerEngine
             return value;
         }
         internal int? OptionalInt(BattleContentNode node, string attribute) => Optional(node, attribute) == null ? (int?)null : Int(node, attribute, 0);
+        internal long? OptionalLong(BattleContentNode node, string attribute) => Optional(node, attribute) == null ? (long?)null : Long(node, attribute, 0);
         internal long Long(BattleContentNode node, string attribute, long fallback)
         {
             string raw = Optional(node, attribute); long value;

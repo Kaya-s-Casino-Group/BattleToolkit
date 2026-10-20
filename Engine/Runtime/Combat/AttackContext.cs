@@ -34,6 +34,8 @@ namespace PokerEngine
         public PokerHandClassification RankPattern { get; }
         public bool IsFlush { get; }
         public long? FlushBaseTotal { get; }
+        public long? FlushBaseChips => ModernScoring ? FlushBaseTotal : null;
+        public bool ModernScoring { get; }
         public bool UsesFlushOverlay { get; }
         public bool UsesCompatibleEffects { get; }
         public IReadOnlyList<HandCategory> CompatibleCategories { get; }
@@ -41,7 +43,9 @@ namespace PokerEngine
         public IReadOnlyList<AttackCardSnapshot> SubmittedCards { get; }
         public IReadOnlyList<AttackCardSnapshot> PatternCards { get; }
         public IReadOnlyList<AttackCardSnapshot> ScoringCards { get; }
-        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false, bool flushAsAttribute = false)
+        public IReadOnlyList<AttackCardSnapshot> AttackCards { get; }
+        public IReadOnlyList<AttackCardSnapshot> FlushCards { get; }
+        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false, bool flushAsAttribute = false, bool modernScoring = false)
         {
             Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
             var cards = Guard.Copy(submitted, nameof(submitted));
@@ -53,10 +57,10 @@ namespace PokerEngine
                 throw new ArgumentException("Card snapshots must preserve the authoritative classification membership and order.");
             if (flushBaseTotal < 0) throw new ArgumentOutOfRangeException(nameof(flushBaseTotal));
             if (usesFlushOverlay && usesCompatibleEffects) throw new ArgumentException("Choose one hand composition mode.");
-            FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay; UsesCompatibleEffects = usesCompatibleEffects;
+            FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay; UsesCompatibleEffects = usesCompatibleEffects; ModernScoring = modernScoring;
             SubmittedCards = Guard.View(cards);
             var faces = cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)).ToArray();
-            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute) : null;
+            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute, modernScoring: modernScoring) : null;
             IsFlush = usesCompatibleEffects ? compatible.Categories.Contains(HandCategory.Flush) :
                 cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
             RankPattern = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, true).Highest :
@@ -67,7 +71,12 @@ namespace PokerEngine
                 throw new ArgumentException("Compatible mechanisms require the authoritative highest scoring pattern.");
             PatternCards = Guard.View(pattern.ScoringCards.Select(id => cards.Single(card => card.Id == id)).ToArray());
             ScoringCards = Guard.View(PatternCards.Where(card => card.CanScore).ToArray());
+            FlushCards = Guard.View(PokerHandCompatibility.FlushCards(faces, minFlushCards).Select(id => cards.Single(card => card.Id == id)).ToArray());
+            AttackCards = modernScoring && RankPattern.Category == HandCategory.Straight ?
+                Guard.View(cards.Where(card => RankPattern.ScoringCards.Contains(card.Id)).OrderBy(StraightRank).ToArray()) : SubmittedCards;
         }
+        public int StraightRank(AttackCardSnapshot card) => card.Rank == Rank.Ace &&
+            RankPattern.Category == HandCategory.Straight && RankPattern.TieBreakRanks[0] != (int)Rank.Ace ? 1 : (int)card.Rank;
         public IReadOnlyList<AttackCardSnapshot> Cards(AttackCardScope scope)
         {
             switch (scope)

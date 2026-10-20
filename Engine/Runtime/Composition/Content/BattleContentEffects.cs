@@ -58,7 +58,7 @@ namespace PokerEngine
         {
             return ReadDefinitions(section, "HandRule", node =>
             {
-                Check(node, new[] { "id", "name", "version", "flushUsesRankEffects", "combineCompatibleEffects", "flushAsAttribute", "fullHouseComponentDamage" }, new[] { "Hand", "FlushBonus" });
+                Check(node, new[] { "id", "name", "version", "flushUsesRankEffects", "combineCompatibleEffects", "flushAsAttribute", "fullHouseComponentDamage", "modernScoring", "flushDamageMultiplier" }, new[] { "Hand", "FlushBonus" });
                 var entries = node.Children.Where(item => item.Name == "Hand").Select(hand => Capture(hand, () =>
                 {
                     Check(hand, new[] { "category", "variant" }, new[] { "Effect" });
@@ -69,7 +69,7 @@ namespace PokerEngine
                 if (bonus.Length > 1) throw new ArgumentException("Only one FlushBonus is supported.");
                 if (bonus.Length == 1) Check(bonus[0], Array.Empty<string>(), new[] { "Effect" });
                 return new ConfiguredHandEffectRule(Text(node, "version", ContentVersion), entries,
-                    bonus.SelectMany(b => b.Children).Select(e => ReadConfiguredStep(e, true, true)), Bool(node, "flushUsesRankEffects", false), Bool(node, "combineCompatibleEffects", false), Bool(node, "flushAsAttribute", false), Bool(node, "fullHouseComponentDamage", false));
+                    bonus.SelectMany(b => b.Children).Select(e => ReadConfiguredStep(e, true, true)), Bool(node, "flushUsesRankEffects", false), Bool(node, "combineCompatibleEffects", false), Bool(node, "flushAsAttribute", false), Bool(node, "fullHouseComponentDamage", false), Bool(node, "modernScoring", false), Decimal(node, "flushDamageMultiplier", 2m));
             });
         }
 

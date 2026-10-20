@@ -37,7 +37,12 @@ internal static partial class PlaytestBridge
                 unit["relics"] = player.Relics.Relics.Select(relic => D("id", relic.InstanceId, "name", relic.DefinitionId,
                     "definitionId", relic.DefinitionId, "displayName", ContentName(entry, "Relics", relic.DefinitionId),
                     "description", RelicDescription(ContentNode(entry, "Relics", relic.DefinitionId)),
-                    "level", relic.Level, "charges", relic.RemainingCharges, "cooldown", relic.CooldownRounds, "usesThisRound", relic.UsesThisRound)).ToArray();
+                    "level", relic.Level, "charges", relic.RemainingCharges, "cooldown", relic.CooldownRounds, "usesThisRound", relic.UsesThisRound,
+                    "activation", (player.Relics.RulesFor(relic.InstanceId).Item?.Activation ?? BattleItemActivation.None).ToString(),
+                    "canUse", BattleItemRuntime.CanUse(state, player.Id, relic.InstanceId),
+                    "cooldownBattles", Number(relic.Memory.CounterValue(BattleItemRuntime.CooldownBattlesKey)),
+                    "rouletteActive", relic.Memory.CounterValue(BattleItemRuntime.RouletteActiveKey) != 0,
+                    "rouletteTurn", Number(relic.Memory.CounterValue(BattleItemRuntime.RouletteTurnKey)))).ToArray();
                 unit["hand"] = state.Zone(CardZoneKinds.Hand, player.Id).Cards.Select(id => {
                     var card = state.Table.GetCard(id); var face = entry.Session.Engine.Face(card);
                     return D("id", id.Value, "rank", face.Rank.ToString(), "suit", face.Suit.ToString(),
@@ -117,7 +122,7 @@ internal static partial class PlaytestBridge
     {
         if (node == null) return "";
         var labels = new Dictionary<string, string> {
-            { "Score", "计分修正" }, { "Numeric", "战斗数值修正" }, { "HandModifier", "牌型效果" }, { "RuleValue", "行动规则修正" },
+            { "Item", "道具能力" }, { "Program", "条件机制" }, { "Score", "计分修正" }, { "Numeric", "战斗数值修正" }, { "HandModifier", "牌型效果" }, { "RuleValue", "行动规则修正" },
             { "Refill", "补牌效果" }, { "FactTrigger", "战斗事件触发" }, { "BoundaryTrigger", "阶段触发" }, { "ActionTrigger", "行动触发" }
         };
         return string.Join("；", node.Children.Where(child => labels.ContainsKey(child.Name)).Select(child => {
@@ -173,6 +178,23 @@ internal static partial class PlaytestBridge
         foreach (var player in transition.State.Duel.Players)
         {
             var before = step.Before.Duel.Player(player.Id);
+            var oldItems = before.Relics.Relics.ToDictionary(r => r.InstanceId);
+            var newItems = player.Relics.Relics.ToDictionary(r => r.InstanceId);
+            foreach (var old in oldItems.Values.Where(r => !newItems.ContainsKey(r.InstanceId)))
+                lines.Add("移除道具：" + ContentName(entry, "Relics", old.DefinitionId));
+            foreach (var item in newItems.Values)
+            {
+                string itemName = ContentName(entry, "Relics", item.DefinitionId);
+                if (!oldItems.TryGetValue(item.InstanceId, out var old)) { lines.Add("获得全新道具：" + itemName); continue; }
+                if (old.RemainingCharges != item.RemainingCharges) lines.Add(itemName + "：剩余 " + (item.RemainingCharges?.ToString() ?? "不限") + " 次");
+                long cooldown = item.Memory.CounterValue(BattleItemRuntime.CooldownBattlesKey);
+                if (old.Memory.CounterValue(BattleItemRuntime.CooldownBattlesKey) != cooldown) lines.Add(itemName + "：冷却 " + cooldown + " 场战斗");
+                bool wasActive = old.Memory.CounterValue(BattleItemRuntime.RouletteActiveKey) != 0;
+                bool active = item.Memory.CounterValue(BattleItemRuntime.RouletteActiveKey) != 0;
+                if (active && (!wasActive || old.Memory.CounterValue(BattleItemRuntime.RouletteTurnKey) != item.Memory.CounterValue(BattleItemRuntime.RouletteTurnKey)))
+                    lines.Add(itemName + "：状态第 " + item.Memory.CounterValue(BattleItemRuntime.RouletteTurnKey) + " 回合");
+                else if (wasActive && !active) lines.Add(itemName + "：状态结束");
+            }
             if (before.Energy.Energy != player.Energy.Energy) lines.Add(Name(step.Before.Duel, player.Id) + "：能量 " + before.Energy.Energy + " → " + player.Energy.Energy);
         }
         if (step.Before.Duel.CompletedRounds != transition.State.Duel.CompletedRounds) lines.Add("已完成回合 " + transition.State.Duel.CompletedRounds);
@@ -344,6 +366,7 @@ internal static partial class PlaytestBridge
             case CardDuelAction.DiscardForDraw: return "摸牌前弃牌";
             case CardDuelAction.ConfirmOverflow: return "强制弃牌";
             case CardDuelAction.FinishTurn: return "确认结束回合";
+            case CardDuelAction.UseItem: return "使用道具";
             case CardDuelAction.Play: return "出牌";
             case CardDuelAction.Discard: return "弃牌";
             case CardDuelAction.EndTurn: return "结束回合";

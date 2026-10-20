@@ -22,8 +22,8 @@ namespace PokerEngine
         public ParticipantId PlayerId { get; private set; }
         public long Revision { get; private set; }
         public AdventurePhase Phase { get; private set; }
-        public int Health { get; private set; }
-        public int MaxHealth { get; private set; }
+        public long Health { get; private set; }
+        public long MaxHealth { get; private set; }
         public long Gold { get; private set; }
         public long LastRewardGold { get; private set; }
         public string RestChoiceId { get; private set; }
@@ -75,10 +75,10 @@ namespace PokerEngine
             if (tarot == null || !Progression.IsUnlocked(new ProgressionUnlock(UnlockKind.Tarot, tarot.Id)))
                 throw new ArgumentException("Tarot is not unlocked.");
             var template = Content.Players[slot.TemplateId];
-            MaxHealth = checked((int)decimal.Floor(template.Definition.MaxHealth * tarot.MaxHealthMultiplier));
+            MaxHealth = checked((long)decimal.Floor(template.Definition.MaxHealth * tarot.MaxHealthMultiplier));
             if (MaxHealth < 1) throw new ArgumentException("Tarot health multiplier produces zero health.");
             Health = Math.Min(MaxHealth, slot.InitialHealth.HasValue
-                ? checked((int)decimal.Floor(slot.InitialHealth.Value * tarot.MaxHealthMultiplier)) : MaxHealth);
+                ? checked((long)decimal.Floor(slot.InitialHealth.Value * tarot.MaxHealthMultiplier)) : MaxHealth);
             if (Health < 1) throw new ArgumentException("Starting health must be positive.");
             Gold = checked(definition.StartingGold + tarot.StartingGoldBonus);
             var loadout = slot.LoadoutId == null ? null : Content.Loadouts[slot.LoadoutId];
@@ -127,6 +127,12 @@ namespace PokerEngine
             { return Apply(AdventureLogEntry.ForBattle(expectedRevision, action, selected, targets, targetBindings, drawCount), preview); }
             catch (ArgumentException e) { return new AdventureResult(this, e.Message); }
         }
+        public AdventureResult UseBattleItem(long expectedRevision, string instanceId, string targetInstanceId = null, bool preview = false)
+        {
+            if (expectedRevision != Revision) return new AdventureResult(this, "StaleRevision");
+            try { return Apply(AdventureLogEntry.ForItem(expectedRevision, instanceId, targetInstanceId), preview); }
+            catch (ArgumentException e) { return new AdventureResult(this, e.Message); }
+        }
         private AdventureResult Apply(AdventureLogEntry entry, bool preview)
         {
             if (history.Count >= MaxCommands) return new AdventureResult(this, "Adventure command limit reached.");
@@ -153,6 +159,7 @@ namespace PokerEngine
             {
                 Need(Phase == AdventurePhase.Map && available.Contains(command.Id), "Node is not available.");
                 CurrentNode = Definition.Node(command.Id); available.Clear(); purchased.Clear(); RestChoiceId = null; LastRewardGold = 0;
+                ApplyLocationItems(entering: true);
                 if (CurrentNode.Kind == AdventureNodeKind.Shop) { battle = null; Phase = AdventurePhase.Shop; }
                 else if (CurrentNode.Kind == AdventureNodeKind.Rest) { battle = null; Phase = AdventurePhase.Rest; }
                 else { Phase = AdventurePhase.Battle; StartBattle(); }
@@ -161,6 +168,7 @@ namespace PokerEngine
             if (command.Kind == AdventureCommandKind.Continue)
             {
                 Need(CanContinue, "Complete this node before continuing.");
+                ApplyLocationItems(entering: false);
                 visited.Add(CurrentNode.Id); available = CurrentNode.NextIds.ToList();
                 if (available.Count == 0) { Phase = AdventurePhase.Completed; Settle(RunOutcome.Won); }
                 else { Phase = AdventurePhase.Map; battle = null; }
@@ -171,7 +179,7 @@ namespace PokerEngine
                 Need(Phase == AdventurePhase.Rest && RestChoiceId == null, "A rest reward can only be chosen once.");
                 var choice = Definition.RestChoices.SingleOrDefault(r => r.Id == command.Id);
                 Need(choice != null, "Unknown rest choice.");
-                if (choice.Kind == AdventureRestKind.Heal) Health = Math.Min(MaxHealth, checked(Health + (int)decimal.Floor(MaxHealth * choice.HealRatio)));
+                if (choice.Kind == AdventureRestKind.Heal) Health = checked(Health + Math.Min(MaxHealth - Health, checked((long)decimal.Floor(MaxHealth * choice.HealRatio))));
                 else if (choice.Kind == AdventureRestKind.Gold) Gold = checked(Gold + choice.Gold);
                 else AddRelic(choice.RelicId);
                 RestChoiceId = choice.Id; return;
@@ -212,14 +220,16 @@ namespace PokerEngine
         private void ApplyBattle(AdventureLogEntry entry)
         {
             Need(Phase == AdventurePhase.Battle && battle != null, "No active battle.");
-            var result = battle.Execute(battle.State.Revision, PlayerId, entry.Action,
-                entry.Cards?.Select(c => new CardInstanceId(c)), entry.Targets?.Select(t => new ParticipantId(t)), entry.CreateBindings(), entry.DrawCount);
+            var result = entry.Action == CardDuelAction.UseItem
+                ? battle.UseItem(battle.State.Revision, PlayerId, entry.ItemInstanceId, entry.TargetItemInstanceId)
+                : battle.Execute(battle.State.Revision, PlayerId, entry.Action,
+                    entry.Cards?.Select(c => new CardInstanceId(c)), entry.Targets?.Select(t => new ParticipantId(t)), entry.CreateBindings(), entry.DrawCount);
             Need(result.Accepted, result.Error.ToString());
             LastBattleResult = result; Health = result.State.Duel.Combat.Get(PlayerId).Health;
+            relics = result.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
             if (!result.State.Duel.IsFinished) return;
-            // Persist owned relic values and consumable charges. Battle-local counters, cooldowns and marks reset.
-            relics = result.State.Duel.Player(PlayerId).Relics.Relics.Select(r =>
-                new RunRelic(r.InstanceId, r.DefinitionId, r.Level, r.Growth, r.RemainingCharges, 0, AbilityMemory.Empty)).ToList();
+            // Dynamic ownership, finite charges and completed-battle cooldowns survive location changes.
+            relics = relics.Select(BattleItemRuntime.CompleteBattle).ToList();
             if (result.State.Duel.Phase == ScoredDuelPhase.Lost)
             { Phase = AdventurePhase.Failed; Settle(RunOutcome.Lost); }
             else
@@ -241,7 +251,7 @@ namespace PokerEngine
             {
                 var e = pair.Value;
                 return new BattleEnemyContentDefinition(new CombatantDefinition(e.Definition.Id,
-                    Math.Max(1, checked((int)decimal.Floor(e.Definition.MaxHealth * CurrentNode.EnemyHealthMultiplier))), e.Definition.InitialBlock),
+                    Math.Max(1L, checked((long)decimal.Floor(e.Definition.MaxHealth * CurrentNode.EnemyHealthMultiplier))), e.Definition.InitialBlock),
                     e.Damage, e.DamageRules, e.TargetRules, e.EffectRule, e.Behavior);
             }, StringComparer.Ordinal);
             var enemies = encounter.Enemies.Select(s =>
@@ -249,7 +259,7 @@ namespace PokerEngine
                 var e = enemyCatalog[s.TemplateId];
                 return new BattleEnemySetup(new ParticipantId(s.Id), e.Definition, e.Damage, e.DamageRules, e.TargetRules, e.EffectRule, e.Behavior, enemyCatalog);
             });
-            var engine = new CardDuelEngine(rule.Rules, scoring: scoring);
+            var engine = new CardDuelEngine(rule.Rules, scoring: scoring, itemCatalog: Content.Relics.Values);
             byte[] seedBytes;
             using (var hash = SHA256.Create()) seedBytes = hash.ComputeHash(Encoding.UTF8.GetBytes(
                 Seed.ToString(CultureInfo.InvariantCulture) + "/" + CurrentNode.Id));
@@ -257,14 +267,31 @@ namespace PokerEngine
             LastBattleResult = battle.Execute(battle.State.Revision, PlayerId, CardDuelAction.Start);
             Need(LastBattleResult.Accepted, "Cannot start battle: " + LastBattleResult.Error);
             Health = battle.State.Duel.Combat.Get(PlayerId).Health;
+            // Opening boundaries may consume/revive/replace items before the first player input.
+            relics = battle.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
             if (battle.State.Duel.IsFinished)
             {
+                relics = relics.Select(BattleItemRuntime.CompleteBattle).ToList();
                 if (battle.State.Duel.Phase == ScoredDuelPhase.Lost) { Phase = AdventurePhase.Failed; Settle(RunOutcome.Lost); }
                 else { Phase = AdventurePhase.Reward; LastRewardGold = CurrentNode.Gold; Gold = checked(Gold + LastRewardGold); }
             }
         }
         private BattleRelicSetup BindRelic(RunRelic relic)
         { var d = Content.Relics[relic.DefinitionId]; return new BattleRelicSetup(d.Definition, relic, d.Rules); }
+        private void ApplyLocationItems(bool entering)
+        {
+            // One owner-ordered hook per entered/left location, including shops and rests.
+            foreach (var relic in relics)
+            {
+                if (relic.Charges == 0) continue;
+                var item = Content.Relics[relic.DefinitionId].Rules.Item;
+                if (item == null) continue;
+                if (entering && item.LocationEnterHeal > 0)
+                    Health = checked(Health + Math.Min(MaxHealth - Health, item.LocationEnterHeal));
+                if (!entering && item.LocationLeaveGoldRatio > 0)
+                    Gold = checked(Gold + checked((long)decimal.Floor(Gold * item.LocationLeaveGoldRatio)));
+            }
+        }
         private void AddRelic(string id)
         {
             Need(Content.Relics.ContainsKey(id), "Unknown relic.");

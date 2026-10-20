@@ -33,6 +33,9 @@ namespace PokerEngine.Tests
         private static string AdventureXml(string nodes = null, Action<XDocument> edit = null)
         {
             var doc = XDocument.Parse(ToolkitTestFiles.Read("Engine/Content/StandardAdventure.xml"));
+            // This compatibility fixture intentionally exercises the historical battle content.
+            foreach (var attr in doc.Descendants().Attributes().Where(a => a.Name == "relic" || a.Name == "startingRelic" || a.Name == "ref"))
+                attr.Value = attr.Value == "13003" ? "straight-dot" : attr.Value == "12001" ? "discard-reflect" : attr.Value == "11002" ? "flush-overheal" : attr.Value;
             if (nodes != null)
             {
                 doc.Root.Element("Nodes").ReplaceNodes(XElement.Parse("<Nodes>" + nodes + "</Nodes>").Elements());
@@ -224,7 +227,7 @@ namespace PokerEngine.Tests
             Assert.Less(s.Health, s.MaxHealth); Assert.AreEqual(5, s.Deck.Count); Assert.AreEqual(6, s.Battle.State.Table.Cards.Count);
             Battle(s, CardDuelAction.SkipDraw);
             Battle(s, CardDuelAction.Play, s.Battle.State.Zone(CardZoneKinds.Hand).Cards.ToArray());
-            Assert.AreEqual(AdventurePhase.Reward, s.Phase); int health = s.Health;
+            Assert.AreEqual(AdventurePhase.Reward, s.Phase); long health = s.Health;
             Assert.IsNotEmpty(s.Battle.State.Duel.Combat.Statuses); Assert.AreEqual(50, s.Battle.State.Duel.Combat.Get(s.PlayerId).Block);
             Command(s, AdventureCommandKind.Continue); Command(s, AdventureCommandKind.EnterNode, "boss2");
             Assert.AreEqual(health, s.Health); Assert.AreEqual(health, s.Battle.State.Duel.Combat.Get(s.PlayerId).Health);
@@ -277,7 +280,7 @@ namespace PokerEngine.Tests
         {
             var s = Session(); Command(s, AdventureCommandKind.EnterNode, "fight"); Battle(s, CardDuelAction.SkipDraw);
             string saved = s.Export();
-            Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"SchemaVersion\":1", "\"SchemaVersion\":9")));
+            Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"SchemaVersion\":2", "\"SchemaVersion\":1")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"Revision\":2", "\"Revision\":999")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"Action\":9", "\"Action\":3")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"ResultDigest\":\"", "\"ResultDigest\":\"x")));

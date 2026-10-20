@@ -10,13 +10,13 @@ namespace PokerEngine
     /// </summary>
     public sealed class ScoredDuelEngine
     {
-        public const string RulesVersion = "scored-duel.4";
+        public const string RulesVersion = "scored-duel.5";
         public ScoredDuelDefinition Definition { get; }
         public ScoredDuelEngine(ScoredDuelDefinition definition) { Definition = definition ?? throw new ArgumentNullException(nameof(definition)); }
 
-        public ScoredDuelState Create(string encounterId, ParticipantId player, ParticipantId enemy, int? initialPlayerHealth = null)
+        public ScoredDuelState Create(string encounterId, ParticipantId player, ParticipantId enemy, long? initialPlayerHealth = null)
         {
-            int health = initialPlayerHealth ?? Definition.Player.MaxHealth;
+            long health = initialPlayerHealth ?? Definition.Player.MaxHealth;
             if (!player.IsValid || !enemy.IsValid || player == enemy || health <= 0 || health > Definition.Player.MaxHealth)
                 throw new ArgumentException("A duel requires two distinct living actors.");
             return new ScoredDuelState(Definition.Fingerprint, new CombatState(encounterId, 0, new[] {

@@ -145,7 +145,7 @@ class Compiler:
                 pass
 
 
-def make_server(compiler, port=18765):
+def make_server(compiler, port=18767):
     token = secrets.token_urlsafe(32)
     metadata = compiler.call()
     files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
@@ -232,7 +232,7 @@ def make_server(compiler, port=18765):
 
 def main():
     parser = argparse.ArgumentParser(description='开发测试兼容入口（Python 3 + .NET SDK）；策划请使用仓库根目录启动器。')
-    parser.add_argument('--port', type=int, default=18765)
+    parser.add_argument('--port', type=int, default=18767)
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='battle-content-editor-') as folder:
         print('正在编译现有 C# 规则程序集……', flush=True)

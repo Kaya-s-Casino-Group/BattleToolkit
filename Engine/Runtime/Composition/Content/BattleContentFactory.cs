@@ -38,7 +38,7 @@ namespace PokerEngine
                 return new BattleEnemySetup(new ParticipantId(slot.Id), template.Definition, template.Damage,
                     template.DamageRules, template.TargetRules, template.EffectRule, template.Behavior, content.Enemies);
             }).ToArray();
-            var engine = new CardDuelEngine(rules.Rules, scoring: scoring);
+            var engine = new CardDuelEngine(rules.Rules, scoring: scoring, itemCatalog: content.Relics.Values);
             return new BattleSession(engine, engine.Create(request.BattleId, request.Random, players, enemies));
         }
 

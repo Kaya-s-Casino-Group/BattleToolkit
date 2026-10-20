@@ -19,7 +19,7 @@ while [ "$#" -gt 0 ]; do
             if [ "$#" -eq 0 ]; then printf '错误：--port 缺少端口号。\n' >&2; exit 2; fi
             host_args+=(--port "$1") ;;
         --help|-h)
-            printf '用法：start.command [--check | --install-only] [--no-browser] [--port 18765]\n'
+            printf '用法：start.command [--check | --install-only] [--no-browser] [--port 18767]\n'
             printf '首次启动自动安装缺失的 .NET 10 SDK；--check 构建并检查，不启动服务。\n'
             exit 0 ;;
         *) printf '错误：未知选项 %s（可用 --help 查看）。\n' "$1" >&2; exit 2 ;;

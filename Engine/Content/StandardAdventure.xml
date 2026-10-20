@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<AdventureContent schemaVersion="1" id="standard-adventure" name="三章冒险·标准验证" version="adventure.standard.1.1683" startNode="chapter-1-battle-1" startingEncounter="standard-single-battle" defaultTarot="fool" startingGold="30" relicCapacity="5" minimumDeckSize="5" maximumDeckSize="128">
-  <!-- 主案1683与局外UI草案：3章，每章3普通、1精英、1商店、1休息、1Boss。
+<AdventureContent schemaVersion="1" id="standard-adventure" name="三章冒险·标准验证" version="adventure.standard.2.2951" startNode="chapter-1-battle-1" startingEncounter="standard-single-battle" defaultTarot="fool" startingGold="30" relicCapacity="5" minimumDeckSize="5" maximumDeckSize="128">
+  <!-- 局外流程保留原验证范围；遗物引用适配主案2951的日期版战斗配置。
+       主案1683与局外UI草案：3章，每章3普通、1精英、1商店、1休息、1Boss。
        节点奖励、商品价格/涨价、休息收益、章成长、两个解锁塔罗均为可配置验证占位值，尚未定数值。
        愚者开局最大血量+20%；初次通关解锁两个示例塔罗；每次开局仅选择一个已解锁塔罗。
        绝杀转金币、推币机、休息博弈不在本实现范围。 -->
   <Tarots>
     <Tarot id="fool" name="愚者" description="初始天赋：最大血量提高20%，初始血量同步提高。" initiallyUnlocked="true" maxHealthMultiplier="1.2" />
-    <Tarot id="magician" name="魔术师·验证占位" description="通关后解锁：开局获得顺子额外中毒遗物。效果为可配置验证占位。" unlockOnVictory="true" startingRelic="straight-dot" />
+    <Tarot id="magician" name="魔术师·验证占位" description="通关后解锁：开局获得牌型倍率遗物。效果为可配置验证占位。" unlockOnVictory="true" startingRelic="13003" />
     <Tarot id="empress" name="皇后·验证占位" description="通关后解锁：开局额外获得40金币。数值为可配置验证占位。" unlockOnVictory="true" startingGoldBonus="40" />
   </Tarots>
   <Nodes>
@@ -33,9 +34,9 @@
     <Node id="chapter-3-boss" name="第三章·首领" kind="Boss" chapter="3" row="6" column="1" encounter="standard-gluttony-boss" enemyHealthMultiplier="1.5" gold="80" />
   </Nodes>
   <Shop>
-    <Relic id="shop-straight" ref="straight-dot" name="顺子额外中毒" description="额外叠毒效果，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
-    <Relic id="shop-reflect" ref="discard-reflect" name="弃牌盾反" description="弃牌防御获得反伤效果，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
-    <Relic id="shop-flush" ref="flush-overheal" name="同花溢疗" description="同花治疗与溢疗转伤，具体以标准战斗XML遗物配置为准。" price="50" sellPrice="15" />
+    <Relic id="shop-straight" ref="13003" name="牌型倍率" description="牌型倍率加5，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
+    <Relic id="shop-reflect" ref="12001" name="弃牌盾反" description="护盾实际吸收伤害的20%反伤，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
+    <Relic id="shop-flush" ref="11002" name="心连心" description="同花治疗比例增加30个百分点，具体以标准战斗XML遗物配置为准。" price="50" sellPrice="15" />
   </Shop>
   <Services>
     <Service kind="DeleteCard" price="15" increase="5" />
@@ -45,6 +46,6 @@
   <Rest>
     <Choice id="rest-heal" name="休养" description="恢复最大生命的30%，不超过上限；验证占位值。" kind="Heal" healRatio="0.3" />
     <Choice id="rest-gold" name="搜寻金币" description="获得20金币；验证占位值。" kind="Gold" gold="20" />
-    <Choice id="rest-relic" name="拾取遗物" description="获得弃牌盾反遗物；受遗物容量和重复上限限制。" kind="Relic" relic="discard-reflect" />
+    <Choice id="rest-relic" name="拾取遗物" description="获得弃牌盾反遗物；受遗物容量和重复上限限制。" kind="Relic" relic="12001" />
   </Rest>
 </AdventureContent>

@@ -51,8 +51,8 @@ namespace PokerEngine
         public string Id { get; }
         public string TemplateId { get; }
         public string LoadoutId { get; }
-        public int? InitialHealth { get; }
-        internal BattlePlayerSlotDefinition(string id, string templateId, string loadoutId, int? initialHealth)
+        public long? InitialHealth { get; }
+        internal BattlePlayerSlotDefinition(string id, string templateId, string loadoutId, long? initialHealth)
         { Id = id; TemplateId = templateId; LoadoutId = loadoutId; InitialHealth = initialHealth; }
     }
     public sealed class BattleEnemySlotDefinition
@@ -72,7 +72,7 @@ namespace PokerEngine
     /// <summary>Validated immutable definitions. Every assembly creates new battle-owned state.</summary>
     public sealed class CompiledBattleContent
     {
-        public const string CurrentRulesContractVersion = "battle-content.8";
+        public const string CurrentRulesContractVersion = "battle-content.9";
         public string Id { get; }
         public string Version { get; }
         public int SchemaVersion => 1;
