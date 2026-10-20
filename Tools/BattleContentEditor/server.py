@@ -178,7 +178,7 @@ def make_server(compiler, port=18765):
                 path = ROOT / 'Engine/Runtime/Composition/Content/Examples/battle-content.xml'
                 self.reply(200, path.read_bytes(), 'application/xml'); return
             if route == '/api/standard':
-                path = ROOT / 'Engine/Content/StandardSingleBattle.xml'
+                path = next(iter(sorted((ROOT / 'Engine/Content').glob('StandardSingleBattle-????-??-??.xml'), reverse=True)), ROOT / 'Engine/Content/StandardSingleBattle.xml')
                 self.reply(200, path.read_bytes(), 'application/xml'); return
             if route in files:
                 filename, mime = files[route]

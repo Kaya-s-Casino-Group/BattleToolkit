@@ -88,7 +88,10 @@ namespace PokerEngine
                         {
                             var attack = spec.Kind == CombatEffectKind.Damage ?
                                 new AttackContext(source, origin ?? (hand == null ? AttackOrigin.Other : AttackOrigin.ScoredHand), spec.Amount, hand) : null;
-                            effects.Add(WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack)));
+                            var boundEffect = WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack));
+                            if(spec.OnHitStatus != null && boundEffect.TargetChain == null && state.Combat.Get(source).TeamId != state.Combat.Get(target).TeamId)
+                                boundEffect = boundEffect.WithTargetChain(new CombatTargetChain("on-hit/"+stepIndex+"/"+targetIndex,new[]{target},state.DamageRulesFor(source).AttackDamage));
+                            effects.Add(boundEffect);
                             if (spec.OnHitStatus != null)
                             {
                                 var application = spec.OnHitStatus;
@@ -96,7 +99,7 @@ namespace PokerEngine
                                 var onHitDuration = application.Duration ?? BattleStatusTiming.Bind(state, application.Lifetime ?? definition.DefaultLifetime);
                                 var status = new StatusInstance(new StatusInstanceId(state.Combat.Id + "/on-hit/" + source.Value.Length + ":" + source.Value + "/" + state.Revision + "/" + stepIndex + "/" + targetIndex),
                                     application.DefinitionId, EntityRef.Participant(source), EntityRef.Participant(target), application.ResolveStacks(hand), onHitDuration);
-                                effects.Add(WithChain(state, step, source, CombatEffect.ApplyStatus(status)));
+                                effects.Add(boundEffect.TargetChain == null ? CombatEffect.ApplyStatus(status) : CombatEffect.ApplyStatus(status).WithTargetChain(boundEffect.TargetChain));
                             }
                             if (effects.Count > 64) return new BattleEffectBinding(CardDuelError.InvalidEffectPlan);
                         }

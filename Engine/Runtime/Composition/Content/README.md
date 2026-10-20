@@ -122,7 +122,7 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
 
-当前规则契约为 battle-content.7、Combat 为 combat.13（XML schemaVersion 仍为 1），包含手动摸牌/分阶段弃牌、计分遗物、兼容机制叠加、可按施加者或持有者计时的叠层中毒和逐段转火。葫芦分项金额仍供旧配置使用，标准配置改为最高牌型统一计伤。省略 timingSubject 的 XML 沿用 Holder；旧绑定/规则快照不自动迁移。
+当前规则契约为 battle-content.8、Combat 为 combat.14（XML schemaVersion 仍为 1）。日期版标准按策划 revision 1726 使用自动补牌、同花属性、葫芦三条＋对子分别计伤，并接入 30 件遗物草案和千手联动。配置与取舍见 [本次对齐说明](DesignAlignment1726.md)。旧绑定/规则快照不自动迁移。
 
 ## 可配置怪物（battle-content.4）
 

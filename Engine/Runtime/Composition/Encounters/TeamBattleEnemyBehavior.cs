@@ -23,13 +23,36 @@ namespace PokerEngine
             }
             return result.AsReadOnly();
         }
+        private static CombatTransition ReviveUnits(CombatState combat, ParticipantId actor, EnemyWorldEffect effect, BattleTimelineRecorder timeline)
+        {
+            var targets = effect.ReviveRefs.SelectMany(reference => combat.Combatants.Where(u => u.DefinitionId == reference && !u.IsAlive && u.Id != actor && u.TeamId == combat.Get(actor).TeamId)).Distinct().Take(effect.Count).ToArray();
+            if (targets.Length == 0) return null;
+            var result = CombatEngine.Resolve(combat, combat.Revision, targets.Select(u => new CombatEffect(CombatEffectKind.Revive, actor, u.Id, u.MaxHealth)));
+            if (!result.Accepted) throw new ArgumentException("Invalid revival.");
+            timeline?.ObserveCombat(result.RuleEvents); return result;
+        }
+        private TeamBattleState EnterEnemyStages(TeamBattleState state, List<CombatRuleEvent> facts, BattleTimelineRecorder timeline, IReadOnlyCollection<string> immediateEntries = null)
+        {
+            if (state.IsFinished || IsFinished(state.Combat, state.Players, state.Enemies)) return state;
+            var combat = state.Combat; var enemies = state.Enemies.ToArray();
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                var enemy = enemies[i];
+                if (enemy.Behavior == null || !combat.Get(enemy.Id).IsAlive) continue;
+                var stage = enemy.Behavior.Stages.FirstOrDefault(s => s.Condition.Matches(combat, state.CompletedRounds, enemy.Id));
+                if (stage == null || stage.EntryEffects.Count == 0 || enemy.BehaviorState.Uses.ContainsKey("@entry/" + stage.Id)) continue;
+                if(immediateEntries?.Contains(enemy.Id.Value+"/"+stage.Id)!=true) foreach (var effect in stage.EntryEffects) { var revived = ReviveUnits(combat, enemy.Id, effect, timeline); if (revived != null) { combat = revived.State; facts.AddRange(revived.RuleEvents); } }
+                enemies[i] = enemy.WithBehaviorState(enemy.BehaviorState.MarkEntry(stage.Id));
+            }
+            return new TeamBattleState(state.Rules, combat, state.Players, enemies, state.Phase, state.PendingEnemies, state.Revision, state.CompletedRounds, state.Scores, state.Actions);
+        }
         private static TeamBattleState RefreshEnemyThresholds(TeamBattleState before, TeamBattleState state)
         {
             if (state.IsFinished || state.Phase != ScoredDuelPhase.AwaitingPlayerHand) return state;
             var enemies = state.Enemies.Select(e => {
-                if (e.Behavior == null || !e.Behavior.RefreshOnHealthThreshold || !state.Combat.Get(e.Id).IsAlive) return e;
+                if (e.Behavior == null || !(e.Behavior.RefreshOnHealthThreshold || e.Behavior.RecheckIntentOnAction) || !state.Combat.Get(e.Id).IsAlive) return e;
                 var conditions = e.Behavior.Stages.SelectMany(s => new[] { s.Condition }.Concat(s.Actions.Select(a => a.Condition)));
-                bool changed = conditions.Any(c => !c.HealthThresholds(before, e.Id).SequenceEqual(c.HealthThresholds(state, e.Id)));
+                bool changed = e.Behavior.RecheckIntentOnAction || conditions.Any(c => !c.HealthThresholds(before, e.Id).SequenceEqual(c.HealthThresholds(state, e.Id)));
                 return changed ? e.WithBehaviorState(e.BehaviorState.Plan(state, e)) : e;
             }).ToArray();
             return new TeamBattleState(state.Rules, state.Combat, state.Players, enemies, state.Phase, state.PendingEnemies, state.Revision, state.CompletedRounds, state.Scores, state.Actions);
@@ -41,13 +64,18 @@ namespace PokerEngine
             return new TeamBattleState(state.Rules, state.Combat, state.Players, enemies, state.Phase, state.PendingEnemies,
                 state.Revision, state.CompletedRounds, state.Scores, state.Actions);
         }
-        private TeamBattleState CompleteEnemyBehavior(TeamBattleState state, ParticipantId actor, List<EnemyWorldEffect> cards, BattleTimelineRecorder timeline, Action<EnemyWorldEffect, TeamBattleState> worldObserver)
+        private TeamBattleState CompleteEnemyBehavior(TeamBattleState state, ParticipantId actor, List<EnemyWorldEffect> cards, BattleTimelineRecorder timeline, Action<EnemyWorldEffect, TeamBattleState> worldObserver, List<CombatRuleEvent> worldFacts)
         {
             bool failedSummon = false;
             var owner = state.Enemies.Single(e => e.Id == actor); var enemies = state.Enemies.ToList(); var combat = state.Combat;
             foreach (var effect in owner.BehaviorState.Intent?.WorldEffects ?? Array.Empty<EnemyWorldEffect>())
             {
                 if (!combat.Get(actor).IsAlive || state.Players.All(p => !combat.Get(p.Id).IsAlive)) break;
+                if (effect.IsRevive)
+                {
+                    var revived = ReviveUnits(combat, actor, effect, timeline); if (revived != null) { combat = revived.State; worldFacts.AddRange(revived.RuleEvents); }
+                    continue;
+                }
                 if (effect.EnemyRef == null)
                 {
                     cards.Add(effect);

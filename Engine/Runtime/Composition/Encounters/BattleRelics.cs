@@ -166,6 +166,7 @@ namespace PokerEngine
                         writer.Write("battle-relic.numeric.2");
                         foreach (var state in Relics) RulesFor(state.InstanceId).Write(writer);
                     }
+                    if (Relics.Any(state => RulesFor(state.InstanceId).Programs.Count != 0)) { writer.Write("battle-relic.programs.1"); foreach(var state in Relics) RulesFor(state.InstanceId).WritePrograms(writer); }
                     // Each extension versions its settlement semantics as well as its configuration.
                     if (Relics.Any(state => RulesFor(state.InstanceId).HandEffects.Count != 0))
                     {

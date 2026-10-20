@@ -74,6 +74,7 @@ namespace PokerEngine
         {
             var player = state.Duel.Player(actor);
             int max = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MaxPlayCards).Value;
+            if(RelicPrograms.Entries(player.Relics).Any(e=>e.Item2.Kind==RelicProgramKind.IgnorePlayLimit))max=Math.Max(max,state.Zone(CardZoneKinds.Hand,actor).Cards.Count);
             return minimum ? Math.Min(max, BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinPlayCards).Value) : max;
         }
         public int DrawLimit(CardDuelState state, ParticipantId actor)
@@ -98,7 +99,7 @@ namespace PokerEngine
             if (!ReferenceEquals(state.Duel.Rules, Duel.Definition)) return new CardDuelTransition(state, CardDuelError.InvalidState);
             if (revision != state.Revision) return new CardDuelTransition(state, CardDuelError.StaleRevision);
             var player = state.Duel.Players.FirstOrDefault(p => p.Id == actor);
-            bool manual = player != null && player.Rules.Flow.ManualDraw;
+            bool manual = player != null && player.Rules.Flow.UsesTurnFlow;
             if (!manual && action >= CardDuelAction.Draw || action != CardDuelAction.Draw && drawCount != 0)
                 return new CardDuelTransition(state, CardDuelError.InvalidPhase);
             var ids = (selected ?? Array.Empty<CardInstanceId>()).ToArray();

@@ -78,8 +78,9 @@ namespace PokerEngine
                     key == BattleRuleValueKey.DrawUses || key == BattleRuleValueKey.ActionsPerTurn ? 64 : key == BattleRuleValueKey.AllCardsScore || key == BattleRuleValueKey.DiscardEndsTurn || key == BattleRuleValueKey.RetainBlock ? 1 : 512;
                 Value = (int)Math.Min(maximum, Math.Max(minimum, value)); Key = key; BaseValue = baseValue; Delta = delta; Contributions = Guard.View(items); return;
             }
+            if (key == BattleRuleValueKey.HandLimit) value = Math.Max(0,value);
             if (key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost) value = Math.Max(0, value);
-            if (value < (key == BattleRuleValueKey.InitialEnergy || key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost ? 0 : 1) ||
+            if (value < (key == BattleRuleValueKey.HandLimit || key == BattleRuleValueKey.InitialEnergy || key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost ? 0 : 1) ||
                 key == BattleRuleValueKey.HandLimit && value > 52) throw new ArgumentException("Modified battle rule is outside its supported range.");
             Value = checked((int)value); Key = key; BaseValue = baseValue; Delta = delta; Contributions = Guard.View(items);
         }
@@ -239,7 +240,7 @@ namespace PokerEngine
                 default: throw new ArgumentException("Unknown battle rule value.");
             }
             return new BattleRuleValueResolution(key, value, loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).RuleValues
-                .Where(spec => spec.Key == key).Select(spec => new BattleRuleContribution(relic.InstanceId, spec.Id, spec.Delta, spec.Multiplier))));
+                .Where(spec => spec.Key == key).Select(spec => new BattleRuleContribution(relic.InstanceId, spec.Id, spec.Delta, spec.Multiplier))).Concat(key != BattleRuleValueKey.HandLimit ? Enumerable.Empty<BattleRuleContribution>() : loadout.Relics.SelectMany(r=>loadout.RulesFor(r.InstanceId).Programs.Where(p=>p.Kind==RelicProgramKind.ShrinkHandEachTurn).Select(p=>new BattleRuleContribution(r.InstanceId,p.Id,-checked((int)(p.Amount*(r.Memory.CounterValue("program/turns")+1))))))));
         }
     }
     internal static class RelicRuleValidation

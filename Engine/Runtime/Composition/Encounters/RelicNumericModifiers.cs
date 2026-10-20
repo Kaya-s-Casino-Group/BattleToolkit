@@ -45,6 +45,7 @@ namespace PokerEngine
         public IReadOnlyList<RelicBoundaryTriggerSpec> BoundaryTriggers { get; }
         public IReadOnlyList<RelicActionTriggerSpec> ActionTriggers { get; }
         public RelicTriggerBudgetSpec TriggerBudget { get; }
+        public IReadOnlyList<RelicProgramSpec> Programs { get; }
         internal bool HasTriggers => Triggers.Count > 0 || BoundaryTriggers.Count > 0 || ActionTriggers.Count > 0;
         internal bool HasBoundaryConfiguration => BoundaryTriggers.Count > 0 || TriggerBudget?.MaxUsesPerBoundary != null ||
             Triggers.Any(trigger => trigger.Occurrence == RelicTriggerOccurrence.PerBoundary);
@@ -53,9 +54,10 @@ namespace PokerEngine
             IEnumerable<RelicHandEffectModifierSpec> handEffects = null, IEnumerable<RelicRuleValueSpec> ruleValues = null,
             IEnumerable<RelicRefillRuleSpec> refillRules = null, IEnumerable<RelicTriggerSpec> triggers = null,
             RelicTriggerBudgetSpec triggerBudget = null, IEnumerable<RelicBoundaryTriggerSpec> boundaryTriggers = null,
-            IEnumerable<RelicActionTriggerSpec> actionTriggers = null)
+            IEnumerable<RelicActionTriggerSpec> actionTriggers = null, IEnumerable<RelicProgramSpec> programs = null)
         {
             Version = Guard.Text(version, nameof(version));
+            Programs = Guard.View((programs ?? Array.Empty<RelicProgramSpec>()).ToArray());
             var items = Guard.Copy(modifiers ?? Array.Empty<RelicNumericModifierSpec>(), nameof(modifiers));
             var structural = Guard.Copy(handEffects ?? Array.Empty<RelicHandEffectModifierSpec>(), nameof(handEffects));
             var values = Guard.Copy(ruleValues ?? Array.Empty<RelicRuleValueSpec>(), nameof(ruleValues));
@@ -66,7 +68,7 @@ namespace PokerEngine
             if (triggered.Length + boundaries.Length + actions.Length == 0 && triggerBudget != null) throw new ArgumentException("A trigger budget requires trigger entries.");
             var ids = items.Select(item => item.Id).Concat(structural.Select(item => item.Id))
                 .Concat(values.Select(item => item.Id)).Concat(refills.Select(item => item.Id)).Concat(triggered.Select(item => item.Id))
-                .Concat(boundaries.Select(item => item.Id)).Concat(actions.Select(item => item.Id)).ToArray();
+                .Concat(Programs.Select(item => item.Id)).Concat(boundaries.Select(item => item.Id)).Concat(actions.Select(item => item.Id)).ToArray();
             if (ids.Length > 32 || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
                 throw new ArgumentException("A relic supports at most 32 distinctly named battle modifiers.");
             RelicHandEffectValidation.Combinations(structural);
@@ -86,6 +88,7 @@ namespace PokerEngine
                 writer.Write(spec.HandCategory.HasValue); if (spec.HandCategory.HasValue) writer.Write((int)spec.HandCategory.Value);
             }
         }
+        internal void WritePrograms(BinaryWriter writer) { writer.Write(Programs.Count); foreach(var p in Programs) p.Write(writer); }
         internal void WriteHandEffects(BinaryWriter writer)
         {
             writer.Write(Version); writer.Write(HandEffects.Count);
@@ -98,6 +101,7 @@ namespace PokerEngine
                 using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true))
                 {
                     Write(writer);
+                    WritePrograms(writer);
                     if (HandEffects.Count != 0) { writer.Write("battle-relic.hand-effects.1"); WriteHandEffects(writer); }
                     if (RuleValues.Count != 0 || RefillRules.Count != 0) { writer.Write("battle-relic.rules.1"); WriteRules(writer); }
                     if (Triggers.Count != 0) { writer.Write("battle-relic.triggers.1"); WriteTriggers(writer); }
@@ -180,17 +184,25 @@ namespace PokerEngine
     }
 
     /// <summary>Reads passive configuration only; does not consume charges, cooldowns or runtime counters.</summary>
-    public sealed class RelicCombatAmountModifier : ICombatAmountModifier
+    public sealed class RelicCombatAmountModifier : ICombatAmountModifier, ICombatInteractions
     {
         private readonly Dictionary<ParticipantId, BattleRelicLoadout> loadouts;
         private readonly HandAttackInfo hand;
         private readonly ParticipantId? handSource;
+        private readonly EnemyLinkRuntime links;
+        private readonly CombatState start;
+        internal IReadOnlyCollection<string> EnteredStages => links.EnteredStages;
+        public ParticipantId Redirect(CombatState c, CombatEffect e, CombatEffectProvenance p) => links.Redirect(c, e, p);
+        public bool BypassBlock(CombatState c, CombatEffect e) => links.BypassBlock(c, e);
+        public IEnumerable<CombatReaction> React(CombatReactionContext c) => links.React(c).Concat(loadouts.Values.SelectMany(l => RelicPrograms.Reactions(l, hand, c)));
+        public int StatusStacks(StatusInstance status) { BattleRelicLoadout l; if(!loadouts.TryGetValue(new ParticipantId(status.Source.Id),out l)) return status.Stacks; return checked(status.Stacks+(int)RelicPrograms.Entries(l,hand).Where(e=>e.Item2.Kind==RelicProgramKind.PoisonStacks&&e.Item2.StatusRef==status.DefinitionId.Value).Sum(e=>e.Item2.Amount)); }
         private readonly BattleNumericResolver resolver = new BattleNumericResolver();
         public RelicCombatAmountModifier(TeamBattleState state, ParticipantId? handSource = null, HandAttackInfo hand = null)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             if ((handSource.HasValue != (hand != null)) || handSource.HasValue && !state.Players.Any(player => player.Id == handSource.Value))
                 throw new ArgumentException("Hand facts require their battle player source.");
+            start = state.Combat; links = new EnemyLinkRuntime(state);
             loadouts = state.Players.ToDictionary(player => player.Id, player => player.Relics);
             this.hand = hand; this.handSource = handSource;
         }
@@ -198,7 +210,7 @@ namespace PokerEngine
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             BattleRelicLoadout loadout;
-            if (!loadouts.TryGetValue(context.Owner, out loadout)) return new CombatAmountModification(context.Amount);
+            if (!loadouts.TryGetValue(context.Owner, out loadout)) return new CombatAmountModification(context.Amount, links.Contributions(context), true);
             bool outgoing = context.Stage == CombatAmountStage.Outgoing;
             BattleNumericStat stat;
             switch (context.Effect.Kind)
@@ -209,7 +221,8 @@ namespace PokerEngine
                 default: throw new ArgumentException("This effect has no numeric modification stage.");
             }
             var primaryHand = context.Provenance.Origin == CombatEffectOrigin.Primary && context.Effect.Source == handSource ? hand : null;
-            return resolver.Resolve(new BattleNumericQuery(loadout, stat, context.Amount, context.Provenance.Origin, primaryHand));
+            var result = resolver.Resolve(new BattleNumericQuery(loadout, stat, context.Amount, context.Provenance.Origin, primaryHand));
+            return new CombatAmountModification(context.Amount, result.Contributions.Concat(links.Contributions(context)).Concat(RelicPrograms.Amounts(loadout,primaryHand,context,start)), true);
         }
     }
 }

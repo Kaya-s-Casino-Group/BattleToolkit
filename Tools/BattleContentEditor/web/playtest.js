@@ -155,7 +155,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  async function command(action){
   const player=currentPlayer();if(busy||uncertain||!battle||battle.finished||!player?.canAct)return;
   if(['Play','Discard'].includes(action)&&(previewBusy||!previews[action]?.legal))return;
-  if(action==='EndTurn'&&player.manualDraw&&player.window==='Ending')action='FinishTurn';
+  if(action==='EndTurn'&&player.turnFlow&&player.window==='Ending')action='FinishTurn';
   const payload=actionPayload(action);busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
   try{
    const data=await request('command',payload);adopt(data.battle);
@@ -206,7 +206,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
    const choice=button('',()=>{refs.encounter.value=item.id;encounterValue=item.id;updateConfig();},'battle-encounter'+(chosen?' selected':''));
    choice.dataset.encounterId=item.id;choice.setAttribute('aria-pressed',String(chosen));choice.disabled=busy||config.importing;
    const portrait=node('img');portrait.src='/assets/'+kind+'.png';portrait.alt='';portrait.loading='lazy';portrait.addEventListener('error',()=>{portrait.hidden=true;});
-   const words=node('span');words.append(node('strong','',item.name||item.id),node('small','',kind==='gluttony'?'BOSS / 废牌压力':kind==='summoner'?'精英 / 护甲与召唤':'遭遇 / 行为轮换'));choice.append(portrait,words,icon(chosen?'spark':'sword'));refs['encounter-rail'].append(choice);if(focusedEncounter===item.id&&!choice.disabled)choice.focus({preventScroll:true});
+   const words=node('span');words.append(node('strong','',item.name||item.id),node('small','',/wrath|千手/.test(item.id+' '+item.name)?'BOSS / 五手联动':kind==='gluttony'?'BOSS / 废牌压力':kind==='summoner'?'精英 / 护甲与召唤':'遭遇 / 行为轮换'));choice.append(portrait,words,icon(chosen?'spark':'sword'));refs['encounter-rail'].append(choice);if(focusedEncounter===item.id&&!choice.disabled)choice.focus({preventScroll:true});
   }
   refs['encounter-rail'].hidden=config.encounters.length===0||config.encounters.length>6;
 
@@ -301,7 +301,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   refs.play.textContent='出牌 · '+(player?.costs.play??'—')+' 能量';refs.discard.textContent='弃牌 · '+(player?.costs.discard??'—')+' 能量';
   const unavailable=busy||uncertain||battle.finished||!player?.canAct;
   refs.play.disabled=unavailable||previewBusy||!previews.Play?.legal;refs.discard.disabled=unavailable||previewBusy||!previews.Discard?.legal;refs['end-turn'].disabled=unavailable;refs.clear.disabled=busy||!selected.size;
-  const drawing=!battle.finished&&player?.manualDraw&&player.window==='Draw',forced=!battle.finished&&player?.manualDraw&&player.window==='ForcedDiscard';
+  const drawing=!battle.finished&&player?.turnFlow&&player.window==='Draw',forced=!battle.finished&&player?.turnFlow&&player.window==='ForcedDiscard';
   refs.draw.hidden=refs['skip-draw'].hidden=refs['replace-draw'].hidden=refs['draw-count'].hidden=!drawing;
   refs['draw-bar'].hidden=!drawing&&!forced;
   refs.overflow.hidden=!forced;refs.draw.disabled=unavailable||player?.drawLimit===0;refs['skip-draw'].disabled=unavailable;
@@ -322,7 +322,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
    const preview=previews[action];if(!preview)continue;
    const section=node('section','playtest-preview-part');section.append(node('h3','',title));
    if(action==='Play'&&preview.hand){
-    const hand=preview.hand,score=node('p','playtest-hand-score','计伤牌型：'+(hand.scoringLabel||hand.label)+' · 点数 '+hand.points+' × 倍率 '+hand.multiplier+' = 计分 '+hand.total);score.dataset.scoringCategory=hand.scoringCategory||hand.category;section.append(score);
+    const hand=preview.hand,score=node('p','playtest-hand-score',hand.components?.length?'葫芦分项计伤：'+hand.components.map(c=>c.label+' '+c.points+' × '+c.multiplier+' = '+c.total).join('；'):'计伤牌型：'+(hand.scoringLabel||hand.label)+' · 点数 '+hand.points+' × 倍率 '+hand.multiplier+' = 计分 '+hand.total);score.dataset.scoringCategory=hand.scoringCategory||hand.category;section.append(score);
     if(hand.mechanisms?.length){const mechanisms=node('p','playtest-hand-mechanisms','兼容牌型：'+hand.mechanisms.map(item=>item.label).join('、'));mechanisms.dataset.mechanismCategories=hand.mechanisms.map(item=>item.category).join(',');section.append(mechanisms);}
    }
    if(preview.targetMessage)section.append(node('p','playtest-invalid',preview.targetMessage));
@@ -350,6 +350,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   refs.status.dataset.revision=battle.revision;refs.status.dataset.runId=battle.runId;
   const unitsKey=battle.runId+':'+battle.revision+':'+actor;
   if(unitsKey!==renderedUnitsKey){renderedUnitsKey=unitsKey;refs.enemies.replaceChildren(...battle.enemies.map(unit=>unitCard(unit,false)));refs.players.replaceChildren(...battle.players.map(unit=>unitCard(unit,true)));}
+  refs.enemies.classList.toggle('large-roster',battle.enemies.length>3);
   refs.battlefield.classList.toggle('battle-finished',battle.finished);
   refs['phase-banner'].textContent=battle.finished?'试炼结束':currentPlayer()?.window==='Draw'?'DRAW · 摸牌阶段':'YOUR TURN · 你的回合';
   refs.result.hidden=!battle.finished;refs.result.replaceChildren(icon(battle.outcome==='胜利'?'crown':'skull'),node('strong','',battle.outcome==='胜利'?'试炼完成':'下次，再来一局。'),node('span','',battle.outcome==='胜利'?'每一张牌，都算数。':'复盘记录或用同一种子重新挑战。'));

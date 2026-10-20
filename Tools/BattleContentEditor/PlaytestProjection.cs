@@ -22,6 +22,8 @@ internal static partial class PlaytestBridge
                 unit["energy"] = player.Energy.Energy; unit["maxEnergy"] = player.Energy.MaxEnergy;
                 unit["handLimit"] = player.Limits.HandLimit.Value; unit["discardsRemaining"] = state.RemainingDiscardBudgetFor(player.Id);
                 unit["manualDraw"] = player.Rules.Flow.ManualDraw;
+                unit["turnFlow"] = player.Rules.Flow.UsesTurnFlow;
+                unit["autoDrawToLimit"] = player.Rules.Flow.AutoDrawToLimit;
                 unit["window"] = state.FlowFor(player.Id).Window.ToString();
                 unit["drawLimit"] = entry.Session.Engine.DrawLimit(state, player.Id);
                 unit["drawWarning"] = entry.Session.Engine.RequiresDrawWarning(state, player.Id);
@@ -59,13 +61,13 @@ internal static partial class PlaytestBridge
                     "stageId", enemy.BehaviorState.StageId, "available", intent?.Accepted ?? false, "skipped", intent?.IsSkipped ?? false,
                     "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,
                     "worldEffects", (active ? planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>() : Array.Empty<EnemyWorldEffect>())
-                        .Select(effect => D("kind", effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
-                            "enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone, "position", effect.EnemyRef == null ? effect.Position.ToString() : null)).ToArray());
+                        .Select(effect => D("kind", effect.IsRevive ? "Revive" : effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
+                            "reviveRefs",effect.ReviveRefs,"enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone, "position", effect.EnemyRef == null ? effect.Position.ToString() : null)).ToArray());
                 unit["intent"] = intent == null ? new string[0] : intent.Accepted ? EventLines(intent.RuleEvents, duel, catalog, entry).ToArray() : new[] { "意图暂不可预览：" + Error(intent.Error) };
                 if (enemy.Behavior != null && intent != null && intent.Accepted && !intent.IsSkipped)
                 {
                     unit["intent"] = new[] { planned?.Name ?? "等待" }.Concat((string[])unit["intent"])
-                        .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + InsertionLabel(e.Zone, e.Position))).ToArray();
+                        .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.IsRevive ? "按顺序复活 " + e.Count + " 个阵亡单位" : e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + InsertionLabel(e.Zone, e.Position))).ToArray();
                 }
                 return unit;
             }).ToArray());
@@ -146,6 +148,7 @@ internal static partial class PlaytestBridge
             "scoringCategory", score.Category.ToString(), "scoringLabel", HandName(score.Category),
             "mechanisms", mechanisms.Select(category => D("category", category.ToString(), "label", HandName(category))).ToArray(),
             "mechanismLabel", string.Join("、", mechanisms.Select(HandName)),
+            "components",score.Components.Select(c=>D("label",HandName(c.Category),"points",Number(c.Points),"multiplier",c.Multiplier.ToString(CultureInfo.InvariantCulture),"total",Number(c.Total))).ToArray(),
             "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints),
             "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
     }
@@ -154,7 +157,8 @@ internal static partial class PlaytestBridge
         var transition = step.Transition; var lines = new List<string>();
         if (transition.Score != null)
         {
-            lines.Add("计伤牌型：" + HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
+            if(transition.Score.Components.Count>0) lines.Add("分项计伤："+string.Join(" + ",transition.Score.Components.Select(c=>HandName(c.Category)+" "+Number(c.Points)+" × "+c.Multiplier.ToString(CultureInfo.InvariantCulture)+" = "+Number(c.Total))));
+            else lines.Add("计伤牌型：" + HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
                 " × 倍率 " + transition.Score.Multiplier.ToString(CultureInfo.InvariantCulture) + " = 牌型得分 " + Number(transition.Score.Total));
             var facts = transition.ActionCompletion?.Context.Hand;
             if (facts != null) lines.Add("兼容牌型：" + string.Join("、", facts.CompatibleCategories.Select(HandName)));
@@ -266,6 +270,8 @@ internal static partial class PlaytestBridge
                 case CombatEffectKind.Heal: yield return target + origin + "治疗 +" + Number(fact.HealthRestored) + (fact.Overheal > 0 ? "（溢出 " + Number(fact.Overheal) + "）" : ""); break;
                 case CombatEffectKind.GainBlock: yield return target + origin + "护盾 +" + Number(fact.After.Block - fact.Before.Block); break;
                 case CombatEffectKind.ClearBlock: yield return target + "护盾清空"; break;
+                case CombatEffectKind.Revive: yield return target + "复活，生命 " + fact.After.Health; break;
+                case CombatEffectKind.LoseHealth: yield return target + "失去生命 " + (fact.Before.Health-fact.After.Health); break;
                 case CombatEffectKind.Eliminate: yield return target + "消灭"; break;
             }
         }

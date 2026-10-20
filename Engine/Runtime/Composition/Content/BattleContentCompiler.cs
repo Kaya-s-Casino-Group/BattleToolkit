@@ -50,17 +50,24 @@ namespace PokerEngine
             var scores = ReadScores(section("ScoringProfiles"));
             var rules = ReadDefinitions(section("BattleRules"), "Rules", node =>
             {
-                Check(node, new[] { "id", "name", "version", "scoringRef", "roundLimit", "blockExpiry", "maxReactionEffects", "maxReactionDepth", "clearEnemyBlock", "roundLimitBehavior", "enrageDamagePerRound" }, new string[0]);
+                Check(node, new[] { "id", "name", "version", "scoringRef", "roundLimit", "blockExpiry", "maxReactionEffects", "maxReactionDepth", "clearEnemyBlock", "clearEnemyBlockAtTurnStart", "victoryEnemyRef", "roundLimitBehavior", "enrageDamagePerRound" }, new string[0]);
                 string score = Text(node, "scoringRef"); Reference(node, "scoringRef", score, scores);
                 return new BattleRuleContentDefinition(score, new BattleRules(Text(node, "version", ContentVersion), Int(node, "roundLimit", 20),
                     Enum(node, "blockExpiry", PlayerBlockExpiry.Retain), catalog, reactionLimits: new CombatReactionLimits(Int(node, "maxReactionEffects", 256), Int(node, "maxReactionDepth", 16)), clearEnemyBlock: Bool(node, "clearEnemyBlock", false),
-                    roundLimitBehavior: Enum(node, "roundLimitBehavior", BattleRoundLimitBehavior.Lose), enrageDamagePerRound: Long(node, "enrageDamagePerRound", 0)));
+                    roundLimitBehavior: Enum(node, "roundLimitBehavior", BattleRoundLimitBehavior.Lose), enrageDamagePerRound: Long(node, "enrageDamagePerRound", 0), clearEnemyBlockAtTurnStart: Bool(node, "clearEnemyBlockAtTurnStart", false), victoryEnemyRef: Optional(node, "victoryEnemyRef")));
             });
             var players = ReadPlayers(section("Players"), hands);
             var enemies = ReadEnemies(section("Enemies"));
             foreach (var enemy in enemies.Values)
                 foreach (var summon in (enemy.Behavior?.Stages.SelectMany(s => s.Actions).SelectMany(a => a.WorldEffects) ?? Enumerable.Empty<EnemyWorldEffect>()).Where(e => e.EnemyRef != null))
                     Reference(section("Enemies"), "enemyRef", summon.EnemyRef, enemies);
+            foreach(var rule in rules.Values.Where(r=>r.Rules.VictoryEnemyRef!=null)) Reference(section("BattleRules"),"victoryEnemyRef",rule.Rules.VictoryEnemyRef,enemies);
+            foreach(var enemy in enemies.Values.Where(e=>e.Behavior!=null)) {
+                var b=enemy.Behavior;
+                var references=b.Stages.SelectMany(s=>ConditionRefs(s.Condition).Concat(s.EntryEffects.SelectMany(e=>e.ReviveRefs)).Concat(s.Actions.SelectMany(a=>ConditionRefs(a.Condition).Concat(a.WorldEffects.SelectMany(e=>e.ReviveRefs)))))
+                    .Concat(b.Links.SelectMany(l=>l.Targets.Where(t=>t!="Self"&&t!="Opponents").Concat(l.CountRefs).Concat(ConditionRefs(l.Condition)).Concat(l.HealTarget==null?Array.Empty<string>():new[]{l.HealTarget})));
+                foreach(var reference in references.Distinct())Reference(section("Enemies"),"enemyRefs",reference,enemies);
+            }
             var decks = ReadDecks(section("Decks"));
             var loadouts = ReadLoadouts(section("Loadouts"), relics, decks);
             var locations = new Dictionary<string, BattleSourceLocation>(StringComparer.Ordinal);

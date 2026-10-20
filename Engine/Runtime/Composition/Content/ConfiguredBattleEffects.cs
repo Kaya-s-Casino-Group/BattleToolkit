@@ -116,7 +116,9 @@ namespace PokerEngine
         public IReadOnlyList<ConfiguredEffectStep> FlushBonus { get; }
         public bool FlushUsesRankEffects { get; }
         public bool CombineCompatibleEffects { get; }
-        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false)
+        public bool FlushAsAttribute { get; }
+        public bool FullHouseComponentDamage { get; }
+        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false)
         {
             Version = Guard.Text(version, nameof(version));
             var copy = Guard.Copy(entries, nameof(entries));
@@ -135,10 +137,11 @@ namespace PokerEngine
             if (FlushBonus.Any(e => e == null) || FlushBonus.Count > 64 || FlushBonus.Select(e => e.Id).Distinct().Count() != FlushBonus.Count)
                 throw new ArgumentException("Invalid flush bonus effects.");
             FlushUsesRankEffects = flushUsesRankEffects;
-            CombineCompatibleEffects = combineCompatibleEffects;
+            CombineCompatibleEffects = combineCompatibleEffects; FlushAsAttribute = flushAsAttribute; FullHouseComponentDamage = fullHouseComponentDamage;
+            if ((flushAsAttribute || fullHouseComponentDamage) && !combineCompatibleEffects) throw new ArgumentException("Composition options require compatible effects.");
             if (flushUsesRankEffects && combineCompatibleEffects) throw new ArgumentException("Choose one hand composition mode.");
-            if (combineCompatibleEffects && (copy.Any(entry => entry.Effects.Count(e => e.Kind == CombatEffectKind.Damage) > 1) ||
-                copy.SelectMany(entry => entry.Effects).Any(e => e.Amount?.Kind == EffectAmountKind.ThreeOfAKindTotalScale || e.Amount?.Kind == EffectAmountKind.OnePairTotalScale) ||
+            if (combineCompatibleEffects && (copy.Any(entry => !(fullHouseComponentDamage && entry.Category == HandCategory.FullHouse) && entry.Effects.Count(e => e.Kind == CombatEffectKind.Damage) > 1) ||
+                copy.Where(entry => !(fullHouseComponentDamage && entry.Category == HandCategory.FullHouse)).SelectMany(entry => entry.Effects).Any(e => e.Amount?.Kind == EffectAmountKind.ThreeOfAKindTotalScale || e.Amount?.Kind == EffectAmountKind.OnePairTotalScale) ||
                 FlushBonus.Any(e => e.Kind == CombatEffectKind.Damage)))
                 throw new ArgumentException("Compatible mechanisms require one primary damage step per branch, highest-hand score amounts, and non-damage flush bonuses.");
         }

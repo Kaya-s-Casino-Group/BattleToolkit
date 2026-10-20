@@ -36,7 +36,7 @@ namespace PokerEngine
         {
             var state = Session.State;
             return !Presentation.IsPresenting && state.HasStarted && !state.Duel.IsFinished &&
-                state.Duel.HasPlayerWindow(actor) && (state.Duel.CanAct(actor) || state.Duel.Player(actor).Rules.Flow.ManualDraw &&
+                state.Duel.HasPlayerWindow(actor) && (state.Duel.CanAct(actor) || state.Duel.Player(actor).Rules.Flow.UsesTurnFlow &&
                     (state.FlowFor(actor).Window == BattlePlayerWindow.Draw || state.FlowFor(actor).Window == BattlePlayerWindow.ForcedDiscard || state.FlowFor(actor).Window == BattlePlayerWindow.Ending)) && state.Zone(CardZoneKinds.Played, actor).Cards.Count == 0;
         }
 
@@ -51,11 +51,11 @@ namespace PokerEngine
             var player = state.Duel.Player(actor);
             var rules = player.Rules;
             if (!state.Duel.CanAct(actor)) return false;
-            bool freeDefense = discard && rules.Flow.ManualDraw && (!rules.Flow.DiscardCostsAction || state.FlowFor(actor).Window == BattlePlayerWindow.Ending);
+            bool freeDefense = discard && rules.Flow.UsesTurnFlow && (!rules.Flow.DiscardCostsAction || state.FlowFor(actor).Window == BattlePlayerWindow.Ending);
             if (discard && !state.HasDiscardBudgetFor(actor) || !freeDefense &&
                 !Session.Engine.Duel.QueryActionCost(state.Duel, actor,
                     discard ? ScoredDuelActionKind.Discard : ScoredDuelActionKind.ScoredHand).CanAfford) return false;
-            if (rules.Flow.ManualDraw && (discard ? state.FlowFor(actor).Window != BattlePlayerWindow.Action && state.FlowFor(actor).Window != BattlePlayerWindow.Ending :
+            if (rules.Flow.UsesTurnFlow && (discard ? state.FlowFor(actor).Window != BattlePlayerWindow.Action && state.FlowFor(actor).Window != BattlePlayerWindow.Ending :
                 state.FlowFor(actor).Window != BattlePlayerWindow.Action)) return false;
             int limit = discard ? rules.MaxDiscardCards : Session.Engine.PlayLimit(state, actor, false);
             var hand = new HashSet<CardInstanceId>(state.Zone(CardZoneKinds.Hand, actor).Cards);
@@ -66,7 +66,7 @@ namespace PokerEngine
                 var card = state.Table.GetCard(id);
                 if (discard ? !card.CanDiscard : !card.CanPlay) return false;
             }
-            if (rules.Flow.ManualDraw && (discard && (state.FlowFor(actor).DefenseUsed && BattleRuleResolver.Value(rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
+            if (rules.Flow.UsesTurnFlow && (discard && (state.FlowFor(actor).DefenseUsed && BattleRuleResolver.Value(rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
                 !discard && state.FlowFor(actor).ActionsRemaining == 0)) return false;
             return seen.Count >= (discard ? 1 : Session.Engine.PlayLimit(state, actor, true));
         }

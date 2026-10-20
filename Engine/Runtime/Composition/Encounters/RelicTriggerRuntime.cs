@@ -383,9 +383,9 @@ namespace PokerEngine
         }
         internal static BattleRelicLoadout BeginRound(BattleRelicLoadout loadout)
         {
-            if (!loadout.Relics.Any(relic => loadout.RulesFor(relic.InstanceId).HasTriggers)) return loadout;
-            return loadout.WithRuntime(loadout.Relics.Select(relic => !loadout.RulesFor(relic.InstanceId).HasTriggers ? relic :
-                relic.WithRuntime(relic.RemainingCharges, 0, Math.Max(0, relic.CooldownRounds - 1), relic.Memory.ResetRound())));
+            if (!loadout.Relics.Any(relic => (loadout.RulesFor(relic.InstanceId).HasTriggers || loadout.RulesFor(relic.InstanceId).Programs.Count > 0))) return loadout;
+            return loadout.WithRuntime(loadout.Relics.Select(relic => !(loadout.RulesFor(relic.InstanceId).HasTriggers || loadout.RulesFor(relic.InstanceId).Programs.Count > 0) ? relic :
+                relic.WithRuntime(relic.RemainingCharges, 0, Math.Max(0, relic.CooldownRounds - 1), loadout.RulesFor(relic.InstanceId).Programs.Count==0 ? relic.Memory.ResetRound() : relic.Memory.ResetRound().WithCounter("program/turns",relic.Memory.CounterValue("program/turns")+1,MemoryScope.Encounter))));
         }
     }
 }

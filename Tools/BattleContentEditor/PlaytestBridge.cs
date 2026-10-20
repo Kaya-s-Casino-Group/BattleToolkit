@@ -82,7 +82,7 @@ internal static partial class PlaytestBridge
         string actionName = Text(request, "action", 16);
         if (!new[] { "Play", "Discard", "EndTurn", "Draw", "SkipDraw", "DiscardForDraw", "ConfirmOverflow", "FinishTurn" }.Contains(actionName) || !Enum.TryParse(actionName, false, out action))
             return Fail("InvalidAction", "此动作不属于玩家可提交的战斗输入。", entry);
-        var cards = Strings(request, "selected", 52, 2048).Select(id => new CardInstanceId(id)).ToArray();
+        var cards = Strings(request, "selected", 512, 2048).Select(id => new CardInstanceId(id)).ToArray();
         var bindings = ReadBindings(request);
         // Old damage-only content accepts the default opponent request, but not named effect bindings.
         IEnumerable<ParticipantId> legacyTargets = null;

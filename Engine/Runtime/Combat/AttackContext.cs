@@ -41,11 +41,11 @@ namespace PokerEngine
         public IReadOnlyList<AttackCardSnapshot> SubmittedCards { get; }
         public IReadOnlyList<AttackCardSnapshot> PatternCards { get; }
         public IReadOnlyList<AttackCardSnapshot> ScoringCards { get; }
-        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false)
+        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false, bool flushAsAttribute = false)
         {
             Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
             var cards = Guard.Copy(submitted, nameof(submitted));
-            if (cards.Length < 1 || cards.Length > 10 || cards.Any(x => x == null) ||
+            if (cards.Length < 1 || cards.Length > 512 || cards.Any(x => x == null) ||
                 cards.Select(x => x.Id).Distinct().Count() != cards.Length ||
                 !cards.Select(x => x.Id).SequenceEqual(pattern.SubmittedCards) ||
                 pattern.ScoringCards.Count == 0 || pattern.ScoringCards.Distinct().Count() != pattern.ScoringCards.Count ||
@@ -56,7 +56,7 @@ namespace PokerEngine
             FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay; UsesCompatibleEffects = usesCompatibleEffects;
             SubmittedCards = Guard.View(cards);
             var faces = cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)).ToArray();
-            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards) : null;
+            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute) : null;
             IsFlush = usesCompatibleEffects ? compatible.Categories.Contains(HandCategory.Flush) :
                 cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
             RankPattern = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, true).Highest :

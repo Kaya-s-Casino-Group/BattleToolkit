@@ -22,7 +22,7 @@ namespace PokerEngine
         public ScoreEffect(ScoreTiming timing, ScoreOperation operation, decimal amount, decimal perLevel = 0, decimal perGrowth = 0,
             HandCategory? category = null, Suit? suit = null, Rank? rank = null)
         {
-            if (!Enum.IsDefined(typeof(ScoreTiming), timing) || (!Enum.IsDefined(typeof(ScoreOperation), operation) || operation == ScoreOperation.AddUnmultipliedPoints) || amount < 0 || perLevel < 0 || perGrowth < 0 ||
+            if (!Enum.IsDefined(typeof(ScoreTiming), timing) || (!Enum.IsDefined(typeof(ScoreOperation), operation) || operation == ScoreOperation.AddUnmultipliedPoints) || amount < 0 && operation != ScoreOperation.AddMultiplier || perLevel < 0 || perGrowth < 0 ||
                 category.HasValue && !Enum.IsDefined(typeof(HandCategory), category.Value) || suit.HasValue && !Enum.IsDefined(typeof(Suit), suit.Value) ||
                 rank.HasValue && !Enum.IsDefined(typeof(Rank), rank.Value) || timing != ScoreTiming.PerCard && (suit.HasValue || rank.HasValue) ||
                 operation == ScoreOperation.AddPoints && (amount != decimal.Truncate(amount) || perLevel != decimal.Truncate(perLevel) || perGrowth != decimal.Truncate(perGrowth)))
@@ -124,7 +124,7 @@ namespace PokerEngine
             Action<string, string, ScoreOperation, decimal> apply = (source, card, op, amount) => {
                 if (steps.Count >= MaxSteps) throw new ArgumentException("Score expansion budget exceeded.");
                 if (op == ScoreOperation.AddPoints) points = checked(points + checked((long)amount));
-                else if (op == ScoreOperation.AddMultiplier) multiplier = checked(multiplier + amount);
+                else if (op == ScoreOperation.AddMultiplier) multiplier = amount < 0 ? Math.Max(1, checked(multiplier + amount)) : checked(multiplier + amount);
                 else multiplier = checked(multiplier * amount);
                 steps.Add(new ScoreStep(source, card, op, amount, points, multiplier));
             };
@@ -209,7 +209,7 @@ namespace PokerEngine
             foreach (var step in score.Steps)
             {
                 if (step == null || string.IsNullOrWhiteSpace(step.SourceId) || step.CardId != null && string.IsNullOrWhiteSpace(step.CardId) ||
-                    step.Amount < 0 || !Enum.IsDefined(typeof(ScoreOperation), step.Operation)) throw new ArgumentException("Invalid score step.");
+                    step.Amount < 0 && step.Operation != ScoreOperation.AddMultiplier || !Enum.IsDefined(typeof(ScoreOperation), step.Operation)) throw new ArgumentException("Invalid score step.");
                 if (step.Operation == ScoreOperation.AddUnmultipliedPoints)
                 {
                     if (step.Amount != decimal.Truncate(step.Amount)) throw new ArgumentException("Kicker points must be integral.");
@@ -220,7 +220,7 @@ namespace PokerEngine
                     if (step.Amount != decimal.Truncate(step.Amount)) throw new ArgumentException("Card points must be integral.");
                     points = checked(points + checked((long)step.Amount));
                 }
-                else if (step.Operation == ScoreOperation.AddMultiplier) multiplier = checked(multiplier + step.Amount);
+                else if (step.Operation == ScoreOperation.AddMultiplier) multiplier = step.Amount < 0 ? Math.Max(1,checked(multiplier + step.Amount)) : checked(multiplier + step.Amount);
                 else multiplier = checked(multiplier * step.Amount);
                 if (step.PointsAfter != points || step.MultiplierAfter != multiplier) throw new ArgumentException("Score trace arithmetic disagrees.");
             }

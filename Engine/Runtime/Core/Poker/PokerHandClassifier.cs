@@ -31,16 +31,12 @@ namespace PokerEngine
         {
             var cards = Guard.Copy(source, nameof(source));
             if (cards.Length <= 5) return Classify(cards, minFlushCards, minStraightCards, ignoreFlush);
-            if (cards.Length > 10 || cards.Select(c => c.Id).Distinct().Count() != cards.Length)
-                throw new ArgumentException("Expanded plays support up to ten distinct cards.");
+            if (cards.Length > 512 || cards.Select(c => c.Id).Distinct().Count() != cards.Length)
+                throw new ArgumentException("Expanded plays support up to 512 distinct cards.");
             PokerHandClassification best = null;
-            for (int a = 0; a < cards.Length - 4; a++)
-            for (int b = a + 1; b < cards.Length - 3; b++)
-            for (int c = b + 1; c < cards.Length - 2; c++)
-            for (int d = c + 1; d < cards.Length - 1; d++)
-            for (int e = d + 1; e < cards.Length; e++)
+            foreach(var subset in PokerExpandedCandidates.Enumerate(cards,minFlushCards,minStraightCards))
             {
-                var next = Classify(new[] { cards[a], cards[b], cards[c], cards[d], cards[e] }, minFlushCards, minStraightCards, ignoreFlush);
+                var next = Classify(subset,minFlushCards,minStraightCards,ignoreFlush);
                 if (best == null || Compare(next.Category, next.TieBreakRanks, best.Category, best.TieBreakRanks) > 0) best = next;
             }
             return new PokerHandClassification(best.Category, best.TieBreakRanks, cards.Select(c => c.Id), best.ScoringCards);

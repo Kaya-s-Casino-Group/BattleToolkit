@@ -54,7 +54,7 @@ namespace PokerEngine
         private Dictionary<string, BattlePlayerContentDefinition> ReadPlayers(BattleContentNode section, Dictionary<string, ConfiguredHandEffectRule> hands) =>
             ReadDefinitions(section, "Player", node =>
             {
-                Check(node, ActorAttributes.Concat(new[] { "handRuleRef", "maxEnergy", "initialEnergy", "playEnergyCost", "discardEnergyCost", "handSize", "discards", "unlimitedDiscards", "maxPlayCards", "maxDiscardCards", "playRefill", "discardRefill", "discardBlockPerCard", "pointsPerDamage", "manualDraw", "openingDeal", "drawCount", "drawUses", "drawWarningThreshold", "minPlayCards", "effectDrawOverflow", "discardEndsTurn", "discardCostsAction", "endDefense", "overflowTriggersDefense", "kickerScoring", "layeredScoreRelics", "discardBlockPerPoint", "actionsPerTurn", "minFlushCards", "minStraightCards" }).ToArray(), new string[0]);
+                Check(node, ActorAttributes.Concat(new[] { "handRuleRef", "maxEnergy", "initialEnergy", "playEnergyCost", "discardEnergyCost", "handSize", "discards", "unlimitedDiscards", "maxPlayCards", "maxDiscardCards", "playRefill", "discardRefill", "discardBlockPerCard", "pointsPerDamage", "manualDraw", "autoDrawToLimit", "openingDeal", "drawCount", "drawUses", "drawWarningThreshold", "minPlayCards", "effectDrawOverflow", "discardEndsTurn", "discardCostsAction", "endDefense", "overflowTriggersDefense", "kickerScoring", "layeredScoreRelics", "discardBlockPerPoint", "actionsPerTurn", "minFlushCards", "minStraightCards" }).ToArray(), new string[0]);
                 ConfiguredHandEffectRule effect = null; string reference = Optional(node, "handRuleRef");
                 if (reference != null)
                 {
@@ -70,7 +70,7 @@ namespace PokerEngine
                     Optional(node, "pointsPerDamage") == null ? null : new ScoreDamagePolicy(Long(node, "pointsPerDamage", 1)), effectRule: effect, flow: new BattleTurnFlowRules(Bool(node, "manualDraw", false), Bool(node, "openingDeal", false),
                         Int(node, "drawCount", 5), Int(node, "drawUses", 1), Int(node, "drawWarningThreshold", 3), Int(node, "minPlayCards", 1),
                         Bool(node, "effectDrawOverflow", true), Bool(node, "discardEndsTurn", true), Bool(node, "discardCostsAction", true),
-                        Bool(node, "endDefense", true), Bool(node, "overflowTriggersDefense", false), Enum(node, "kickerScoring", KickerScoring.None), Bool(node, "layeredScoreRelics", false), Int(node, "actionsPerTurn", 3), Int(node, "minFlushCards", 5), Int(node, "minStraightCards", 5)));
+                        Bool(node, "endDefense", true), Bool(node, "overflowTriggersDefense", false), Enum(node, "kickerScoring", KickerScoring.None), Bool(node, "layeredScoreRelics", false), Int(node, "actionsPerTurn", 3), Int(node, "minFlushCards", 5), Int(node, "minStraightCards", 5), Bool(node, "autoDrawToLimit", false)));
                 return new BattlePlayerContentDefinition(ReadActor(node), playerRules, ReadDamageRules(node), ReadTargetRules(node));
             });
         private Dictionary<string, BattleEnemyContentDefinition> ReadEnemies(BattleContentNode section) => ReadDefinitions(section, "Enemy", node =>

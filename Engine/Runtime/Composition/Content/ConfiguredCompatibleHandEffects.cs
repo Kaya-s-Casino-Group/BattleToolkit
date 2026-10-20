@@ -22,7 +22,11 @@ namespace PokerEngine
             var damage = branches.SelectMany(entry => entry.Effects.Where(step => step.Kind == CombatEffectKind.Damage)
                 .Select(step => new CompatibleDamage { Entry = entry, Step = step })).ToArray();
             var effects = new List<BattleEffectStep>();
-            if (damage.Length > 0)
+            bool components = FullHouseComponentDamage && context.Score.Category == HandCategory.FullHouse;
+            if (components)
+                foreach (var step in Entries.Single(e => e.Category == HandCategory.FullHouse).Effects.Where(e => e.Kind == CombatEffectKind.Damage))
+                    effects.AddRange(step.ResolveAll(context.Score, context.Hand));
+            if (!components && damage.Length > 0)
             {
                 // Categories are descending: amount and step identity come from the highest matched branch.
                 var primary = damage[0].Step;
@@ -61,7 +65,7 @@ namespace PokerEngine
                     foreach (var step in configured.ResolveAll(context.Score, context.Hand))
                         effects.Add(new BattleEffectStep("flush-bonus/" + step.Id, step.Effect, step.Target,
                             new[] { new HandEffectSourceAlias(HandCategory.Flush, "flush-bonus/" + step.Id) }));
-            return new BattleEffectSequence(Version, "最高牌型计伤：" + context.Score.Category + "；兼容机制：" +
+            return new BattleEffectSequence(Version, (components ? "三条＋对子分别计伤：" : "最高牌型计伤：") + context.Score.Category + "；兼容机制：" +
                 string.Join("、", context.Hand.CompatibleCategories), effects);
         }
         private static long[] DivideDamage(long total, ScoreResult score, HandAttackInfo hand)
@@ -78,10 +82,25 @@ namespace PokerEngine
             for (int i = 0; i < result.Length; i++)
             {
                 accumulated += weights[i];
-                long cumulative = i == result.Length - 1 ? total : checked((long)decimal.Floor(total * accumulated / weight));
+                long cumulative = i == result.Length - 1 ? total : ExactProportion(total, accumulated, weight);
                 result[i] = checked(cumulative - assigned); assigned = cumulative;
             }
             return result;
+        }
+        private static long ExactProportion(long total, decimal part, decimal whole)
+        {
+            // Decimal weights are finite rationals; integer arithmetic avoids an overflowing intermediate product.
+            Func<decimal, System.Numerics.BigInteger[]> rational = value => {
+                var bits = decimal.GetBits(value);
+                var numerator = (System.Numerics.BigInteger)(uint)bits[0] + ((System.Numerics.BigInteger)(uint)bits[1] << 32) + ((System.Numerics.BigInteger)(uint)bits[2] << 64);
+                if (bits[3] < 0) numerator = -numerator;
+                return new[] { numerator, System.Numerics.BigInteger.Pow(10, (bits[3] >> 16) & 255) };
+            };
+            var a = rational(part); var b = rational(whole);
+            var numeratorTotal = total * a[0] * b[1]; var divisor = a[1] * b[0];
+            var quotient = System.Numerics.BigInteger.DivRem(numeratorTotal, divisor, out var remainder);
+            if (remainder.Sign != 0 && numeratorTotal.Sign != divisor.Sign) quotient--;
+            return checked((long)quotient);
         }
         private static EffectTargetSpec MergeTargets(EffectTargetSpec[] targets)
         {

@@ -11,7 +11,7 @@ namespace PokerEngine
             return ReadDefinitions(section, "Relic", node =>
             {
                 Check(node, new[] { "id", "name", "version", "charges", "maxCopies", "maxLevel", "slots", "sellPrice", "upgradeCost", "growthPerScoredRound" },
-                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score" });
+                    new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score", "Program" });
                 var definition = new RelicDefinition(Text(node, "id"), node.Children.Where(item => item.Name == "Score").Select(item => {
                     Check(item, new[] { "operation", "amount", "hand" }, new string[0]);
                     Text(item, "amount");
@@ -27,13 +27,18 @@ namespace PokerEngine
                     ReadRelicEntries(node, "Numeric", ReadNumeric), ReadRelicEntries(node, "HandModifier", ReadHandModifier),
                     ReadRelicEntries(node, "RuleValue", ReadRuleValue), ReadRelicEntries(node, "Refill", ReadRefill),
                     ReadRelicEntries(node, "FactTrigger", ReadFactTrigger), budget,
-                    ReadRelicEntries(node, "BoundaryTrigger", ReadBoundaryTrigger), ReadRelicEntries(node, "ActionTrigger", ReadActionTrigger));
+                    ReadRelicEntries(node, "BoundaryTrigger", ReadBoundaryTrigger), ReadRelicEntries(node, "ActionTrigger", ReadActionTrigger), ReadRelicEntries(node, "Program", ReadProgram));
                 return new BattleRelicContentDefinition(definition, rules);
             });
         }
         private T[] ReadRelicEntries<T>(BattleContentNode node, string name, Func<BattleContentNode, T> read) where T : class =>
             node.Children.Where(item => item.Name == name).Select(item => Capture(item, () => read(item))).Where(item => item != null).ToArray();
 
+        private RelicProgramSpec ReadProgram(BattleContentNode n) {
+            Check(n,new[]{"id","kind","amount","hand","excludeHand","minCards","maxCards","history","oncePerRound","statusRef","statusThreshold","highAceOrKing"},Array.Empty<string>());
+            var status=Optional(n,"statusRef"); if(status!=null && !Statuses.ContainsKey(status)) throw new ArgumentException("Unknown program status: "+status);
+            return new RelicProgramSpec(Text(n,"id"),ReadRequiredEnum<RelicProgramKind>(n,"kind"),Decimal(n,"amount",0),Optional(n,"hand")==null?(HandCategory?)null:ReadRequiredEnum<HandCategory>(n,"hand"),Bool(n,"excludeHand",false),Int(n,"minCards",1),Int(n,"maxCards",512),Enum(n,"history",RelicHistoryCondition.None),Bool(n,"oncePerRound",false),status,Int(n,"statusThreshold",0),Bool(n,"highAceOrKing",false));
+        }
         private RelicTriggerBudgetSpec ReadBudget(BattleContentNode node)
         {
             Check(node, new[] { "maxUsesPerAction", "maxUsesPerRound", "chargeCost", "cooldownRounds", "maxUsesPerBoundary" }, new string[0]);

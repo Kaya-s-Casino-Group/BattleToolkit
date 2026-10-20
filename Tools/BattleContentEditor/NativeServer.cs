@@ -197,7 +197,7 @@ internal static class NativeServer
                 }
                 if (path == "/api/standard")
                 {
-                    await FileReply(context, Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), "application/xml");
+                    await FileReply(context, Directory.GetFiles(Path.Combine(root,"Engine","Content"),"StandardSingleBattle-????-??-??.xml").OrderByDescending(p=>p,StringComparer.Ordinal).FirstOrDefault() ?? Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), "application/xml");
                     return;
                 }
                 if (Files.TryGetValue(path, out var file))

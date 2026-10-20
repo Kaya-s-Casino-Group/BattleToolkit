@@ -84,7 +84,7 @@ namespace PokerEngine
             {
                 ParticipantId automaticActor;
                 CardDuelAction automaticAction;
-                var uncollected = next.Duel.Players.FirstOrDefault(p => p.Rules.Flow.ManualDraw && next.Zone(CardZoneKinds.Played, p.Id).Cards.Count > 0);
+                var uncollected = next.Duel.Players.FirstOrDefault(p => p.Rules.Flow.UsesTurnFlow && next.Zone(CardZoneKinds.Played, p.Id).Cards.Count > 0);
                 if (uncollected != null)
                 {
                     automaticActor = uncollected.Id; automaticAction = CardDuelAction.CollectPlayed;
@@ -96,7 +96,7 @@ namespace PokerEngine
                 }
                 else if (next.Duel.Phase == ScoredDuelPhase.AwaitingPlayerHand)
                 {
-                    var pending = next.Duel.Players.FirstOrDefault(p => next.Duel.HasPlayerWindow(p.Id) && p.Rules.Flow.ManualDraw &&
+                    var pending = next.Duel.Players.FirstOrDefault(p => next.Duel.HasPlayerWindow(p.Id) && p.Rules.Flow.UsesTurnFlow &&
                         (next.FlowFor(p.Id).Window == BattlePlayerWindow.Ending && (next.FlowFor(p.Id).FinishAfterOverflow || !p.Rules.Flow.EndDefense ||
                             next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 || next.Duel.IsActionBlocked(p.Id)) ||
                         next.FlowFor(p.Id).Window == BattlePlayerWindow.Action && (next.Duel.IsActionBlocked(p.Id) ||
@@ -106,7 +106,7 @@ namespace PokerEngine
                         automaticActor = pending.Id;
                         automaticAction = next.FlowFor(pending.Id).Window == BattlePlayerWindow.Ending ? CardDuelAction.FinishTurn : CardDuelAction.EndTurn;
                     }
-                    else if (next.Duel.NextBlockedPlayer.IsValid && !next.Duel.Player(next.Duel.NextBlockedPlayer).Rules.Flow.ManualDraw)
+                    else if (next.Duel.NextBlockedPlayer.IsValid && !next.Duel.Player(next.Duel.NextBlockedPlayer).Rules.Flow.UsesTurnFlow)
                     { automaticActor = next.Duel.NextBlockedPlayer; automaticAction = CardDuelAction.SkipPlayerTurn; }
                     else break;
                 }
