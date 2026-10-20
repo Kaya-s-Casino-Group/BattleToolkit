@@ -168,6 +168,7 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 - 每个 `Relic` 最多一个 `Item`，主动模式 `activation=None|Effects|ReplaceHeld|Roulette`。Effects 内支持固定 Heal / Damage / GainBlock，可选择 Self / Opponents / Allies 及自动选敌。只设置本模式适用的能力，原有 Numeric / Program 等机制可同时组合。
 - Item 通用字段：`removeOnDepleted`、`cooldownBattles`、`reviveRatio`、`executeChance`、`reflectRatio`、`locationEnterHeal`、`locationLeaveGoldRatio`、`rouletteBase`、`rouletteTurns`、`explosionDamage`。次数在 Relic.charges / 构筑实例配置，唯一性由 maxCopies=1 配置。
 - `BattleSession.UseItem(revision, actor, instanceId, targetInstanceId=null)` 是主动道具入口，冒险通过 `BattleAdventureSession.UseBattleItem` 记录并重放。同一场规则引擎创建时传入 `itemCatalog` 供替换随机池使用，`BattleContentFactory` 自动提供全部已编译道具定义。
+- Unity 等播放前端通过 `BattleSessionPlayback.CanUseItem / PreviewItem / UseItem` 接入。使用运行时遗物实例 ID；播放中拒绝新指令，接受后先提交规则状态，再播放效果，表现异常时同步到已提交状态。预览使用独立会话，不消耗正式随机序列；界面不展示骰子替换结果或转盘爆炸回合。
 - `BattleItemRuntime.CanUse` 提供权威可用性；替换仅可指向其他持有实例，排除原道具、替换型道具以及已持有的唯一道具，各剩余定义等概率，获得全新实例。
 - 替死鬼按获取顺序每次只消费一件；恢复 floor(最大生命×比例)，清空所有状态和护盾。极端配置最大生命为 1 且比例 0.6 时恢复 0，仍判失败。超回合判负不触发复活。
 - 反甲对主攻击实际挡伤反伤，不产生反射递归；13002 只判定出牌造成的实际生命伤害，每段/每目标一次，毒伤、道具和反射不触发。

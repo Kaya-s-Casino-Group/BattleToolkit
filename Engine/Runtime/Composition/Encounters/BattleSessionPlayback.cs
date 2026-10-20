@@ -87,6 +87,31 @@ namespace PokerEngine
             return Session.Engine.PreviewDiscard(state, state.Revision, actor, selected, targets, targetBindings);
         }
 
+        public bool CanUseItem(ParticipantId actor, string instanceId) =>
+            !Presentation.IsPresenting && BattleItemRuntime.CanUse(Session.State, actor, instanceId);
+
+        /// <summary>Evaluates a disposable session. The authority and its random cursor remain unchanged.</summary>
+        public BattleSessionResult PreviewItem(ParticipantId actor, string instanceId, string targetInstanceId = null)
+        {
+            if (Presentation.IsPresenting)
+                return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
+            var preview = new BattleSession(Session.Engine, Session.State);
+            return preview.UseItem(preview.State.Revision, actor, instanceId, targetInstanceId);
+        }
+
+        /// <summary>Active items follow the same input gate and committed-state recovery as card commands.</summary>
+        public BattleSessionResult UseItem(long expectedRevision, ParticipantId actor, string instanceId,
+            string targetInstanceId = null, bool animate = true)
+        {
+            if (Presentation.IsPresenting)
+                return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
+            var result = Session.UseItem(expectedRevision, actor, instanceId, targetInstanceId);
+            if (!result.Accepted) return result;
+            try { Presentation.Present(result, animate); }
+            catch { Presentation.Synchronize(Session.State); throw; }
+            return result;
+        }
+
         public BattleSessionResult Execute(long expectedRevision, ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, bool animate = true,
             BattleTargetBindings targetBindings = null, int drawCount = 0)
