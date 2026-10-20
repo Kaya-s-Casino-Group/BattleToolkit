@@ -33,8 +33,13 @@ internal static partial class PlaytestBridge
             object response;
             try
             {
-                if (line.Length > MaxRequestCharacters) response = Fail("RequestTooLarge", "请求过大，请缩小内容包。");
-                else response = Handle(Json.DeserializeObject(line) as Dictionary<string, object> ?? throw new ArgumentException("需要 JSON 对象。"));
+                if (line.Length > MaxRequestCharacters * 3) response = Fail("RequestTooLarge", "请求过大，请缩小内容包。");
+                else
+                {
+                    var request = Json.DeserializeObject(line) as Dictionary<string, object> ?? throw new ArgumentException("需要 JSON 对象。");
+                    response = request.ContainsKey("adventureRequest") ? AdventureBridge.Handle(request) :
+                        line.Length > MaxRequestCharacters ? Fail("RequestTooLarge", "请求过大，请缩小内容包。") : Handle(request);
+                }
                 Console.WriteLine(Json.Serialize(response));
             }
             catch (Exception error)

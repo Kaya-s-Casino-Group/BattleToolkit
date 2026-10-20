@@ -17,7 +17,7 @@ internal static class CompilerBridge
             if (args.Length == 1 && args[0] == "--metadata")
             {
                 var types = new[] { typeof(KickerScoring), typeof(ScoreOperation), typeof(BattleDiscardKind), typeof(HandCategory), typeof(CombatEffectKind), typeof(EffectAmountKind), typeof(HandEffectVariant),
-                    typeof(StatusTags), typeof(StatusLifetimeKind), typeof(StatusReapplyPolicy), typeof(CombatTimingKind),
+                    typeof(StatusTags), typeof(StatusLifetimeKind), typeof(StatusReapplyPolicy), typeof(CombatTimingKind), typeof(PeriodicTimingSubject),
                     typeof(CombatReactionSourcePolicy), typeof(EffectTargetSelection), typeof(CombatTargetSelection),
                     typeof(BattleNumericStat), typeof(RelicNumericOperation), typeof(CombatEffectOrigin), typeof(RelicHandEffectOperation),
                     typeof(BattleRuleValueKey), typeof(CardDuelDealTrigger), typeof(BattleRefillMode), typeof(RelicTriggerTiming),

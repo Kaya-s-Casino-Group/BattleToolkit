@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AdventureContent schemaVersion="1" id="standard-adventure" name="三章冒险·标准验证" version="adventure.standard.1.1683" startNode="chapter-1-battle-1" startingEncounter="standard-single-battle" defaultTarot="fool" startingGold="30" relicCapacity="5" minimumDeckSize="5" maximumDeckSize="128">
+  <!-- 主案1683与局外UI草案：3章，每章3普通、1精英、1商店、1休息、1Boss。
+       节点奖励、商品价格/涨价、休息收益、章成长、两个解锁塔罗均为可配置验证占位值，尚未定数值。
+       愚者开局最大血量+20%；初次通关解锁两个示例塔罗；每次开局仅选择一个已解锁塔罗。
+       绝杀转金币、推币机、休息博弈不在本实现范围。 -->
+  <Tarots>
+    <Tarot id="fool" name="愚者" description="初始天赋：最大血量提高20%，初始血量同步提高。" initiallyUnlocked="true" maxHealthMultiplier="1.2" />
+    <Tarot id="magician" name="魔术师·验证占位" description="通关后解锁：开局获得顺子额外中毒遗物。效果为可配置验证占位。" unlockOnVictory="true" startingRelic="straight-dot" />
+    <Tarot id="empress" name="皇后·验证占位" description="通关后解锁：开局额外获得40金币。数值为可配置验证占位。" unlockOnVictory="true" startingGoldBonus="40" />
+  </Tarots>
+  <Nodes>
+    <Node id="chapter-1-battle-1" name="第一章·遭遇一" kind="Battle" chapter="1" row="0" column="1" encounter="standard-single-battle" gold="20" next="chapter-1-battle-2" />
+    <Node id="chapter-1-battle-2" name="第一章·遭遇二" kind="Battle" chapter="1" row="1" column="0" encounter="standard-single-battle" gold="20" next="chapter-1-battle-3" />
+    <Node id="chapter-1-battle-3" name="第一章·遭遇三" kind="Battle" chapter="1" row="2" column="2" encounter="standard-single-battle" gold="20" next="chapter-1-elite" />
+    <Node id="chapter-1-elite" name="第一章·精英" kind="Elite" chapter="1" row="3" column="1" encounter="standard-armored-summoner" gold="35" next="chapter-1-shop" />
+    <Node id="chapter-1-shop" name="第一章·商店" kind="Shop" chapter="1" row="4" column="0" next="chapter-1-rest" />
+    <Node id="chapter-1-rest" name="第一章·休息" kind="Rest" chapter="1" row="5" column="2" next="chapter-1-boss" />
+    <Node id="chapter-1-boss" name="第一章·首领" kind="Boss" chapter="1" row="6" column="1" encounter="standard-gluttony-boss" gold="60" next="chapter-2-battle-1" />
+    <Node id="chapter-2-battle-1" name="第二章·遭遇一" kind="Battle" chapter="2" row="0" column="1" encounter="standard-single-battle" enemyHealthMultiplier="1.25" gold="25" next="chapter-2-battle-2" />
+    <Node id="chapter-2-battle-2" name="第二章·遭遇二" kind="Battle" chapter="2" row="1" column="2" encounter="standard-single-battle" enemyHealthMultiplier="1.25" gold="25" next="chapter-2-battle-3" />
+    <Node id="chapter-2-battle-3" name="第二章·遭遇三" kind="Battle" chapter="2" row="2" column="0" encounter="standard-single-battle" enemyHealthMultiplier="1.25" gold="25" next="chapter-2-elite" />
+    <Node id="chapter-2-elite" name="第二章·精英" kind="Elite" chapter="2" row="3" column="1" encounter="standard-armored-summoner" enemyHealthMultiplier="1.25" gold="40" next="chapter-2-shop" />
+    <Node id="chapter-2-shop" name="第二章·商店" kind="Shop" chapter="2" row="4" column="2" next="chapter-2-rest" />
+    <Node id="chapter-2-rest" name="第二章·休息" kind="Rest" chapter="2" row="5" column="0" next="chapter-2-boss" />
+    <Node id="chapter-2-boss" name="第二章·首领" kind="Boss" chapter="2" row="6" column="1" encounter="standard-gluttony-boss" enemyHealthMultiplier="1.25" gold="70" next="chapter-3-battle-1" />
+    <Node id="chapter-3-battle-1" name="第三章·遭遇一" kind="Battle" chapter="3" row="0" column="1" encounter="standard-single-battle" enemyHealthMultiplier="1.5" gold="30" next="chapter-3-battle-2" />
+    <Node id="chapter-3-battle-2" name="第三章·遭遇二" kind="Battle" chapter="3" row="1" column="0" encounter="standard-single-battle" enemyHealthMultiplier="1.5" gold="30" next="chapter-3-battle-3" />
+    <Node id="chapter-3-battle-3" name="第三章·遭遇三" kind="Battle" chapter="3" row="2" column="2" encounter="standard-single-battle" enemyHealthMultiplier="1.5" gold="30" next="chapter-3-elite" />
+    <Node id="chapter-3-elite" name="第三章·精英" kind="Elite" chapter="3" row="3" column="1" encounter="standard-armored-summoner" enemyHealthMultiplier="1.5" gold="45" next="chapter-3-shop" />
+    <Node id="chapter-3-shop" name="第三章·商店" kind="Shop" chapter="3" row="4" column="0" next="chapter-3-rest" />
+    <Node id="chapter-3-rest" name="第三章·休息" kind="Rest" chapter="3" row="5" column="2" next="chapter-3-boss" />
+    <Node id="chapter-3-boss" name="第三章·首领" kind="Boss" chapter="3" row="6" column="1" encounter="standard-gluttony-boss" enemyHealthMultiplier="1.5" gold="80" />
+  </Nodes>
+  <Shop>
+    <Relic id="shop-straight" ref="straight-dot" name="顺子额外中毒" description="额外叠毒效果，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
+    <Relic id="shop-reflect" ref="discard-reflect" name="弃牌盾反" description="弃牌防御获得反伤效果，具体以标准战斗XML遗物配置为准。" price="45" sellPrice="15" />
+    <Relic id="shop-flush" ref="flush-overheal" name="同花溢疗" description="同花治疗与溢疗转伤，具体以标准战斗XML遗物配置为准。" price="50" sellPrice="15" />
+  </Shop>
+  <Services>
+    <Service kind="DeleteCard" price="15" increase="5" />
+    <Service kind="DuplicateCard" price="20" increase="10" />
+    <Service kind="ChangeSuit" price="10" increase="5" />
+  </Services>
+  <Rest>
+    <Choice id="rest-heal" name="休养" description="恢复最大生命的30%，不超过上限；验证占位值。" kind="Heal" healRatio="0.3" />
+    <Choice id="rest-gold" name="搜寻金币" description="获得20金币；验证占位值。" kind="Gold" gold="20" />
+    <Choice id="rest-relic" name="拾取遗物" description="获得弃牌盾反遗物；受遗物容量和重复上限限制。" kind="Relic" relic="discard-reflect" />
+  </Rest>
+</AdventureContent>

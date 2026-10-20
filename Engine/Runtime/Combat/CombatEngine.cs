@@ -105,7 +105,7 @@ namespace PokerEngine
     /// <summary>Shared deterministic authority resolver. No turn, AI, card score, faction targeting or reward policy.</summary>
     public static class CombatEngine
     {
-        public const string RulesVersion = "combat.12";
+        public const string RulesVersion = "combat.13";
         public static CombatTransition Resolve(CombatState state, long expectedRevision, IEnumerable<CombatEffect> effects, IIncomingDamageModifier incomingDamage = null,
             CombatStatusCatalog statusCatalog = null, ICombatReactionProvider reactionProvider = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null)
@@ -167,9 +167,12 @@ namespace PokerEngine
                     if (statusCatalog != null && !suppressPeriodic)
                         for (int index = statuses.Count - 1; index >= 0; index--)
                             if (statuses[index].Target.Kind == EntityKind.Participant &&
-                                signal.Participants.Contains(new ParticipantId(statuses[index].Target.Id)) &&
                                 statusCatalog.Get(statuses[index].DefinitionId).Behaviors.OfType<PeriodicDamageSpec>()
-                                    .Any(behavior => behavior.Timing == signal.Kind))
+                                    .Any(behavior => behavior.Timing == signal.Kind &&
+                                        signal.Participants.Contains(new ParticipantId(behavior.TimingSubject == PeriodicTimingSubject.Applier
+                                            ? statuses[index].Source.Id : statuses[index].Target.Id)) &&
+                                        (behavior.TimingSubject != PeriodicTimingSubject.Applier || signal.Kind == CombatTimingKind.PhaseEnding ||
+                                            units[new ParticipantId(statuses[index].Source.Id)].IsAlive)))
                                 queue.Push(new QueuedEffect(statuses[index].Id));
                 }
                 for (int index = batch.Length - 1; index >= 0; index--)
@@ -222,6 +225,8 @@ namespace PokerEngine
                         if (!units[holder].IsAlive) continue;
                         var definition = statusCatalog.Get(status.DefinitionId);
                         var behavior = definition.Behaviors.OfType<PeriodicDamageSpec>().Single(item => item.Timing == signal.Kind);
+                        if (behavior.TimingSubject == PeriodicTimingSubject.Applier && signal.Kind != CombatTimingKind.PhaseEnding &&
+                            !units[new ParticipantId(status.Source.Id)].IsAlive) continue;
                         var current = new CombatState(state.Id, state.Revision, state.Combatants.Select(unit => units[unit.Id]), statuses);
                         var targets = CombatTargetResolver.Resolve(current, holder, behavior.Target);
                         if (targets.Count == 0) continue;

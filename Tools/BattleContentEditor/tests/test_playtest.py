@@ -109,7 +109,7 @@ class PlaytestTests(unittest.TestCase):
         result.pop('runId', None)
         return result
 
-    def test_standard_flush_independent_damage_and_on_hit_poison_preview(self):
+    def test_standard_straight_flush_uses_highest_score_with_poison_and_separate_healing(self):
         xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
         def edit(root):
             deck = root.find("Decks/Deck[@id='standard-deck']")
@@ -117,23 +117,162 @@ class PlaytestTests(unittest.TestCase):
                 deck.remove(card)
             for rank in range(2, 7):
                 ET.SubElement(deck, 'Card', id='flush-' + str(rank), face='standard:1:' + str(rank))
+            root.find("Encounters/Encounter[@id='standard-single-battle']/Player").set('initialHealth', '400')
         battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
         battle = self.assert_success(self.action(battle, 'SkipDraw'))
         cards = [c['id'] for c in battle['players'][0]['hand']]
         preview = self.action(battle, 'Play', cards, op='preview')['preview']
         self.assertTrue(preview['legal'], preview)
         self.assertIsNone(preview['targetMessage'])
-        self.assertEqual('顺子＋同花治疗', preview['hand']['label'])
-        self.assertEqual('2', str(preview['hand']['multiplier']))
+        self.assertEqual('StraightFlush', preview['hand']['category'])
+        self.assertEqual('同花顺', preview['hand']['label'])
+        self.assertEqual('8', str(preview['hand']['multiplier']))
+        self.assertEqual('160', str(preview['hand']['total']))
+        self.assertTrue({'Straight', 'Flush'}.issubset({
+            mechanism['category'] for mechanism in preview['hand']['mechanisms']}))
         self.assertEqual(battle, self.state(battle))
         played = self.action(battle, 'Play', cards)
         self.assertTrue(played['success'], played)
         lines = '\n'.join(line for step in played['steps'] for line in step['lines'])
         self.assertIn('中毒', lines)
         self.assertIn('层', lines)
-        self.assertIn('持有者行动前', lines)
-        self.assertNotIn('阶段结束时', lines)
+        self.assertIn('中毒者回合开始', lines)
+        self.assertNotIn('所属阵营阶段结束', lines)
         self.assertEqual(5, played['battle']['enemies'][0]['statuses'][0]['stacks'])
+        self.assertEqual('440', played['battle']['enemies'][0]['health'])
+        self.assertEqual('416', played['battle']['players'][0]['health'])
+
+    def test_standard_full_house_uses_highest_score_once_for_area_damage_and_control(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        def edit(root):
+            deck = root.find("Decks/Deck[@id='standard-deck']")
+            for card in list(deck):
+                deck.remove(card)
+            for index, (suit, rank) in enumerate([(1, 7), (2, 7), (3, 7), (1, 9), (2, 9)]):
+                ET.SubElement(deck, 'Card', id='full-house-' + str(index), face='standard:' + str(suit) + ':' + str(rank))
+            encounter = root.find("Encounters/Encounter[@id='standard-single-battle']")
+            ET.SubElement(encounter, 'Enemy', id='enemy-two', ref='rotator')
+        battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
+        battle = self.assert_success(self.action(battle, 'SkipDraw'))
+        cards = [card['id'] for card in battle['players'][0]['hand']]
+        preview = self.action(battle, 'Play', cards, op='preview')['preview']
+        self.assertTrue(preview['legal'], preview)
+        self.assertEqual(('FullHouse', '4', '156'), (
+            preview['hand']['category'], str(preview['hand']['multiplier']), str(preview['hand']['total'])))
+        self.assertTrue({'FullHouse', 'ThreeOfAKind'}.issubset({
+            mechanism['category'] for mechanism in preview['hand']['mechanisms']}))
+        self.assertEqual(battle, self.state(battle))
+        after = self.assert_success(self.action(battle, 'Play', cards))
+        self.assertEqual(['444', '444'], [enemy['health'] for enemy in after['enemies']])
+        self.assertEqual(1, sum(status['definitionId'] == 'stun' for enemy in after['enemies'] for status in enemy['statuses']))
+        self.assertIn('control-immunity', [status['definitionId'] for status in after['players'][0]['statuses']])
+
+    def test_standard_suited_triple_scores_all_flush_cards_and_keeps_area_effect(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        def edit(root):
+            deck = root.find("Decks/Deck[@id='standard-deck']")
+            for card in list(deck):
+                deck.remove(card)
+            for index, rank in enumerate([7, 7, 7, 2, 3]):
+                ET.SubElement(deck, 'Card', id='suited-triple-' + str(index), face='standard:1:' + str(rank))
+            encounter = root.find("Encounters/Encounter[@id='standard-single-battle']")
+            encounter.find('Player').set('initialHealth', '400')
+            ET.SubElement(encounter, 'Enemy', id='enemy-two', ref='rotator')
+        battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
+        battle = self.assert_success(self.action(battle, 'SkipDraw'))
+        cards = [card['id'] for card in battle['players'][0]['hand']]
+        preview = self.action(battle, 'Play', cards, op='preview')['preview']
+        self.assertTrue(preview['legal'], preview)
+        self.assertEqual(('Flush', '26', '4', '104'), (
+            preview['hand']['category'], str(preview['hand']['points']),
+            str(preview['hand']['multiplier']), str(preview['hand']['total'])))
+        self.assertTrue({'Flush', 'ThreeOfAKind'}.issubset({
+            mechanism['category'] for mechanism in preview['hand']['mechanisms']}))
+        self.assertEqual(battle, self.state(battle))
+        after = self.assert_success(self.action(battle, 'Play', cards))
+        self.assertEqual(['496', '496'], [enemy['health'] for enemy in after['enemies']])
+        self.assertEqual('420', after['players'][0]['health'])
+
+    def test_five_card_flush_mechanism_survives_a_higher_scoring_pattern(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        for ranks, category, health in [
+            ([2, 3, 4, 5, 6], 'StraightFlush', '416'),
+            ([7, 7, 7, 9, 9], 'FullHouse', '431'),
+        ]:
+            with self.subTest(category=category):
+                def edit(root):
+                    root.find("Players/Player[@id='hero']").set('minFlushCards', '5')
+                    root.find("Encounters/Encounter[@id='standard-single-battle']/Player").set('initialHealth', '400')
+                    deck = root.find("Decks/Deck[@id='standard-deck']")
+                    for card in list(deck):
+                        deck.remove(card)
+                    for index, rank in enumerate(ranks):
+                        ET.SubElement(deck, 'Card', id='same-suit-' + str(index), face='standard:1:' + str(rank))
+                battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
+                battle = self.assert_success(self.action(battle, 'SkipDraw'))
+                cards = [card['id'] for card in battle['players'][0]['hand']]
+                preview = self.action(battle, 'Play', cards, op='preview')['preview']
+                self.assertTrue(preview['legal'], preview)
+                self.assertEqual(category, preview['hand']['category'])
+                self.assertIn('Flush', [item['category'] for item in preview['hand']['mechanisms']])
+                self.assertEqual(battle, self.state(battle))
+                after = self.assert_success(self.action(battle, 'Play', cards))
+                self.assertEqual(health, after['players'][0]['health'])
+
+    def test_dated_poison_timing_subject_matches_preview_description_and_execution(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle-2026-10-20.xml').read_text(encoding='utf-8')
+        cases = [
+            ('Holder', 'TurnStarted', '中毒者回合开始', '回合开始：敌人 1 · enemy', '800'),
+            ('Holder', 'PhaseEnding', '中毒者所属阵营阶段结束', '敌人阶段结束', '787'),
+            ('Applier', 'TurnStarted', '施加者回合开始', '回合开始：玩家 1 · player', '787'),
+            ('Applier', 'PhaseEnding', '施加者所属阵营阶段结束', '玩家阶段结束', '800'),
+        ]
+        for subject, timing, description, expected_clock, player_health in cases:
+            with self.subTest(subject=subject, timing=timing):
+                def edit(root):
+                    periodic = root.find("Statuses/Status[@id='bleed']/PeriodicDamage")
+                    periodic.set('timingSubject', subject)
+                    periodic.set('timing', timing)
+                    enemy = root.find("Enemies/Enemy[@id='rotator']")
+                    for child in list(enemy):
+                        enemy.remove(child)
+                    enemy.set('maxHealth', '45')
+                    enemy.set('damage', '13')
+                    deck = root.find("Decks/Deck[@id='standard-deck']")
+                    for card in list(deck):
+                        deck.remove(card)
+                    for index, rank in enumerate(range(2, 7)):
+                        ET.SubElement(deck, 'Card', id='poison-clock-' + str(index),
+                                      face='standard:' + str(index % 4 + 1) + ':' + str(rank))
+                battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
+                battle = self.assert_success(self.action(battle, 'SkipDraw'))
+                cards = [card['id'] for card in battle['players'][0]['hand']]
+                preview = self.action(battle, 'Play', cards, op='preview')
+                self.assertTrue(preview['preview']['legal'], preview)
+                self.assertEqual(battle, self.state(battle))
+                played = self.action(battle, 'Play', cards)
+                battle = self.assert_success(played)
+                self.assertEqual(preview['preview']['steps'], played['steps'])
+                self.assertEqual('5', battle['enemies'][0]['health'])
+                poison = next(status for status in battle['enemies'][0]['statuses'] if status['definitionId'] == 'bleed')
+                self.assertEqual(5, poison['stacks'])
+                self.assertIn(description + '：1 伤害/层，随后减 1 层', poison['name'])
+                preview = self.action(battle, 'EndTurn', op='preview')
+                self.assertTrue(preview['preview']['legal'], preview)
+                self.assertEqual(battle, preview['battle'])
+                self.assertEqual(battle, self.state(battle))
+                ended = self.action(battle, 'EndTurn')
+                after = self.assert_success(ended)
+                self.assertEqual(preview['preview']['steps'], ended['steps'])
+                lines = [line for step in ended['steps'] for line in step['lines']]
+                poison_index = next(index for index, line in enumerate(lines) if '持续效果 · 伤害 5' in line)
+                clocks = [line for line in lines[:poison_index]
+                          if line.startswith('回合开始：') or line in ('玩家阶段结束', '敌人阶段结束')]
+                self.assertEqual(expected_clock, clocks[-1])
+                self.assertEqual('0', after['enemies'][0]['health'])
+                self.assertEqual(player_health, after['players'][0]['health'])
+                self.assertTrue(after['finished'])
+                self.assertEqual('胜利', after['outcome'])
 
     def test_enemy_behavior_templates_expose_world_effect_intents(self):
         for file, word in [('07_RotationGrunt', '试探'), ('08_ArmoredSummoner', '召唤'), ('09_GluttonyBoss', '吞食')]:

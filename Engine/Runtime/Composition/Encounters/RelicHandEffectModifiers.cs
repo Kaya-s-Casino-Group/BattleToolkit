@@ -156,10 +156,16 @@ namespace PokerEngine
             var output = new List<BattleEffectStep>(); var changes = new List<HandEffectChange>();
             foreach (var step in context.Sequence.Steps)
             {
-                var edits = entries.Where(entry => entry.Spec.StepId != null && entry.Spec.StepId == step.Id).ToArray();
+                var edits = entries.Where(entry => entry.Spec.StepId != null && step.MatchesSource(entry.Spec.HandCategory, entry.Spec.StepId)).ToArray();
+                foreach (var kind in new[] { RelicHandEffectOperation.ReplaceEffect, RelicHandEffectOperation.ChangeTarget })
+                {
+                    var conflicts = edits.Where(e => e.Spec.Operation == kind).ToArray();
+                    if (conflicts.Length > 1 && conflicts.Skip(1).Any(e => !conflicts[0].Spec.PayloadBytes().SequenceEqual(e.Spec.PayloadBytes())))
+                        throw new ArgumentException("Conflicting relic edits on a merged compatible hand step.");
+                }
                 var effect = edits.FirstOrDefault(entry => entry.Spec.Operation == RelicHandEffectOperation.ReplaceEffect)?.Spec.Effect ?? step.Effect;
                 var target = edits.FirstOrDefault(entry => entry.Spec.Operation == RelicHandEffectOperation.ChangeTarget)?.Spec.Target ?? step.Target;
-                output.Add(edits.Length == 0 ? step : new BattleEffectStep(step.Id, effect, target));
+                output.Add(edits.Length == 0 ? step : new BattleEffectStep(step.Id, effect, target, step.SourceAliases));
                 foreach (var entry in edits)
                 {
                     var ids = new List<string>();

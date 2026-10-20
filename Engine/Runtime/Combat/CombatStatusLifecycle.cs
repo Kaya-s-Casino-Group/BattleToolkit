@@ -84,9 +84,13 @@ namespace PokerEngine
                     throw new ArgumentException("Periodic damage requires a participant applier.");
             }
             if (state.Statuses.Where(status => catalog.Get(status.DefinitionId).ReapplyPolicy != StatusReapplyPolicy.IndependentInstances)
-                .GroupBy(status => new { status.DefinitionId, status.Target.Kind, status.Target.Id }).Any(group => group.Count() > 1))
-                throw new ArgumentException("KeepLonger status definitions require one instance per target.");
+                .GroupBy(status => new { status.DefinitionId, status.Target.Kind, status.Target.Id,
+                    Applier = UsesApplierClock(catalog.Get(status.DefinitionId)) ? status.Source.Id : null }).Any(group => group.Count() > 1))
+                throw new ArgumentException("Merged status definitions require one instance per target and configured timing subject.");
         }
+
+        private static bool UsesApplierClock(CombatStatusDefinition definition) =>
+            definition.Behaviors.OfType<PeriodicDamageSpec>().Any(behavior => behavior.TimingSubject == PeriodicTimingSubject.Applier);
 
         // Control is cleansable even for existing definitions authored before the Negative tag.
         internal static void Cleanse(List<StatusInstance> statuses, CombatEffect effect, CombatStatusCatalog catalog,
@@ -123,7 +127,8 @@ namespace PokerEngine
                 }
             }
             var existing = definition != null && definition.ReapplyPolicy != StatusReapplyPolicy.IndependentInstances
-                ? statuses.FirstOrDefault(status => status.DefinitionId == incoming.DefinitionId && Targets(status, effect.Target)) : null;
+                ? statuses.FirstOrDefault(status => status.DefinitionId == incoming.DefinitionId && Targets(status, effect.Target) &&
+                    (!UsesApplierClock(definition) || status.Source.Kind == incoming.Source.Kind && status.Source.Id == incoming.Source.Id)) : null;
             if (statuses.Any(status => status.Id == incoming.Id && !ReferenceEquals(status, existing)))
                 throw new ArgumentException("Status instance ID is already present.");
             if (existing != null)

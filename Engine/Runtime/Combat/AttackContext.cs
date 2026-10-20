@@ -35,11 +35,13 @@ namespace PokerEngine
         public bool IsFlush { get; }
         public long? FlushBaseTotal { get; }
         public bool UsesFlushOverlay { get; }
-        public bool MatchesCategory(HandCategory category) => Pattern.Category == category || UsesFlushOverlay && IsFlush && (category == HandCategory.Flush || RankPattern.Category == category);
+        public bool UsesCompatibleEffects { get; }
+        public IReadOnlyList<HandCategory> CompatibleCategories { get; }
+        public bool MatchesCategory(HandCategory category) => CompatibleCategories.Contains(category);
         public IReadOnlyList<AttackCardSnapshot> SubmittedCards { get; }
         public IReadOnlyList<AttackCardSnapshot> PatternCards { get; }
         public IReadOnlyList<AttackCardSnapshot> ScoringCards { get; }
-        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false)
+        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false)
         {
             Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
             var cards = Guard.Copy(submitted, nameof(submitted));
@@ -50,10 +52,19 @@ namespace PokerEngine
                 pattern.ScoringCards.Any(id => !cards.Any(card => card.Id == id)))
                 throw new ArgumentException("Card snapshots must preserve the authoritative classification membership and order.");
             if (flushBaseTotal < 0) throw new ArgumentOutOfRangeException(nameof(flushBaseTotal));
-            FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay;
+            if (usesFlushOverlay && usesCompatibleEffects) throw new ArgumentException("Choose one hand composition mode.");
+            FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay; UsesCompatibleEffects = usesCompatibleEffects;
             SubmittedCards = Guard.View(cards);
-            IsFlush = cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
-            RankPattern = PokerHandClassifier.ClassifyBest(cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)), minFlushCards, minStraightCards, true);
+            var faces = cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)).ToArray();
+            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards) : null;
+            IsFlush = usesCompatibleEffects ? compatible.Categories.Contains(HandCategory.Flush) :
+                cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
+            RankPattern = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, true).Highest :
+                PokerHandClassifier.ClassifyBest(faces, minFlushCards, minStraightCards, true);
+            CompatibleCategories = compatible?.Categories ?? Array.AsReadOnly(new[] { Pattern.Category }.Concat(
+                UsesFlushOverlay && IsFlush ? new[] { HandCategory.Flush, RankPattern.Category } : Array.Empty<HandCategory>()).Distinct().OrderByDescending(c => c).ToArray());
+            if (compatible != null && (compatible.Highest.Category != pattern.Category || !compatible.Highest.ScoringCards.SequenceEqual(pattern.ScoringCards)))
+                throw new ArgumentException("Compatible mechanisms require the authoritative highest scoring pattern.");
             PatternCards = Guard.View(pattern.ScoringCards.Select(id => cards.Single(card => card.Id == id)).ToArray());
             ScoringCards = Guard.View(PatternCards.Where(card => card.CanScore).ToArray());
         }

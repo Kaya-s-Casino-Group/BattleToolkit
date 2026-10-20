@@ -11,8 +11,12 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
   const browser = await chromium.launch({headless:true, channel:process.env.PLAYWRIGHT_CHANNEL || 'chrome'});
   const contexts = [];
   const failures = [];
+  const filter=process.env.TEST_FILTER?new RegExp(process.env.TEST_FILTER):null;
+  let selectedTests=0;
   let passes = 0;
   const test = async (name, action) => {
+    if(filter&&!filter.test(name))return;
+    selectedTests++;
     try { await action(); passes++; console.log('PASS ' + name); }
     catch (error) { failures.push({name,error}); console.error('FAIL ' + name + '\n' + error.stack); }
   };
@@ -324,6 +328,34 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       assert.equal(await page.locator('#playtest-play').isDisabled(),true);
       assert.equal(await page.locator('#playtest-discard').isDisabled(),false);
     });
+    await test('计伤牌型和兼容机制分别展示，同花顺、同花三条与葫芦使用最高牌型',async()=>{
+      const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
+      const cases=[
+        {faces:['1:2','1:3','1:4','1:5','1:6'],category:'StraightFlush',label:'同花顺',multiplier:'8',mechanisms:['Straight','Flush']},
+        {faces:['1:2','1:2','1:2','1:4','1:6'],category:'Flush',label:'同花',multiplier:'4',mechanisms:['ThreeOfAKind','Flush']},
+        {faces:['1:2','2:2','3:2','1:3','2:3'],category:'FullHouse',label:'葫芦',multiplier:'4',mechanisms:['FullHouse','ThreeOfAKind']}
+      ];
+      for(const fixture of cases){
+        const deck='<Deck id="standard-deck">'+fixture.faces.map((face,index)=>'<Card id="compatible-'+index+'" face="standard:'+face+'"/>').join('')+'</Deck>';
+        await load(page,standard.replace(/<Deck id="standard-deck"[\s\S]*?<\/Deck>/,deck));await start(page,ids[0]);
+        if(await page.locator('#playtest-skip-draw').isVisible())await clickRequest(page,'#playtest-skip-draw','command','SkipDraw');
+        const ready=page.waitForResponse(response=>{
+          if(!response.url().endsWith('/api/playtest'))return false;
+          const request=response.request().postDataJSON();return request.op==='preview'&&request.action==='Play'&&request.selected.length===5;
+        });
+        for(let index=0;index<5;index++)await page.locator('#playtest-hand [data-card-id]').nth(index).click();
+        const result=await(await ready).json();assert.equal(result.success,true);assert.equal(result.preview.legal,true);
+        const hand=result.preview.hand;assert.equal(hand.category,fixture.category);assert.equal(hand.scoringCategory,fixture.category);
+        assert.equal(hand.label,fixture.label);assert.equal(hand.multiplier,fixture.multiplier);
+        const mechanisms=hand.mechanisms.map(item=>item.category);for(const category of fixture.mechanisms)assert.ok(mechanisms.includes(category),JSON.stringify(hand));
+        await page.waitForFunction(category=>document.querySelector('.playtest-hand-score')?.dataset.scoringCategory===category,fixture.category);
+        assert.match(await page.locator('.playtest-hand-score').innerText(),new RegExp('计伤牌型：'+fixture.label));
+        assert.match(await page.locator('.playtest-hand-mechanisms').innerText(),/^兼容牌型：/);
+        assert.deepEqual((await page.locator('.playtest-hand-mechanisms').getAttribute('data-mechanism-categories')).split(','),mechanisms);
+        assert.equal(await page.locator('.playtest-preview-line').filter({hasText:'兼容牌型：'}).count(),0,'预览不重复输出机制摘要');
+        if(process.env.COMPATIBLE_SCREENSHOT)await page.screenshot({path:process.env.COMPATIBLE_SCREENSHOT.replace(/\.png$/,'-'+fixture.category+'.png'),fullPage:true,animations:'disabled'});
+      }
+    });
     await test('XML 中恶意角色与状态名称按文本显示，不创建 HTML 节点或执行脚本',async()=>{
       const payload='<img id="h5-xss" src=x onerror="window.__h5Xss=1">';
       const encoded=payload.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -352,6 +384,7 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
     }
     await browser.close();
   }
+  if(!selectedTests)throw new Error('没有匹配 TEST_FILTER 的测试。');
   console.log(`H5 scene: ${passes} passed, ${failures.length} failed`);
   if(failures.length)process.exitCode=1;
 })().catch(error=>{console.error(error.stack);process.exitCode=1;});

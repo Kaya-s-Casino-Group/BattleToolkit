@@ -5,6 +5,7 @@ using System.Linq;
 namespace PokerEngine
 {
     public enum CombatTimingKind { ActionCompleted = 1, PhaseEnding = 2, BattleStarted = 3, PhaseStarted = 4, TurnStarted = 5, BeforeDraw, Draw, Reshuffle, PlayPhaseEnd, BattleEnded }
+    public enum PeriodicTimingSubject { Holder = 1, Applier = 2 }
 
     /// <summary>Mode-neutral clock declaration. Composition owns which actions and phase rosters qualify.</summary>
     public sealed class CombatTimingSignal
@@ -52,14 +53,17 @@ namespace PokerEngine
         public long DamagePerStack { get; }
         public int StackDecay { get; }
         public CombatTargetSpec Target { get; }
-        public PeriodicDamageSpec(CombatTimingKind timing, long damagePerStack, CombatTargetSpec target = null, int stackDecay = 0)
+        public PeriodicTimingSubject TimingSubject { get; }
+        public PeriodicDamageSpec(CombatTimingKind timing, long damagePerStack, CombatTargetSpec target = null, int stackDecay = 0,
+            PeriodicTimingSubject timingSubject = PeriodicTimingSubject.Holder)
         {
-            if ((timing != CombatTimingKind.ActionCompleted && timing != CombatTimingKind.PhaseEnding && timing != CombatTimingKind.TurnStarted) || damagePerStack < 0 || stackDecay < 0)
+            if ((timing != CombatTimingKind.ActionCompleted && timing != CombatTimingKind.PhaseEnding && timing != CombatTimingKind.TurnStarted) ||
+                damagePerStack < 0 || stackDecay < 0 || !Enum.IsDefined(typeof(PeriodicTimingSubject), timingSubject))
                 throw new ArgumentException("Periodic damage requires a supported clock and nonnegative strength.");
             Target = target ?? CombatTargetSpec.Self();
             if (Target.Group == CombatTargetGroup.EventSource || Target.Group == CombatTargetGroup.EventTarget || Target.Group == CombatTargetGroup.EventActor)
                 throw new ArgumentException("A clock has no settled effect endpoints; select relative to the status holder.");
-            Timing = timing; DamagePerStack = damagePerStack; StackDecay = stackDecay;
+            Timing = timing; DamagePerStack = damagePerStack; StackDecay = stackDecay; TimingSubject = timingSubject;
         }
     }
 

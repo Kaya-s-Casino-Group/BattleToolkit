@@ -37,7 +37,9 @@ internal static class NativeServer
         ["/"] = ("index.html", "text/html"), ["/app.js"] = ("app.js", "text/javascript"),
         ["/schema.js"] = ("schema.js", "text/javascript"), ["/model.js"] = ("model.js", "text/javascript"),
         ["/playtest.js"] = ("playtest.js", "text/javascript"), ["/playtest.css"] = ("playtest.css", "text/css"),
-        ["/style.css"] = ("style.css", "text/css")
+        ["/style.css"] = ("style.css", "text/css"),
+        ["/adventure"] = ("adventure.html", "text/html"), ["/adventure.html"] = ("adventure.html", "text/html"),
+        ["/adventure.js"] = ("adventure.js", "text/javascript"), ["/adventure.css"] = ("adventure.css", "text/css")
     };
 
     public static async Task<int> Main(string[] args)
@@ -211,9 +213,10 @@ internal static class NativeServer
             if ((requestOrigin.Length > 0 && requestOrigin != origin) ||
                 !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(requestToken), Encoding.UTF8.GetBytes(token)))
             { await Reply(context, 403, new { error = "请求来源无效，请刷新编辑器页面。" }); return; }
-            if (path != "/api/validate" && path != "/api/playtest")
+            if (path != "/api/validate" && path != "/api/playtest" && path != "/api/adventure")
             { await Reply(context, 404, new { error = "未知接口。" }); return; }
-            bool playtest = path == "/api/playtest";
+            bool adventure = path == "/api/adventure";
+            bool playtest = path == "/api/playtest" || adventure;
             int limit = playtest ? MaxPlaytestBody : MaxBody;
             string mime = playtest ? "application/json" : "application/xml";
             if (!context.Request.ContentLength.HasValue || context.Request.ContentLength <= 0 || context.Request.ContentLength > limit)
@@ -238,6 +241,15 @@ internal static class NativeServer
                 { await Reply(context, 400, new { error = "试玩请求必须是 JSON 对象。" }); return; }
                 // Normalize line breaks before using the existing line-delimited worker protocol.
                 body = JsonSerializer.Serialize(json.RootElement, WorkerJson);
+                if (adventure)
+                {
+                    // Only the fixed repository defaults are read. Client XML is data, never a file path.
+                    body = JsonSerializer.Serialize(new {
+                        adventureRequest = json.RootElement,
+                        defaultBattleXml = await File.ReadAllTextAsync(Path.Combine(root, "Engine", "Content", "StandardSingleBattle.xml"), timeout.Token),
+                        defaultConfigXml = await File.ReadAllTextAsync(Path.Combine(root, "Engine", "Content", "StandardAdventure.xml"), timeout.Token)
+                    }, WorkerJson);
+                }
             }
             string result = playtest ? await compiler.Playtest(body) : await compiler.Compile(body);
             context.Response.ContentType = "application/json; charset=utf-8";

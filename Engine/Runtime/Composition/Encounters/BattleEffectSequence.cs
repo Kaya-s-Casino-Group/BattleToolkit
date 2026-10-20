@@ -56,16 +56,34 @@ namespace PokerEngine
         public static BattleEffectSpec Eliminate() => new BattleEffectSpec(CombatEffectKind.Eliminate);
     }
 
+    public sealed class HandEffectSourceAlias
+    {
+        public HandCategory Category { get; }
+        public string StepId { get; }
+        public HandEffectSourceAlias(HandCategory category, string stepId)
+        {
+            if (!Enum.IsDefined(typeof(HandCategory), category)) throw new ArgumentException("Invalid hand source category.");
+            Category = category; StepId = Guard.Text(stepId, nameof(stepId));
+        }
+    }
     public sealed class BattleEffectStep
     {
         /// <summary>Stable semantic identity within the base sequence. Null only for legacy unnamed steps.</summary>
         public string Id { get; }
         public BattleEffectSpec Effect { get; }
         public EffectTargetSpec Target { get; }
+        public IReadOnlyList<HandEffectSourceAlias> SourceAliases { get; }
         public BattleEffectStep(BattleEffectSpec effect, EffectTargetSpec target)
-        { Effect = effect ?? throw new ArgumentNullException(nameof(effect)); Target = target ?? throw new ArgumentNullException(nameof(target)); }
-        public BattleEffectStep(string id, BattleEffectSpec effect, EffectTargetSpec target) : this(effect, target)
-        { Id = Guard.Text(id, nameof(id)); }
+        { Effect = effect ?? throw new ArgumentNullException(nameof(effect)); Target = target ?? throw new ArgumentNullException(nameof(target)); SourceAliases = Array.Empty<HandEffectSourceAlias>(); }
+        public BattleEffectStep(string id, BattleEffectSpec effect, EffectTargetSpec target, IEnumerable<HandEffectSourceAlias> sourceAliases = null) : this(effect, target)
+        {
+            Id = Guard.Text(id, nameof(id));
+            SourceAliases = Guard.View(Guard.Copy(sourceAliases ?? Array.Empty<HandEffectSourceAlias>(), nameof(sourceAliases)));
+            if (SourceAliases.Any(s => s == null) || SourceAliases.Select(s => Tuple.Create(s.Category, s.StepId)).Distinct().Count() != SourceAliases.Count)
+                throw new ArgumentException("Invalid or duplicate hand source aliases.");
+        }
+        public bool MatchesSource(HandCategory category, string stepId) => SourceAliases.Count == 0 ? Id == stepId :
+            SourceAliases.Any(s => s.Category == category && s.StepId == stepId);
     }
 
     /// <summary>Ordered declarations before targeting. All steps bind against the same action-start snapshot.</summary>

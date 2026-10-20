@@ -1,0 +1,172 @@
+.adventure-page{--background:#101c1e;--ink:#eadfc6;--muted:#95aaa4;--line:#345052;--accent:#d0ac6c;background:radial-gradient(ellipse at 70% 25%,#203a3b 0,transparent 52%),#101c1e;min-height:100vh}
+.adventure-page a{color:var(--ink);text-decoration:none}
+.adventure-page button{border-radius:5px;background:#203133;border-color:#45605d}
+.adventure-page button:hover{background:#2d4542;border-color:#d0ac6c}
+.adventure-page button.primary{background:#d0ac6c;color:#23312c;border-color:#e2c086;font-weight:700}
+.adventure-page button:disabled{opacity:.38;cursor:not-allowed}
+.adventure-page input,.adventure-page select,.adventure-page textarea{background:#142629;border-color:#45605d;border-radius:4px}
+.adventure-page [hidden]{display:none!important}
+.adventure-topbar{min-height:80px;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid #3c514d;padding:15px 4%;background:#122124e8}
+.adventure-brand{display:flex;align-items:center;gap:13px;flex-shrink:0}
+.adventure-brand>span{font-size:33px;color:#d5b577;line-height:1}
+.adventure-brand strong{font-family:Georgia,"Songti SC",serif;font-size:23px;letter-spacing:6px}
+.adventure-brand small{display:block;font-size:10px;letter-spacing:2px}
+.adventure-nav,.adventure-resources{display:flex;align-items:center;gap:11px}
+.adventure-nav{font-size:12px;flex-wrap:wrap;justify-content:flex-end}
+.adventure-nav>a{color:#a3b7ae;margin-left:10px}
+.adventure-resources{font-size:13px;gap:25px}
+.resource-heart{color:#e9aaa0}.resource-gold{color:#e0c07d}
+#adventure-view{padding:38px 4% 50px;max-width:1700px;margin:auto;min-height:calc(100vh - 136px);outline:none}
+.adventure-footer{display:flex;justify-content:space-between;gap:20px;padding:12px 4%;border-top:1px solid #314747;color:#819995;font-size:11px}
+.adventure-notice{padding:12px 4%;background:#293c33;border-bottom:1px solid #638675;color:#d4e4d3;font-size:13px}
+.adventure-notice.error{background:#3c2927;border-color:#a06b5b;color:#ebc3b6}
+.adventure-eyebrow{text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#a3b8a9;margin-bottom:12px}
+.adventure-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:27px}
+.adventure-heading h1{font-family:Georgia,"Songti SC",serif;font-size:31px;font-weight:500;letter-spacing:3px}
+.adventure-heading p{font-size:13px;color:#a9b9ad;margin:7px 0 0}
+.adventure-heading .actions,.adventure-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.adventure-home{position:relative;display:grid;grid-template-columns:1fr 1.05fr;gap:40px;align-items:center;max-width:1160px;min-height:560px;margin:0 auto}
+.home-copy{position:relative;z-index:1;padding:35px 0}
+.home-copy h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(45px,5vw,72px);line-height:1.35;letter-spacing:6px;font-weight:500;margin:0 0 24px}
+.home-copy h1 span{color:#d5b577}
+.home-copy>p{color:#a8bbb1;font-size:14px;max-width:390px;line-height:1.9}
+.home-buttons{display:flex;flex-direction:column;gap:12px;width:280px;margin-top:32px}
+.home-buttons button{padding:13px 18px;text-align:left;font-size:15px;display:flex;align-items:center;justify-content:space-between}
+.home-save-summary{font-size:12px;color:#a3b8a9;margin:12px 0;max-width:360px}
+.home-stage{position:relative;display:flex;align-items:center;justify-content:center;height:510px}
+.home-stage:before{content:"";position:absolute;width:360px;height:440px;border:1px solid #5b6551;border-radius:49% 49% 3px 3px;transform:rotate(8deg);background:radial-gradient(ellipse at 50% 40%,#3b5350 0,#243d3b88 42%,transparent 72%)}
+.home-stage:after{content:"";position:absolute;bottom:15px;width:90%;height:36px;background:#080e0fb0;filter:blur(12px);border-radius:50%}
+.home-stage img{width:350px;height:450px;object-fit:contain;position:relative;z-index:1;filter:drop-shadow(0 20px 17px #090f1266);animation:adventure-breathe 6s ease-in-out infinite}
+.home-stage .stage-mark{position:absolute;top:11px;left:20%;font-size:11px;letter-spacing:3px;color:#8daba1;z-index:2}
+.home-stage .stage-suit{position:absolute;right:9%;top:38px;font-size:75px;color:#c7a36944;transform:rotate(15deg)}
+.adventure-config{border-top:1px solid #344c49;padding-top:17px;margin:20px auto 0;max-width:1160px;color:#a3b7ac;font-size:12px}
+.adventure-config summary{cursor:pointer;color:#cabc9e;list-style:none}
+.adventure-config summary:before{content:"＋ ";color:#c6a56a}
+.adventure-config[open] summary:before{content:"− "}
+.adventure-config textarea{min-height:240px;margin:13px 0;font:12px/1.6 ui-monospace,monospace;resize:vertical}
+.adventure-config .adventure-actions{margin:12px 0}
+.adventure-config p{margin:12px 0}
+.setup-progress{display:flex;gap:25px;font-size:12px;color:#78928a;margin:10px 0 30px}
+.setup-progress .active{color:#e1bf7e}
+.character-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,310px));gap:24px}
+.character-card{position:relative;min-height:350px;text-align:left!important;border:1px solid #526c60;padding:22px 22px 20px!important;overflow:hidden;background:linear-gradient(155deg,#34514c,#17292c)!important}
+.character-card[aria-pressed=true]{border-color:#d8b77c;box-shadow:0 0 0 2px #d8b77c25}
+.character-card img{display:block;height:235px;width:100%;object-fit:contain;transition:transform .2s}
+.character-card:hover img{transform:translateY(-4px)}
+.character-card strong{display:block;font-size:20px;font-family:"Songti SC",serif;letter-spacing:2px;margin:7px 0}
+.character-card small{display:block;font-size:12px;line-height:1.8}
+.selected-check{position:absolute;top:13px;right:14px;border-radius:50%;background:#d4b174;color:#29352d;width:23px;text-align:center}
+.setup-controls{display:flex;justify-content:space-between;align-items:center;gap:20px;border-top:1px solid #39514c;margin-top:30px;padding-top:22px}
+.setup-seed{display:flex;gap:12px;align-items:center;font-size:12px;color:#9caf9f}
+.setup-seed input{width:160px}
+.tarot-layout{display:grid;grid-template-columns:minmax(300px,1.3fr) minmax(250px,.7fr);gap:35px;min-height:400px}
+.tarot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:17px;align-content:start}
+.tarot-card{min-height:206px;border:1px solid #6c7359!important;background:linear-gradient(145deg,#2c4945,#1a3033)!important;padding:16px 10px!important;text-align:center;position:relative}
+.tarot-card[aria-pressed=true]{outline:2px solid #c5a76f;outline-offset:3px}
+.tarot-card .tarot-glyph{font-family:Georgia,serif;font-size:62px;color:#d4b77e;line-height:1.3;display:block;margin:18px 0}
+.tarot-card strong{display:block;font-family:"Songti SC",serif;font-size:16px;letter-spacing:2px}
+.tarot-card small{font-size:10px;display:block;margin-top:6px;color:#c2b387}
+.tarot-card.locked{filter:saturate(.35);opacity:.65}
+.tarot-detail{border-left:1px solid #40574e;padding:28px 35px}
+.tarot-detail .tarot-glyph{font-size:80px;color:#d8ba7b;font-family:Georgia,serif}
+.tarot-detail h2{font-family:"Songti SC",serif;font-size:27px;font-weight:400;letter-spacing:3px;margin:10px 0 17px}
+.tarot-detail p{color:#b7c5b6;font-size:14px;line-height:1.9}
+.tarot-detail .unlock-note{padding:12px 15px;background:#142629;border-left:2px solid #8d956c;color:#9dae9c;font-size:12px}
+.adventure-map-layout{display:grid;grid-template-columns:165px minmax(400px,1fr) 230px;gap:24px}
+.map-legend{padding:20px 0;border-top:1px solid #465c50}
+.map-legend h2,.journey-side h2{font-size:12px;letter-spacing:2px;color:#bfba9b;font-weight:400}
+.legend-item{display:flex;align-items:center;gap:13px;font-size:12px;color:#a1b4a8;margin:17px 0}
+.legend-item>span{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;color:#dfbd7c;border:1px solid #718271;transform:rotate(45deg)}
+.legend-item b{font-size:13px;transform:rotate(-45deg);font-weight:400}
+.map-status-key{font-size:10px;line-height:2;color:#879e91;border-top:1px solid #3e524a;padding-top:15px;margin-top:25px}
+.route-map{position:relative;min-height:550px;background:radial-gradient(ellipse at 50% 30%,#29474377,transparent 60%);border:1px solid #354d46;border-radius:8px;overflow:auto}
+.route-map:before{content:"";pointer-events:none;position:absolute;inset:15px;border:1px solid #52645230;border-radius:4px}
+.route-canvas{position:relative;min-width:370px;margin:30px auto;width:100%}
+.route-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.route-lines line{stroke:#50695d;stroke-width:1.7;stroke-dasharray:5 5}
+.route-lines line.reached{stroke:#c4b17b;stroke-dasharray:none;stroke-width:2}
+.map-node{position:absolute;width:100px;padding:0!important;border:0!important;background:transparent!important;transform:translate(-50%,-50%);text-align:center}
+.map-node:disabled{opacity:.5}
+.map-node-symbol{width:45px;height:45px;margin:8px auto 13px;display:flex;align-items:center;justify-content:center;background:#203834;border:1px solid #63715c;transform:rotate(45deg);transition:box-shadow .2s,background .2s}
+.map-node-symbol b{font-size:23px;font-weight:400;transform:rotate(-45deg);color:#a5b393}
+.map-node-label{display:block;color:#a4b39c;font-size:11px;white-space:normal}
+.map-node.available .map-node-symbol{border-color:#d3ba7e;background:#2c463d;box-shadow:0 0 0 5px #c3a96d0a}
+.map-node.available .map-node-symbol b,.map-node.available .map-node-label{color:#ecd39a}
+.map-node.available:hover .map-node-symbol,.map-node[aria-pressed=true] .map-node-symbol{background:#506048;box-shadow:0 0 0 5px #d8bc7d22}
+.map-node.current .map-node-symbol{border-color:#9ac4af;box-shadow:0 0 0 4px #7eb39925}
+.map-node.completed .map-node-symbol{background:#4c5c45;border-color:#9ca57b}
+.map-node.completed .map-node-symbol b{color:#d2cf9a}
+.map-node-marker{position:absolute;top:-10px;left:0;width:100%;font-size:10px;color:#a3d2b7}
+.journey-side{border:1px solid #3e574c;border-radius:6px;background:#16292a;padding:20px;height:fit-content}
+.journey-side>p{font-size:12px;color:#a5b5a3}
+.journey-side h3{font-family:"Songti SC",serif;font-size:20px;font-weight:400;margin:15px 0 10px;color:#dec58c}
+.journey-side button{width:100%;margin-top:8px}
+.journey-side .relic-list{padding-top:20px;margin-top:22px;border-top:1px solid #3e554a}
+.relic-chip{display:block;font-size:11px;padding:7px 0;border-bottom:1px solid #30473f;color:#a9bba4}
+.relic-chip>span{color:#d4b674;margin-right:8px}
+.journey-side .muted{font-size:11px}
+.adventure-shop{display:grid;grid-template-columns:240px 1fr;gap:32px}
+.shop-keeper{min-height:450px;position:relative;text-align:center;background:radial-gradient(ellipse at 50% 55%,#42504044,transparent 65%)}
+.shop-keeper img{width:225px;height:340px;object-fit:contain;filter:drop-shadow(0 12px 15px #0b1719aa)}
+.shop-keeper p{font-family:"Songti SC",serif;color:#c1c1a0;font-size:14px;line-height:2}
+.shop-stock{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:27px}
+.stock-card{background:#1a3030;border:1px solid #4b5c4c;border-radius:6px;padding:20px;display:flex;flex-direction:column}
+.stock-glyph{font-size:30px;color:#d9b776;margin-bottom:15px}
+.stock-card h3{font-family:"Songti SC",serif;font-size:18px;font-weight:400;margin-bottom:9px}
+.stock-card p{font-size:12px;color:#a7b7a7;line-height:1.9;flex:1}
+.stock-card .stock-price{color:#e0c488;font-size:12px;margin:12px 0}
+.stock-card button{width:100%;font-size:12px}
+.shop-section-heading{font-size:13px;letter-spacing:2px;margin:0 0 13px;color:#c8ba95;font-weight:400}
+.rest-scene{position:relative;min-height:490px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 57%,#91673533 0,transparent 48%)}
+.camp-fire{font-size:140px;color:#ebaa5d;line-height:1;text-shadow:0 0 60px #d1894088;filter:drop-shadow(0 20px 24px #ea9c3a44);margin:40px 0 24px;animation:fire-glow 3s ease-in-out infinite}
+.camp-fire svg{height:160px;width:140px}
+.rest-options{display:flex;gap:22px;align-items:stretch;justify-content:center;width:100%;max-width:900px}
+.rest-option{width:240px;position:relative;text-align:left;padding:20px!important;border-color:#807454!important;background:#24382de8!important;line-height:1.8}
+.rest-option strong{display:block;font-family:"Songti SC",serif;font-size:19px;font-weight:400;color:#ead39a;margin:4px 0 7px}
+.rest-option small{font-size:12px;color:#b7c3a5;display:block}
+.rest-option .stock-glyph{font-size:25px}
+.rest-option.chosen:disabled{opacity:1;border-color:#c4ae70!important;background:#354738!important}
+.rest-selected{display:block;margin-top:12px;color:#dcca8c;font-size:12px}
+.rest-continue{margin-top:28px;min-width:180px;padding:10px 20px!important}
+.rest-message{max-width:560px;text-align:center;color:#c3c5a9;font-size:13px;margin:16px 0}
+.adventure-result{max-width:700px;margin:70px auto;text-align:center}
+.adventure-result .result-glyph{font-size:70px;color:#d3b16b;line-height:1}
+.adventure-result h1{font:42px/1.5 "Songti SC",Georgia,serif;letter-spacing:5px;margin:25px 0 15px}
+.adventure-result>p{color:#b5c3ac;font-size:14px}
+.result-resources{display:flex;justify-content:center;gap:42px;margin:35px 0}
+.result-resources>div{border-top:1px solid #5a6b50;padding-top:17px;min-width:110px}
+.result-resources strong{font:25px Georgia,serif;display:block;color:#d0bb84}
+.result-resources small{font-size:11px}
+.adventure-result .adventure-actions{justify-content:center;margin-top:30px}
+.adventure-loading{padding:120px 20px;text-align:center;color:#b0bba4;font-family:"Songti SC",serif;font-size:24px}
+#adventure-dialog{background:#14282b;border:1px solid #6f7960;border-radius:8px;width:min(900px,94vw);max-height:86vh;padding:24px 28px;color:#ded6bb}
+#adventure-dialog::backdrop{background:#050d10bb;backdrop-filter:blur(3px)}
+.adventure-dialog-heading{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #41574a;padding-bottom:13px;margin-bottom:22px;gap:20px}
+.adventure-dialog-heading h2{font-family:"Songti SC",serif;font-size:23px;font-weight:400;margin:0;letter-spacing:2px}
+.adventure-dialog-heading button{font-size:22px;padding:0 10px}
+.deck-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:19px;font-size:12px}
+.deck-tools select{width:auto}
+.adventure-deck-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(65px,1fr));gap:12px}
+.adventure-playing-card{height:108px;background:#e5d6aa!important;color:#253b37!important;border:2px solid #c3b78d!important;border-radius:5px;position:relative;padding:7px!important;text-align:left;box-shadow:0 4px 7px #070d0f55;font-family:Georgia,serif}
+.adventure-playing-card.red{color:#9e453c!important}
+.adventure-playing-card .card-corner{font-weight:600;font-size:12px}
+.adventure-playing-card .card-center{display:block;text-align:center;line-height:1.2;font-size:29px;margin:9px 0}
+.adventure-playing-card[aria-pressed=true]{outline:3px solid #95c1a7;outline-offset:3px}
+.adventure-playing-card small{font:9px sans-serif;position:absolute;bottom:6px;left:6px;right:6px;text-align:center;color:inherit}
+.service-controls{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:25px}
+.service-controls select{max-width:160px}
+.adventure-service-hint{font-size:12px;color:#b0c1ab;margin:0 0 20px}
+.adventure-empty{padding:40px 25px;border:1px dashed #46624f;border-radius:5px;color:#a8bca5;text-align:center;font-size:13px}
+.adventure-battle-shell{max-width:1500px;margin:auto}
+.adventure-battle-shell .playtest-brand,.adventure-battle-shell .playtest-setup,.adventure-battle-shell .playtest-encounter-rail{display:none}
+.adventure-battle-shell .playtest-units{min-height:340px}
+.adventure-battle-shell .playtest-battlefield{min-height:360px}
+.adventure-battle-shell .battle-result{pointer-events:none}
+.adventure-battle-shell .battle-hand-panel{margin-bottom:14px}
+.battle-return{display:flex;justify-content:flex-end;gap:15px;align-items:center;padding:20px 0}
+@keyframes adventure-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes fire-glow{0%,100%{opacity:.85;transform:scale(.97)}50%{opacity:1;transform:scale(1.02)}}
+@media(prefers-reduced-motion:reduce){.home-stage img,.camp-fire{animation:none}.adventure-page *{scroll-behavior:auto!important;transition:none!important}}
+@media(max-width:1100px){.adventure-resources{gap:12px;font-size:12px}.adventure-map-layout{grid-template-columns:125px minmax(300px,1fr) 205px;gap:15px}.adventure-shop{grid-template-columns:180px 1fr;gap:20px}.shop-keeper img{width:170px}.tarot-detail{padding:22px}.home-stage img{width:290px}.home-stage:before{width:290px;height:400px}.home-stage{height:470px}}
+@media(max-width:800px){.adventure-topbar{flex-wrap:wrap;gap:12px;padding:13px 5%}.adventure-brand{flex:1}.adventure-resources{order:3;width:100%;justify-content:space-between;border-top:1px solid #3b5148;padding-top:10px}.adventure-nav{gap:6px;font-size:11px}.adventure-nav button{padding:5px 8px}#adventure-view{padding:25px 5%}.adventure-home{grid-template-columns:1fr .6fr;gap:0;min-height:440px}.home-copy h1{font-size:40px}.home-stage{height:350px;opacity:.75}.home-stage img{width:240px;height:340px}.home-stage:before{width:190px;height:320px}.home-stage .stage-mark,.home-stage .stage-suit{display:none}.home-buttons{width:min(270px,95%)}.home-copy{padding:10px 0}.home-copy>p{font-size:12px}.adventure-map-layout{grid-template-columns:1fr 205px}.map-legend{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px;padding:10px 0}.map-legend h2,.map-status-key{display:none}.legend-item{margin:4px 6px;font-size:10px;gap:7px}.legend-item>span{width:18px;height:18px}.legend-item b{font-size:10px}.adventure-shop{grid-template-columns:1fr}.shop-keeper{display:none}.tarot-layout{grid-template-columns:1fr}.tarot-detail{border-left:0;border-top:1px solid #40574e;padding:18px 0}.tarot-detail .tarot-glyph{display:none}.tarot-grid{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}.tarot-card{min-height:180px}.rest-options{gap:10px}.rest-option{padding:15px!important}.rest-option strong{font-size:16px}.rest-option small{font-size:11px}.adventure-heading h1{font-size:25px}.adventure-footer{font-size:10px}}
+@media(max-width:540px){.adventure-home{display:block}.home-stage{display:none}.home-copy h1{font-size:46px}.home-buttons{width:100%}.adventure-map-layout{display:flex;flex-direction:column}.route-map{min-height:480px}.route-canvas{min-width:300px}.journey-side{order:-1}.journey-side .relic-list{display:none}.adventure-heading{gap:10px}.adventure-heading .actions button{font-size:11px;padding:5px 8px}.adventure-heading p{font-size:11px}.rest-options{flex-direction:column}.rest-option{width:100%}.rest-scene{min-height:0}.camp-fire{margin:10px 0;height:120px}.camp-fire svg{height:110px}.setup-controls{flex-wrap:wrap}.adventure-footer{flex-direction:column;gap:3px}.map-node{width:85px}.map-node-symbol{width:38px;height:38px}.adventure-nav>a{margin-left:0}}

@@ -96,8 +96,8 @@ function renderField(node,field,grid){
   });
  };
  if(field.type==='select'||field.type==='card'){
-  input=el('select');input.append(new Option(field.required?'请选择…':'默认 / '+tr(field.default??'不设置'),''));
-  const values=field.type==='card'?meta.cards.map(card=>[card.id,tr(card.suit)+' '+tr(card.rank)]):(field.options||[]).map(value=>[value,tr(value)]);
+  input=el('select');input.append(new Option(field.required?'请选择…':'默认 / '+(field.optionLabels?.[field.default]??tr(field.default??'不设置')),''));
+  const values=field.type==='card'?meta.cards.map(card=>[card.id,tr(card.suit)+' '+tr(card.rank)]):(field.options||[]).map(value=>[value,field.optionLabels?.[value]??tr(value)]);
   if(raw!=null&&!values.some(([value])=>value===raw))input.append(new Option('未识别：'+raw,raw));
   for(const [value,label]of values)input.append(new Option(label,value));input.value=raw??'';
  }else if(field.type==='multi'){

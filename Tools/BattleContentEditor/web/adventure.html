@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>牌途 · 冒险试玩</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/playtest.css">
+  <link rel="stylesheet" href="/adventure.css">
+</head>
+<body class="adventure-page">
+  <header class="adventure-topbar">
+    <a class="adventure-brand" href="/adventure.html" aria-label="牌途冒险主页"><span>♠</span><div><strong>牌途</strong><small>一副牌，一段旅途</small></div></a>
+    <div id="adventure-resources" class="adventure-resources" aria-live="polite"></div>
+    <nav class="adventure-nav" aria-label="冒险导航">
+      <button id="adventure-deck" hidden>牌库</button>
+      <button id="adventure-tarots">塔罗图鉴</button>
+      <button id="adventure-menu">主菜单</button>
+      <a href="/">单局配置 ↗</a>
+    </nav>
+  </header>
+  <div id="adventure-notice" class="adventure-notice" role="status" aria-live="polite" hidden></div>
+  <main id="adventure-view" tabindex="-1" aria-label="冒险试玩"><div class="adventure-loading">正在准备旅途…</div></main>
+  <footer class="adventure-footer"><span>局外流程试玩 · 数值以当前配置为准</span><span id="adventure-save-state">尚无冒险存档</span></footer>
+  <dialog id="adventure-dialog" aria-labelledby="adventure-dialog-title">
+    <div class="adventure-dialog-heading"><h2 id="adventure-dialog-title"></h2><button id="adventure-dialog-close" aria-label="关闭">×</button></div>
+    <div id="adventure-dialog-body"></div>
+  </dialog>
+  <input id="adventure-save-file" type="file" accept=".json,application/json" hidden>
+  <input id="adventure-config-file" type="file" accept=".xml,application/xml,text/xml" hidden>
+  <script type="module" src="/adventure.js"></script>
+</body>
+</html>

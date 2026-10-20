@@ -18,7 +18,7 @@ export const labels = {
  Shuffle:'随机洗入', Top:'牌顶（先摸）', Bottom:'牌底 / 末尾', deck:'抽牌堆', discard:'弃牌堆', hand:'直接入手',
  Unplayable:'不可出牌（可弃牌）', Behavior:'怪物行为', Stage:'行为阶段', Action:'行为动作', When:'行为条件', OpeningEffects:'入场状态', Summon:'召唤怪物', AddCards:'生成卡牌', HitArmor:'逐击护甲', Sequence:'顺序轮换', Priority:'条件优先', Weighted:'权重随机',
  BattleContent:'内容包', Hand:'牌型', Effect:'效果步骤', OnHitStatus:'每次命中附加状态', FlushBonus:'同花额外效果', FlushBaseTotalScale:'同花基础筹码 × 一级基础倍率', CardScoreScale:'本牌筹码 × 伤害牌型倍率', Effects:'行动效果', CardPoints:'单牌计分', Rank:'点数分值', Face:'指定牌面分值', Card:'卡牌', HandLevel:'牌型等级',
- BlockActionWindow:'眩晕 · 阻止行动', PreventStatusApplication:'控制免疫 · 阻止施加', ReflectBlockedDamage:'盾反', LifeSteal:'吸血', OverhealDamage:'溢出治疗转伤害', PeriodicDamage:'周期伤害 / 流血',
+ BlockActionWindow:'眩晕 · 阻止行动', PreventStatusApplication:'控制免疫 · 阻止施加', ReflectBlockedDamage:'盾反', LifeSteal:'吸血', OverhealDamage:'溢出治疗转伤害', PeriodicDamage:'周期伤害（中毒 / 流血）',
  Numeric:'数值修正', HandModifier:'牌型效果修正', RuleValue:'战斗规则修正', Refill:'补牌修正', Budget:'共用次数与冷却', FactTrigger:'战斗事件触发', BoundaryTrigger:'开战 / 回合阶段触发', ActionTrigger:'出牌 / 弃牌完成触发', Conditions:'全部条件同时满足',
  FactAtLeast:'本次结算数值至少达到', OwnerHealthAtMost:'持有者生命比例不高于', OwnerHasStatus:'持有者具有状态', EventStatus:'本次施加的状态', HandIs:'出牌牌型为', SubmittedCardsAtLeast:'出牌张数至少', DiscardedCardsAtLeast:'弃牌张数至少',
  HighCard:'高牌', OnePair:'一对', TwoPair:'两对', ThreeOfAKind:'三条', Straight:'顺子', Flush:'同花', FullHouse:'葫芦', FourOfAKind:'四条', StraightFlush:'同花顺', FiveOfAKind:'五条',
@@ -31,7 +31,7 @@ export const labels = {
  Primary:'主效果', Triggered:'触发效果', Periodic:'周期伤害', Reflection:'盾反', Lifesteal:'吸血', Overheal:'溢疗转伤',
  AppendEffect:'追加效果', AddHits:'增加段数', ReplaceEffect:'替换效果', ChangeTarget:'修改目标', MaxEnergy:'能量上限', InitialEnergy:'初始能量', PlayEnergyCost:'出牌费用', DiscardEnergyCost:'弃牌费用', HandLimit:'手牌上限',
  OpeningTurn:'开局发牌', AfterPlay:'出牌后', AfterDiscard:'弃牌后', PlayerTurnStart:'玩家回合开始', Skip:'跳过补牌', FillToLimit:'补满手牌', FixedCount:'固定张数',
- DrawCards:'效果摸牌', TurnStarted:'持有者回合开始', AddStacks:'叠加层数且不刷新期限', ChipsOnly:'踢脚牌只加筹码', AllCards:'全部牌参与倍率', ThreeOfAKindTotalScale:'葫芦三条部分得分', OnePairTotalScale:'葫芦对子部分得分', Defense:'主动防御弃牌', BeforeDraw:'摸牌前', Overflow:'超限强制弃牌', DamageSettled:'伤害结算', HealingSettled:'治疗结算', BlockGained:'获得护盾', UnitDied:'单位死亡', StatusApplied:'状态施加', StatusBlocked:'状态被阻止',
+ DrawCards:'效果摸牌', TurnStarted:'持有者回合开始', AddStacks:'叠加层数且不刷新期限', ChipsOnly:'踢脚牌只加筹码', AllCards:'全部牌参与倍率', ThreeOfAKindTotalScale:'旧版：葫芦三条部分得分', OnePairTotalScale:'旧版：葫芦对子部分得分', Defense:'主动防御弃牌', BeforeDraw:'摸牌前', Overflow:'超限强制弃牌', DamageSettled:'伤害结算', HealingSettled:'治疗结算', BlockGained:'获得护盾', UnitDied:'单位死亡', StatusApplied:'状态施加', StatusBlocked:'状态被阻止',
  OwnerIsSource:'遗物持有者施加效果', OwnerIsTarget:'遗物持有者承受效果', AllyIsSource:'友方施加效果', AllyIsTarget:'友方承受效果', OpponentIsSource:'敌方施加效果', OpponentIsTarget:'敌方承受效果',
  PerEvent:'每次符合条件的事件', PerAction:'每次行动', PerBoundary:'每次开战或阶段切换', DamageToHealth:'实际生命伤害', BlockAbsorbed:'护盾吸收量', HealthRestored:'实际治疗量',
  BattleStarted:'战斗开始', PhaseStarted:'阶段开始', OwnerTeam:'己方阶段', OpponentTeam:'敌方阶段', PlayCompleted:'出牌完成', DiscardCompleted:'弃牌完成',
@@ -86,7 +86,7 @@ export function descriptor(node) {
  else if(name==='CardPoints') children=['Rank','Face'];
  else if(name==='Rank'||name==='Face') fields=[en('rank','点数','Rank',null,true),...(name==='Face'?[en('suit','花色','Suit',null,true)]:[]),num('points','单牌筹码',0,true)];
  else if(name==='Rules') fields=[...base(),version(),ref('scoringRef','计分规则','ScoringProfiles',true),num('roundLimit','回合上限',20),en('roundLimitBehavior','达到回合上限后',['Lose','Enrage'],'Lose'),num('enrageDamagePerRound','狂暴每回合叠加伤害',0),bool('clearEnemyBlock','敌人阶段结束清空敌方护盾'),en('blockExpiry','护盾清除方式','PlayerBlockExpiry','Retain'),num('maxReactionEffects','单次结算最多触发效果数',256),num('maxReactionDepth','连锁触发最多层数',16)];
- else if(name==='HandRule') { fields=[...base(),version(),bool('flushUsesRankEffects','伤害忽略花色独立判型')];children=['Hand','FlushBonus']; }
+ else if(name==='HandRule') { fields=[...base(),version(),bool('combineCompatibleEffects','最高牌型计伤，兼容机制叠加'),bool('flushUsesRankEffects','旧版：伤害忽略花色独立判型')];children=['Hand','FlushBonus']; }
  else if(name==='Hand') { fields=[en('category','牌型','HandCategory',null,true)];if(a('category')==='StraightFlush') fields.push(en('variant','同花顺分支','HandEffectVariant','Any'));children=['Effect']; }
  else if(name==='FlushBonus') children=['Effect'];
  else if(name==='OnHitStatus') fields=[ref('statusRef','状态配置','Statuses',true),num('stacks','固定层数',1),num('stacksPerSubmittedCard','每张实际出牌追加层数',0),...lifetime(node)];
@@ -107,7 +107,11 @@ export function descriptor(node) {
  else if(name==='Status') {fields=[...base(),en('tags','状态标签','StatusTags','None'),...lifetime(node,true),en('reapply','重复施加','StatusReapplyPolicy','KeepLonger')];children=['BlockActionWindow','PreventStatusApplication','ReflectBlockedDamage','LifeSteal','OverhealDamage','PeriodicDamage','HitArmor'];}
  else if(name==='PreventStatusApplication') fields=[en('tags','阻止的状态标签','StatusTags','Control')];
  else if(['ReflectBlockedDamage','LifeSteal','OverhealDamage','PeriodicDamage'].includes(name)) {
-  fields=name==='PeriodicDamage'?[en('timing','触发时机',['TurnStarted','ActionCompleted','PhaseEnding'],null,true),num('amount','每次伤害',undefined,true)]:[num('ratio','比例（0.2 = 20%）',undefined,true)];
+  fields=name==='PeriodicDamage'?[
+   {...en('timingSubject','计时对象','PeriodicTimingSubject','Holder'),optionLabels:{Holder:'中毒者 / 状态持有者',Applier:'施加者'}},
+   {...en('timing','结算时机',['TurnStarted','ActionCompleted','PhaseEnding'],'TurnStarted',true),optionLabels:{TurnStarted:'回合开始',ActionCompleted:'每次有效行动后',PhaseEnding:'所属阵营阶段结束'}},
+   num('amount','每层伤害',undefined,true)
+  ]:[num('ratio','比例（0.2 = 20%）',undefined,true)];
   fields.push(...target(node,true,name==='ReflectBlockedDamage'?['Self','Opponents','Allies','EventSource']:null,name==='ReflectBlockedDamage'?'EventSource':name==='OverhealDamage'?'Opponents':'Self'));
   if(name==='ReflectBlockedDamage') fields.push(en('sourcePolicy','来源存活要求','CombatReactionSourcePolicy','RequireLiving'));
  }
@@ -159,7 +163,7 @@ export function descriptor(node) {
  else if(name==='Encounter') {fields=[...base(),ref('rulesRef','战斗规则','BattleRules',true)];children=['Player','Enemy'];}
  else if(name==='Player') fields=[text('id','参战角色编号（本场唯一）',true),ref('ref','玩家模板','Players',true),ref('loadoutRef','初始构筑','Loadouts'),num('initialHealth','开局生命值（留空为满血）')];
  else if(name==='Enemy') fields=[text('id','参战角色编号（本场唯一）',true),ref('ref','敌人模板','Enemies',true)];
- if(name==='PeriodicDamage')fields.push(num('stackDecay','每次结算减少层数',0));
+ if(name==='PeriodicDamage')fields.push(num('stackDecay','结算后减少层数',0));
  if(name==='ActionTrigger'&&a('timing')==='DiscardCompleted')fields.push(en('discardKind','弃牌类型',['Defense','BeforeDraw','Overflow','Any'],'Defense'));
  return {fields,children,label:tr(name)};
 }
@@ -167,6 +171,7 @@ export const exclusiveChildren=new Set(['Budget','Conditions','CardPoints','Effe
 
 // Explanations for concepts that need more than a short field label.
 export const help = {
+ PeriodicDamage: '本次基础伤害 = 当前层数 × 每层伤害，伤害结算后再减少层数。计时对象与结算时机组合，可选择中毒者回合开始、中毒者所属阵营阶段结束、施加者回合开始、施加者所属阵营阶段结束。回合开始：按所选角色每回合结算一次，敌人在行动窗口前、玩家在摸牌前；所属阵营阶段结束：等所选角色同阵营全部行动结束后结算，眩晕仍会触发。也可保留每次有效行动后结算，眩晕跳过和直接结束回合不触发。计时对象只决定何时结算，不改变伤害目标；“自身”仍指状态持有者。标准中毒默认按中毒者回合开始（Holder + TurnStarted），每层伤害 1、每次结算后减少 1 层。',
  AddCards: '按意图向每个存活玩家塞牌。默认进弃牌堆；抽牌堆默认随机洗入，也可选择牌顶或牌底。手牌/弃牌堆仅支持默认或末尾。直接入手是额外配置，可暂时超限，结束阶段按规则强制弃牌。',
  Encounter: '将玩家、初始构筑、敌人和战斗规则组合成一场对局。同一个敌人模板可以多次加入，每个参战角色需要不同的编号。',
  Loadout: '设置开局带什么：牌组、牌型等级和遗物。在对局配置中为玩家选择这套初始构筑。',
@@ -175,5 +180,6 @@ export const help = {
  BoundaryTrigger: '在开战、玩家或敌人阶段开始／结束时触发。阶段指一方行动的时间段，一轮通常包含玩家阶段和敌人阶段。',
  ActionTrigger: '一次出牌或弃牌结算完成后触发。“本次行动者”指完成这次出牌或弃牌的角色。',
  HandModifier: '先选牌型，再选择追加效果、增加段数、替换效果或修改目标。修改已有效果时，填写它的效果编号；编号不会随排列顺序改变。',
+ HandRule: '开启“最高牌型计伤，兼容机制叠加”后，筹码和倍率只按本次最高牌型计算，同时合并兼容的攻击、状态与治疗机制。例如同花顺可触发顺子与同花，葫芦可触发三条群攻。每个牌型最多配置一个基础伤害步骤，多段可按实际出牌逐张重复；同花额外效果使用治疗等非伤害效果。皇家同花顺仍独立执行强制消灭。旧版“伤害忽略花色独立判型”和葫芦分拆计分保留用于旧配置，不能与新模式同时使用。',
  Status: '先设置持续时间和重复施加方式，再添加状态的具体效果。“各自独立生效”会保留多份状态，各自结算和到期。'
 };

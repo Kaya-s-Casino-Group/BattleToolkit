@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·三种怪物" version="standard-single-battle.4.1582">
+<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·三种怪物" version="standard-single-battle.5.1582">
   <!--策划 revision 1582：开局8张，主动摸牌一次至多5张，3次行动；短同花3至5张，踢脚牌不计分。主动防御后结束，不追加结束防御；超限弃牌触发防御。第20回合结束进入狂暴，每回合追加20伤害为待数值确认的测试值。三个默认怪物共用标准玩家和卡组。-->
+  <!--2026-10-20 确认补充：按最高牌型统一计伤，兼容的逐张攻击、群攻、中毒、治疗、控制和净化机制叠加；基础伤害不重复。-->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -57,7 +58,7 @@
     </Status>
   </Statuses>
   <HandRules>
-    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2" flushUsesRankEffects="true">
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.3" combineCompatibleEffects="true">
       <Hand category="HighCard">
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
@@ -71,7 +72,7 @@
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
       </Hand>
       <Hand category="Straight">
-        <!--每张实际出牌各打一次：本牌筹码 × 顺子倍率；每次命中立刻加1层毒。遗物缩短顺子时，段数随张数缩短。-->
+        <!--每张实际出牌各打一次：本牌计分筹码 × 最高牌型倍率；每次命中立刻加1层毒。遗物缩短顺子时，段数随张数缩短。-->
         <Effect id="damage/1" kind="Damage" amountKind="CardScoreScale" amount="1" perSubmittedCard="true" target="Opponents" selection="ActorPolicy" retargetChain="straight">
           <OnHitStatus statusRef="bleed" stacks="1" />
         </Effect>
@@ -80,8 +81,8 @@
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <Hand category="FullHouse">
-        <Effect id="damage/triple" kind="Damage" amountKind="ThreeOfAKindTotalScale" amount="1" target="Opponents" selection="AllLiving" />
-        <Effect id="damage/pair" kind="Damage" amountKind="OnePairTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+        <!--按最高牌型统一计分；三条群攻与葫芦控制机制叠加，不再额外结算对子伤害。-->
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
         <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="ActorPolicy" />
         <Effect id="cleanse" kind="Cleanse" target="Self" />
         <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
@@ -98,7 +99,7 @@
       <Hand category="FiveOfAKind">
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
-      <!--同花独立回血：所有有效出牌筹码 × 同花一级基础倍率 × 20%；伤害独立忽略花色判型，使用其倍率与技能。皇家同花顺保留强制消灭。-->
+      <!--同花独立回血：所有有效出牌筹码 × 同花一级基础倍率 × 20%；伤害使用最高牌型计分，兼容机制分别触发。皇家同花顺保留强制消灭。-->
       <FlushBonus>
         <Effect id="heal" kind="Heal" amountKind="FlushBaseTotalScale" amount="0.2" target="Self" />
       </FlushBonus>

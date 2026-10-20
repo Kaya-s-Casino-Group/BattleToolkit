@@ -167,7 +167,7 @@ namespace PokerEngine
         /// <summary>Battle scoring policy: kickers add chips after multiplication; component scores retain their own category multipliers.</summary>
         public static ScoreResult EvaluateBattle(string id, ScoreProfile profile, PokerHandClassification pattern, int handLevel,
             IEnumerable<ScoringCard> submitted, IEnumerable<ScoringRelic> relics, KickerScoring kickerMode, bool layered,
-            Func<HandCategory, int> levelFor = null)
+            Func<HandCategory, int> levelFor = null, bool includeLegacyComponents = true)
         {
             if (pattern == null) throw new ArgumentNullException(nameof(pattern));
             if (!Enum.IsDefined(typeof(KickerScoring), kickerMode)) throw new ArgumentException("Unknown kicker scoring policy.");
@@ -186,7 +186,7 @@ namespace PokerEngine
                     steps.Add(new ScoreStep(card.Id, card.Id, ScoreOperation.AddUnmultipliedPoints, value, result.Points, result.Multiplier));
                 }
             var parts = new List<ScoreResult>();
-            if (pattern.Category == HandCategory.FullHouse)
+            if (includeLegacyComponents && pattern.Category == HandCategory.FullHouse)
                 foreach (var group in cards.Where(c => scoring.Contains(c.Id)).GroupBy(c => c.Face.Rank))
                 {
                     var category = group.Count() == 3 ? HandCategory.ThreeOfAKind : HandCategory.OnePair;

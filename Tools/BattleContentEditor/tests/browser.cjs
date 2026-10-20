@@ -8,7 +8,9 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
  const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||undefined});
  const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.type()==='beforeunload'?d.accept():d.dismiss());
- let passes=0;const test=async(name,fn)=>{await fn();passes++;console.log('PASS '+name);};
+ // TEST_FILTER selects self-contained regression cases by name.
+ const filter=process.env.TEST_FILTER?new RegExp(process.env.TEST_FILTER):null;
+ let passes=0;const test=async(name,fn)=>{if(filter&&!filter.test(name))return;await fn();passes++;console.log('PASS '+name);};
  const confirm=()=>page.locator('#modal-confirm').click();
  const settle=async()=>{await page.waitForFunction(()=>!document.querySelector('#import').disabled&&/\d+ 错误 \/ \d+ 警告/.test(document.querySelector('#validation-state').textContent),{},{timeout:30000});};
  // Wait for the successful state in one browser evaluation. A second DOM read after
@@ -131,10 +133,59 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
   await position.selectOption('Default');await clean();
   await load(example);await clean();
  });
- await test('标准顺子逐张攻击、命中状态及同花治疗可配置并导出',async()=>{
+ await test('中毒结算时机支持施加者与持有者四种组合、行动后和无损导出',async()=>{
+  const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle-2026-10-20.xml'),'utf8');
+  await load(standard);await clean();await nav('状态配置');await page.locator('.definition-button[title="bleed"]').click();
+  await page.locator('#editor details').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
+  const timing=page.locator('#editor [data-key="timing"]'),subject=page.locator('#editor [data-key="timingSubject"]');
+  assert.equal(await timing.inputValue(),'TurnStarted');
+  assert.ok(['','Holder'].includes(await subject.inputValue()),'标准默认按中毒者计时');
+  assert.match(await subject.getAttribute('aria-label'),/^计时对象 /);
+  assert.equal(await subject.locator('option[value=""]').innerText(),'默认 / 中毒者 / 状态持有者');
+  assert.equal(await subject.locator('option[value="Holder"]').innerText(),'中毒者 / 状态持有者');
+  assert.equal(await subject.locator('option[value="Applier"]').innerText(),'施加者');
+  assert.match(await timing.getAttribute('aria-label'),/^结算时机 /);
+  assert.match(await page.locator('#editor [data-key="amount"]').getAttribute('aria-label'),/^每层伤害 /);
+  assert.match(await page.locator('#editor [data-key="stackDecay"]').getAttribute('aria-label'),/^结算后减少层数 /);
+  assert.match(await page.locator('#editor').innerText(),/当前层数 × 每层伤害，伤害结算后再减少层数/);
+  assert.match(await page.locator('#editor').innerText(),/计时对象只决定何时结算，不改变伤害目标/);
+  const options=[
+   ['TurnStarted','回合开始'],
+   ['ActionCompleted','每次有效行动后'],
+   ['PhaseEnding','所属阵营阶段结束']
+  ];
+  for(const [value,label] of options)
+   assert.equal(await timing.locator('option[value="'+value+'"]').innerText(),label);
+  const combinations=[
+   ['Holder','TurnStarted'],['Holder','PhaseEnding'],
+   ['Applier','TurnStarted'],['Applier','PhaseEnding'],
+   ['Holder','ActionCompleted'],['Applier','ActionCompleted'],
+   ['','TurnStarted']
+  ];
+  for(const [actor,value] of combinations){
+   await subject.selectOption(actor);await timing.selectOption(value);await clean();
+   const event=page.waitForEvent('download');await page.locator('#export').click();
+   const saved=await fs.readFile(await (await event).path(),'utf8');
+   const poison=saved.match(/<Status\b[^>]*\bid="bleed"[^>]*>[\s\S]*?<\/Status>/)?.[0];
+   assert.ok(poison,'导出应保留标准中毒配置');
+   if(actor)assert.match(poison,new RegExp('<PeriodicDamage[^>]*timingSubject="'+actor+'"'));
+   else assert.doesNotMatch(poison,/timingSubject=/,'恢复默认不应强加计时对象属性');
+   assert.match(poison,new RegExp('<PeriodicDamage[^>]*timing="'+value+'"'));
+   assert.match(poison,/<PeriodicDamage[^>]*amount="1"/);
+   assert.match(poison,/<PeriodicDamage[^>]*stackDecay="1"/);
+   assert.match(poison,/<PeriodicDamage[^>]*target="Self"/,'改计时对象不会改伤害目标');
+  }
+  await load(example);await clean();
+ });
+ await test('标准最高计伤与兼容机制开关、逐张攻击和同花治疗可配置并导出',async()=>{
   const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
   await load(standard);await clean();await nav('牌型效果');await page.locator('.definition-button[title="document-hands"]').click();
-  assert.equal(await page.locator('#editor > .field-grid [data-key="flushUsesRankEffects"]').inputValue(),'true');
+  const combined=page.locator('#editor > .field-grid [data-key="combineCompatibleEffects"]'),legacy=page.locator('#editor > .field-grid [data-key="flushUsesRankEffects"]');
+  assert.equal(await combined.inputValue(),'true');
+  assert.notEqual(await legacy.inputValue(),'true');
+  await legacy.selectOption('true');await settle();
+  assert.match(await page.locator('#validation-state').innerText(),/^[1-9]/);
+  await legacy.selectOption('');await clean();
   assert.equal(await page.locator('[data-key="perSubmittedCard"] option[value="true"]:checked').count(),1);
   assert.equal(await page.locator('[data-key="amountKind"] option[value="CardScoreScale"]:checked').count(),1);
   assert.equal(await page.locator('[data-key="amountKind"] option[value="FlushBaseTotalScale"]:checked').count(),1);
@@ -142,11 +193,14 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
   assert.equal(await page.locator('.unknown').count(),0);
   const event=page.waitForEvent('download');await page.locator('#export').click();
   const saved=await fs.readFile(await (await event).path(),'utf8');
+  assert.match(saved,/<HandRule[^>]*combineCompatibleEffects="true"/);
+  assert.doesNotMatch(saved,/<HandRule[^>]*flushUsesRankEffects="true"/);
   assert.match(saved,/<OnHitStatus[^>]*statusRef="bleed"[^>]*stacks="1"/);
   assert.match(saved,/<FlushBonus>/);assert.match(saved,/amountKind="FlushBaseTotalScale" amount="0.2"/);
   await load(example);await clean();
  });
- await open('牌型效果','example-hands');await page.screenshot({path:process.env.EDITOR_SCREENSHOT||path.join(os.tmpdir(),'battle-content-editor-form.png'),fullPage:true});
+ if(!passes)throw new Error('没有匹配 TEST_FILTER 的测试。');
+ if(!filter){await open('牌型效果','example-hands');await page.screenshot({path:process.env.EDITOR_SCREENSHOT||path.join(os.tmpdir(),'battle-content-editor-form.png'),fullPage:true});}
  assert.deepEqual(errors,[]);console.log(`Browser: ${passes} passed, 0 failed.`);
  }finally{await context.close();await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

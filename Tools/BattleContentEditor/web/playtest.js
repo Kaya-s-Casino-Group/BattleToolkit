@@ -10,7 +10,7 @@ const icon=(name,cls='')=>{const svg=document.createElementNS('http://www.w3.org
 const artFor=(value,isPlayer=false)=>isPlayer?'hero':/glutton|暴食|boss/i.test(value)?'gluttony':/summon|召唤|精英/i.test(value)?'summoner':'grunt';
 const unitName=unit=>unit.displayName||unit.name||unit.id;
 const stateIcon=status=>{const keys=(status.behaviorKeys||[]).join(' ');return /HitArmor/.test(keys)?'armor':/PeriodicDamage/.test(keys)?'bleed':/BlockActionWindow/.test(keys)?'stun':/PreventStatus/.test(keys)?'cleanse':/LifeSteal|Overheal/.test(keys)?'heal':/Reflect/.test(keys)?'shield':status.isNegative?'curse':'spark';};
-export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
+export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=null}) {
  const sessionId=crypto.randomUUID();
  let battle=null,actor='',selected=new Set(),bindings={},previews={},previewSequence=0,previewTimer;
  let busy=false,previewBusy=false,uncertain=false,logs=[],startXml=null,configKey='',message='',diagnostics=[];
@@ -57,11 +57,16 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
  window.addEventListener('pagehide',event=>{
   // A cached page may return with its current battle. Only release a confirmed,
   // idle session when this document is really being left, including a reload.
-  if(event.persisted||busy||uncertain||!battle)return;
+  if(external||event.persisted||busy||uncertain||!battle)return;
   fetch('/api/playtest',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Editor-Token':getToken()},body:JSON.stringify({op:'close',sessionId,runId:battle.runId,revision:battle.revision})}).catch(()=>{});
  });
 
  async function request(op,payload={}) {
+  if(external){
+   const data=await external.request(op,payload);
+   if(op!=='preview')external.onResponse?.(data);
+   return data;
+  }
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),40000);
   try{
    const response=await fetch('/api/playtest',{method:'POST',headers:{'Content-Type':'application/json','X-Editor-Token':getToken()},body:JSON.stringify({op,sessionId,...payload}),signal:controller.signal});
@@ -142,6 +147,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
  }
  async function sync(){if(busy)return;busy=true;invalidatePreviews();render();try{await recover();}finally{busy=false;render();queuePreview();}}
  async function close(){
+  if(external){external.onExit?.();return;}
   if(busy||!battle)return;busy=true;invalidatePreviews();render();
   try{const data=await request('close',{runId:battle.runId,revision:battle.revision});if(data.success){forgetExpired({error:'SessionNotFound'});message='试玩已结束，可以重新选择配置开局。';diagnostics=[];}else{adopt(data.battle);setResponseError(data);}}
   catch{await recover();}finally{busy=false;render();queuePreview();}
@@ -153,7 +159,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
   const payload=actionPayload(action);busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
   try{
    const data=await request('command',payload);adopt(data.battle);
-   if(data.success){addSteps(data.steps);selected.clear();bindings={};message=battle?.finished?'对局已结束，可使用同一种子重开。':'结算完成。';}
+   if(data.success){addSteps(data.steps);selected.clear();bindings={};message=battle?.finished?(external?'战斗已结算，可以继续旅程。':'对局已结束，可使用同一种子重开。'):'结算完成。';}
    else setResponseError(data);
   }catch(error){message=error.message;await recover();}
   finally{busy=false;render();queuePreview();}
@@ -179,6 +185,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
   },160);
  }
  function updateConfig(){
+  if(external){setup.hidden=true;brand.hidden=true;refs['encounter-rail'].hidden=true;refs['config-notice'].hidden=true;refs.close.hidden=true;return;}
   const config=getConfig(),key=JSON.stringify(config.encounters);
   if(key!==configKey){configKey=key;refs.encounter.replaceChildren();for(const item of config.encounters)if(item.id)refs.encounter.append(new Option(item.name||item.id,item.id));if([...refs.encounter.options].some(o=>o.value===encounterValue))refs.encounter.value=encounterValue;encounterValue=refs.encounter.value;}
   let note='';
@@ -314,10 +321,13 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
   for(const [action,title] of [['Play','出牌预览'],['Discard','弃牌预览']]){
    const preview=previews[action];if(!preview)continue;
    const section=node('section','playtest-preview-part');section.append(node('h3','',title));
-   if(action==='Play'&&preview.hand)section.append(node('p','',preview.hand.label+' · 点数 '+preview.hand.points+' × 倍率 '+preview.hand.multiplier+' = 计分 '+preview.hand.total));
+   if(action==='Play'&&preview.hand){
+    const hand=preview.hand,score=node('p','playtest-hand-score','计伤牌型：'+(hand.scoringLabel||hand.label)+' · 点数 '+hand.points+' × 倍率 '+hand.multiplier+' = 计分 '+hand.total);score.dataset.scoringCategory=hand.scoringCategory||hand.category;section.append(score);
+    if(hand.mechanisms?.length){const mechanisms=node('p','playtest-hand-mechanisms','兼容牌型：'+hand.mechanisms.map(item=>item.label).join('、'));mechanisms.dataset.mechanismCategories=hand.mechanisms.map(item=>item.category).join(',');section.append(mechanisms);}
+   }
    if(preview.targetMessage)section.append(node('p','playtest-invalid',preview.targetMessage));
    if(!preview.legal)section.append(node('p','playtest-invalid',preview.message||preview.error||'当前不能执行此操作。'));
-   else{const lines=(preview.steps||[]).flatMap(step=>(step.lines||[]).filter((line,index)=>!(action==='Play'&&preview.hand&&step.action==='Play'&&index===0&&line.includes('牌型得分'))));for(const line of lines)section.append(node('p','playtest-preview-line',line));if(!lines.length)section.append(node('p','muted','当前操作可以执行。'));}
+   else{const lines=(preview.steps||[]).flatMap(step=>(step.lines||[]).filter((line,index)=>!(action==='Play'&&preview.hand&&step.action==='Play'&&(index===0&&line.includes('牌型得分')||line.startsWith('兼容牌型：')))));for(const line of lines)section.append(node('p','playtest-preview-line',line));if(!lines.length)section.append(node('p','muted','当前操作可以执行。'));}
    refs.preview.append(section);
   }
  }
@@ -334,7 +344,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
  function render(){
   updateConfig();refs.message.textContent=message;refs.message.hidden=!message;refs.diagnostics.replaceChildren();
   for(const diagnostic of diagnostics){const row=node('div','issue'+(diagnostic.severity==='Warning'?' warning':''));row.append(node('strong','',(diagnostic.severity==='Warning'?'警告':'错误')+(diagnostic.definitionId?' · '+diagnostic.definitionId:'')),node('span','',diagnostic.message),node('small','',[diagnostic.path,diagnostic.line?'第 '+diagnostic.line+' 行':''].filter(Boolean).join(' · ')));refs.diagnostics.append(row);}
-  refs.sync.disabled=busy;refs.sync.hidden=!battle&&!uncertain;refs.close.disabled=busy||uncertain;refs.close.hidden=!battle;refs.live.hidden=!battle;refs.empty.hidden=!!battle;refs.status.textContent=battle?'第 '+battle.round+' 回合 · '+(battle.finished?(outcomeNames[battle.outcome]||battle.outcome):(phaseNames[battle.phase]||battle.phase)):'尚未开局';
+  refs.sync.disabled=busy;refs.sync.hidden=!battle&&!uncertain;refs.close.disabled=busy||uncertain;refs.close.hidden=!!external||!battle;refs.live.hidden=!battle;refs.empty.hidden=!!battle;refs.status.textContent=battle?'第 '+battle.round+' 回合 · '+(battle.finished?(outcomeNames[battle.outcome]||battle.outcome):(phaseNames[battle.phase]||battle.phase)):'尚未开局';
   refs['battle-tag'].textContent=battle?'种子 '+battle.seed:'';
   if(!battle)return;
   refs.status.dataset.revision=battle.revision;refs.status.dataset.runId=battle.runId;
@@ -345,5 +355,11 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
   refs.result.hidden=!battle.finished;refs.result.replaceChildren(icon(battle.outcome==='胜利'?'crown':'skull'),node('strong','',battle.outcome==='胜利'?'试炼完成':'下次，再来一局。'),node('span','',battle.outcome==='胜利'?'每一张牌，都算数。':'复盘记录或用同一种子重新挑战。'));
   renderHand();renderLogs();
  }
- return {updateConfig,render};
+ function setExternalBattle(next,steps=[]){
+  if(!external)return;
+  if(!next){battle=null;selected.clear();invalidatePreviews();logs=[];render();return;}
+  if(battle?.runId===next.runId&&battle?.revision===next.revision)return;
+  adopt(next);uncertain=false;message='';if(!busy&&steps.length)addSteps(steps);render();
+ }
+ return {updateConfig,render,setExternalBattle};
 }

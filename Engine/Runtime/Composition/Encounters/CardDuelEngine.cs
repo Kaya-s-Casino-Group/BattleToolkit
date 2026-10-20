@@ -216,7 +216,11 @@ namespace PokerEngine
             {
                 var ordered = hand.Cards.Where(ids.Contains).Select(state.Table.GetCard).ToArray();
                 var player = state.Duel.Player(actor); var flow = player.Rules.Flow;
-                var pattern = PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
+                bool compatible = (player.Rules.EffectRule as ConfiguredHandEffectRule)?.CombineCompatibleEffects == true;
+                var pattern = compatible ? PokerHandCompatibility.Classify(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
+                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
+                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value).Highest :
+                    PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
                     BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
                     BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value);
                 bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
@@ -229,7 +233,8 @@ namespace PokerEngine
                 var kicker = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.AllCardsScore).Value > 0 ? KickerScoring.AllCards : flow.KickerScoring;
                 var score = ScoreEngine.EvaluateBattle(Duel.NextScoreId(state.Duel), Scoring, pattern, level,
                     ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects)),
-                    flow.ManualDraw || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor);
+                    flow.ManualDraw || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor,
+                    includeLegacyComponents: !compatible);
                 return new CardDuelTransition(state, score: score, pattern: pattern);
             }
             catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
@@ -248,7 +253,12 @@ namespace PokerEngine
         {
             ScoreResult flushScore = null;
             int flushMin = BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinFlushCards).Value;
-            if (ordered.Length >= flushMin && ordered.All(c => Face(c).Suit == Face(ordered[0]).Suit))
+            var rule = state.Duel.Player(actor).Rules.EffectRule as ConfiguredHandEffectRule;
+            int straightMin = BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinStraightCards).Value;
+            bool flush = rule?.CombineCompatibleEffects == true ? PokerHandCompatibility.Classify(
+                ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)), flushMin, straightMin).Categories.Contains(HandCategory.Flush) :
+                ordered.Length >= flushMin && ordered.All(c => Face(c).Suit == Face(ordered[0]).Suit);
+            if (flush)
             {
                 flushScore = ScoreEngine.Evaluate(Duel.NextScoreId(state.Duel) + "/flush-base", Scoring, HandCategory.Flush, 1,
                     ordered.Select(c => new ScoringCard(c.Id.Value, new CardFace(Face(c).Rank, Face(c).Suit), effects: c.Effects)),
@@ -257,7 +267,7 @@ namespace PokerEngine
             return new HandAttackInfo(pattern, ordered.Select(card => new AttackCardSnapshot(card,
                 new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit))),
                 BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinFlushCards).Value,
-                BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinStraightCards).Value, flushScore?.Total, (state.Duel.Player(actor).Rules.EffectRule as ConfiguredHandEffectRule)?.FlushUsesRankEffects == true);
+                straightMin, flushScore?.Total, rule?.FlushUsesRankEffects == true, rule?.CombineCompatibleEffects == true);
         }
 
         // Compatibility overload: first player, or the next enemy. Multiplayer commands always identify their actor.

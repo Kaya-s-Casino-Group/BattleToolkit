@@ -14,6 +14,8 @@
 
 探索不同玩法可导入 [六套可试玩 XML 模板](Engine/Content/Templates/README.md)，包含八种编成、主题卡组、初始遗物和固定种子体验步骤。
 
+点击工具顶部的 **局外冒险**，可试玩「角色 → 天赋 → 三章地图 → 战斗 / 商店 / 休息 → 通关解锁」流程。默认使用 `Engine/Content/StandardAdventure.xml` 配合标准单局 XML；永久牌组、血量、金币、遗物和解锁由 C# 规则层管理，浏览器自动保存并支持导出 / 恢复。节点奖励、商店价格、休息收益和两个解锁天赋是可配置验证值，尚未作为正式平衡数值。详见[局外规则与配置](Engine/Runtime/Composition/Adventure/README.md)。
+
 已有网页草稿保存在同一浏览器和地址中。工具不会自动写回 XML，导出文件仍需保存到约定位置。首次安装通常需要几分钟；不需要管理员权限，也不修改全局运行环境。macOS 若解压后失去执行权限，可在终端执行 `bash start.command`。
 
 [详细工具用法](Tools/BattleContentEditor/README.md) · [启动与故障排查](scripts/README.md) · [XML 配置契约](Engine/Runtime/Composition/Content/README.md)
@@ -40,7 +42,7 @@ python3 -m unittest discover -s Tools/BattleContentEditor/tests -p 'test_*.py' -
 python3 -m unittest discover -s Tests -p 'test_bootstrap.py' -v
 ```
 
-Windows 对应 `start.cmd --check`、`powershell -File Tools/test-poker-engine.ps1`。浏览器回归在本机服务启动后运行 `npm ci`、`npx playwright install chromium`、`npm run test:browser` 和 `npm run test:playtest`。CI 在 Windows/macOS 验证独立构建、规则、HTTP、浏览器以及首次安装入口。
+Windows 对应 `start.cmd --check`、`powershell -File Tools/test-poker-engine.ps1`。浏览器回归在本机服务启动后运行 `npm ci`、`npx playwright install chromium`、`npm run test:web`，包含表单、单局、H5 战场和局外冒险。CI 在 Windows/macOS 验证独立构建、规则、HTTP、浏览器以及首次安装入口。
 
 ## 日常协作
 

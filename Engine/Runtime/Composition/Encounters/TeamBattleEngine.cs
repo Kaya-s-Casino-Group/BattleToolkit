@@ -409,11 +409,15 @@ namespace PokerEngine
                     var entering = ResolveBoundary(state, CombatTimingSignal.TurnStarted(BattleStatusTiming.RoundScope(state) + "/turn/" + actor, new[] { actor }));
                     if (!entering.Accepted) return new TeamBattleTransition(originalState, entering.Error);
                     combat = entering.State.Combat; turnEvents = entering.RuleEvents; timeline?.ObserveCombat(turnEvents);
+                    players = entering.State.Players.ToArray();
+                    // The opening tick can defeat opponents as well as the actor. Plan against its settled snapshot,
+                    // while retaining the active phase until the normal closing/terminal path below.
+                    state = WindowState(entering.State, combat, players, state.Phase, state.CompletedRounds, state.PendingEnemies);
                 }
-                bool diedAtStart = !combat.Get(actor).IsAlive;
+                bool stoppedAtStart = !combat.Get(actor).IsAlive || IsFinished(combat, players, state.Enemies);
                 var amountModifier = new RelicCombatAmountModifier(state, hand == null ? (ParticipantId?)null : actor, hand);
                 IReadOnlyList<CombatRuleEvent> events = turnEvents; DamagePlan damagePlan = null; DiscardRewardResolution discardReward = null; BattleEffectPlan effectPlan = null;
-                if (skipPlayer || enemy && blocked && !diedAtStart)
+                if (skipPlayer || enemy && blocked && !stoppedAtStart)
                 {
                     var skipped = CombatStatusLifecycle.SkipActionWindow(combat, combat.Revision, actor, Definition.StatusCatalog);
                     if (!skipped.Accepted) return new TeamBattleTransition(originalState,
@@ -421,7 +425,7 @@ namespace PokerEngine
                     timeline?.ObserveCombat(skipped.RuleEvents);
                     combat = skipped.State; events = events.Concat(skipped.RuleEvents).ToArray();
                 }
-                if (action == ScoredDuelActionKind.ScoredHand || enemy && !blocked && !diedAtStart && (state.Enemies.Single(e => e.Id == actor).Behavior == null || state.Enemies.Single(e => e.Id == actor).BehaviorState.Intent?.Effects != null))
+                if (action == ScoredDuelActionKind.ScoredHand || enemy && !blocked && !stoppedAtStart && (state.Enemies.Single(e => e.Id == actor).Behavior == null || state.Enemies.Single(e => e.Id == actor).BehaviorState.Intent?.Effects != null))
                 {
                     if (!enemy)
                     {
@@ -531,7 +535,7 @@ namespace PokerEngine
                     combat = resolved.State; events = events.Concat(resolved.RuleEvents).ToArray();
                     triggerRuntime = (RelicReactionRuntime)resolved.ReactionRuntime;
                 }
-                if (enemy && !blocked && !diedAtStart && state.Enemies.Single(e => e.Id == actor).Behavior != null)
+                if (enemy && !blocked && !stoppedAtStart && state.Enemies.Single(e => e.Id == actor).Behavior != null)
                 {
                     state = CompleteEnemyBehavior(WindowState(state, combat, players, state.Phase, state.CompletedRounds, state.PendingEnemies), actor, generatedCards, timeline, worldObserver);
                     combat = state.Combat;
@@ -559,7 +563,7 @@ namespace PokerEngine
                 // Explicit end/skip commands are boundaries, not completed actions. A finished battle starts no new clock.
                 bool finished = IsFinished(combat, players, state.Enemies);
                 bool hasCompletion = RelicReactionRuntime.HandlesAction(state, actor, action);
-                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked && !diedAtStart) &&
+                if (!finished && (action == ScoredDuelActionKind.ScoredHand || action == ScoredDuelActionKind.Discard || enemy && !blocked && !stoppedAtStart) &&
                     (hasCompletion || HasPeriodic(combat, new[] { actor }, CombatTimingKind.ActionCompleted)))
                 {
                     if (hasCompletion) triggerRuntime = triggerRuntime.WithCompletion(new BattleActionCompletionContext(state, actor, action,
@@ -818,9 +822,12 @@ namespace PokerEngine
         private bool HasPeriodic(CombatState combat, IEnumerable<ParticipantId> participants, CombatTimingKind timing)
         {
             if (Definition.StatusCatalog == null) return false;
-            var living = new HashSet<string>(participants.Where(id => combat.Get(id).IsAlive).Select(id => id.Value));
-            return combat.Statuses.Any(status => status.Target.Kind == EntityKind.Participant && living.Contains(status.Target.Id) &&
-                Definition.StatusCatalog.Get(status.DefinitionId).Behaviors.OfType<PeriodicDamageSpec>().Any(behavior => behavior.Timing == timing));
+            var subjects = new HashSet<string>(participants.Select(id => id.Value));
+            return combat.Statuses.Any(status => status.Target.Kind == EntityKind.Participant && combat.Get(new ParticipantId(status.Target.Id)).IsAlive &&
+                Definition.StatusCatalog.Get(status.DefinitionId).Behaviors.OfType<PeriodicDamageSpec>().Any(behavior => behavior.Timing == timing &&
+                    subjects.Contains(behavior.TimingSubject == PeriodicTimingSubject.Applier ? status.Source.Id : status.Target.Id) &&
+                    (behavior.TimingSubject != PeriodicTimingSubject.Applier || timing == CombatTimingKind.PhaseEnding ||
+                        combat.Get(new ParticipantId(status.Source.Id)).IsAlive)));
         }
 
         private static CardDuelError EffectFailure(CombatError error, bool discard = false) =>

@@ -139,13 +139,26 @@ internal static partial class PlaytestBridge
         }
     }
 
-    private static object Hand(ScoreResult score, HandAttackInfo facts = null) => D("category", score.Category.ToString(), "label", HandName(score.Category) + (facts?.UsesFlushOverlay == true && facts.IsFlush && score.Category != HandCategory.StraightFlush ? "＋同花治疗" : ""),
-        "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints), "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
+    private static object Hand(ScoreResult score, HandAttackInfo facts = null)
+    {
+        var mechanisms = facts?.CompatibleCategories ?? new[] { score.Category };
+        return D("category", score.Category.ToString(), "label", HandName(score.Category),
+            "scoringCategory", score.Category.ToString(), "scoringLabel", HandName(score.Category),
+            "mechanisms", mechanisms.Select(category => D("category", category.ToString(), "label", HandName(category))).ToArray(),
+            "mechanismLabel", string.Join("、", mechanisms.Select(HandName)),
+            "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints),
+            "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
+    }
 
     private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog, Entry entry) => result.Steps.Select(step => {
         var transition = step.Transition; var lines = new List<string>();
-        if (transition.Score != null) lines.Add(HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
-            " × 倍率 " + transition.Score.Multiplier.ToString(CultureInfo.InvariantCulture) + " = 牌型得分 " + Number(transition.Score.Total));
+        if (transition.Score != null)
+        {
+            lines.Add("计伤牌型：" + HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
+                " × 倍率 " + transition.Score.Multiplier.ToString(CultureInfo.InvariantCulture) + " = 牌型得分 " + Number(transition.Score.Total));
+            var facts = transition.ActionCompletion?.Context.Hand;
+            if (facts != null) lines.Add("兼容牌型：" + string.Join("、", facts.CompatibleCategories.Select(HandName)));
+        }
         if (transition.ActionCost != null) lines.Add("消耗能量 " + transition.ActionCost.Cost);
         lines.AddRange(EventLines(transition.RuleEvents, step.Before.Duel, catalog, entry));
         lines.AddRange(WorldEffectLines(transition.Timeline, entry));
@@ -229,7 +242,7 @@ internal static partial class PlaytestBridge
             {
                 if (timing.Signal.Kind == CombatTimingKind.BattleStarted) yield return "战斗开始";
                 if (timing.Signal.Kind == CombatTimingKind.BattleEnded) yield return "战斗结束事件";
-                if (timing.Signal.Kind == CombatTimingKind.TurnStarted) yield return "持有者回合开始";
+                if (timing.Signal.Kind == CombatTimingKind.TurnStarted) yield return "回合开始：" + string.Join("、", timing.Signal.Participants.Select(id => Name(names, id)));
                 if (timing.Signal.Kind == CombatTimingKind.BeforeDraw) yield return "摸牌前事件";
                 if (timing.Signal.Kind == CombatTimingKind.Draw) yield return "摸牌后事件：" + timing.Signal.Cards.Count + " 张";
                 if (timing.Signal.Kind == CombatTimingKind.Reshuffle) yield return "洗回抽牌堆事件：" + timing.Signal.Cards.Count + " 张";
@@ -281,7 +294,14 @@ internal static partial class PlaytestBridge
         if (behavior is OverhealDamageSpec) return "溢出治疗转伤 " + Ratio(((OverhealDamageSpec)behavior).Ratio);
         if (behavior is HitArmorSpec armor) return "护甲 · 承伤 " + Ratio(armor.Multiplier) + " · 每击消耗 " + armor.ConsumeStacks + " 层";
         var periodic = behavior as PeriodicDamageSpec;
-        if (periodic != null) return (periodic.Timing == CombatTimingKind.TurnStarted ? "持有者行动前" : periodic.Timing == CombatTimingKind.ActionCompleted ? "行动后" : "阶段结束时") + Number(periodic.DamagePerStack) + " 伤害/层" + (periodic.StackDecay > 0 ? "，随后减 " + periodic.StackDecay + " 层" : "");
+        if (periodic != null)
+        {
+            string subject = periodic.TimingSubject == PeriodicTimingSubject.Applier ? "施加者" : "中毒者";
+            string timing = periodic.Timing == CombatTimingKind.TurnStarted ? "回合开始" :
+                periodic.Timing == CombatTimingKind.ActionCompleted ? "每次有效行动后" : "所属阵营阶段结束";
+            return subject + timing + "：" + Number(periodic.DamagePerStack) + " 伤害/层" +
+                (periodic.StackDecay > 0 ? "，随后减 " + periodic.StackDecay + " 层" : "");
+        }
         return "状态效果";
     }
     private static string Ratio(decimal ratio) => ratio <= decimal.MaxValue / 100
