@@ -59,8 +59,13 @@ namespace PokerEngine
         {
             writer.Write(effect != null); if (effect == null) return;
             writer.Write((int)effect.Kind); writer.Write(effect.Amount);
-            var status = effect.Status; writer.Write(status != null); if (status == null) return;
-            writer.Write(status.DefinitionId.Value); writer.Write(status.Stacks);
+            WriteStatus(writer, effect.OnHitStatus);
+            WriteStatus(writer, effect.Status);
+        }
+        private static void WriteStatus(BinaryWriter writer, StatusApplicationSpec status)
+        {
+            writer.Write(status != null); if (status == null) return;
+            writer.Write(status.DefinitionId.Value); writer.Write(status.Stacks); writer.Write(status.StacksPerSubmittedCard);
             writer.Write(status.Duration != null);
             if (status.Duration != null)
             {
@@ -146,7 +151,7 @@ namespace PokerEngine
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             var entries = context.Loadout.Relics.SelectMany(relic => context.Loadout.RulesFor(relic.InstanceId).HandEffects
-                .Where(spec => spec.HandCategory == context.Action.Score.Category).Select(spec => new Entry { Source = relic.InstanceId, Spec = spec }))
+                .Where(spec => context.Action.Hand?.MatchesCategory(spec.HandCategory) ?? spec.HandCategory == context.Action.Score.Category).Select(spec => new Entry { Source = relic.InstanceId, Spec = spec }))
                 .ToArray();
             var output = new List<BattleEffectStep>(); var changes = new List<HandEffectChange>();
             foreach (var step in context.Sequence.Steps)
@@ -209,7 +214,7 @@ namespace PokerEngine
             var specs = loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).HandEffects).ToArray();
             if (specs.Length > 0 && rules.EffectRule == null)
                 throw new ArgumentException("Structural relics require a scored-hand effect rule.");
-            foreach (var status in specs.Where(spec => spec.Effect?.Status != null).Select(spec => spec.Effect.Status))
+            foreach (var status in specs.SelectMany(spec => new[] { spec.Effect?.Status, spec.Effect?.OnHitStatus }).Where(status => status != null))
             {
                 var definition = catalog?.Get(status.DefinitionId) ?? throw new ArgumentException("Relic status effects require a status catalog.");
                 bool triggers = status.Duration != null ? status.Duration.Kind == DurationKind.TriggerCount :

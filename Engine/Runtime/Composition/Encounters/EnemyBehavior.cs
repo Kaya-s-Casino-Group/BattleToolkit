@@ -4,6 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
+    public enum SummonLimitScope { Battlefield, Summoner }
     public enum EnemyDeadTargetPolicy { Retarget, Skip }
     public enum EnemySelectionMode { Sequence, Priority, Weighted }
     public enum CardInsertionPosition { Default, Shuffle, Top, Bottom }
@@ -25,6 +26,8 @@ namespace PokerEngine
                 kind == EnemyConditionKind.HasStatus && string.IsNullOrWhiteSpace(statusId)) throw new ArgumentException("Invalid enemy condition.");
             Kind = kind; Value = value; StatusId = statusId; Children = Array.AsReadOnly(copy);
         }
+        internal IEnumerable<bool> HealthThresholds(TeamBattleState state, ParticipantId owner) =>
+            (Kind == EnemyConditionKind.HealthAtMost ? new[] { Matches(state, owner) } : Enumerable.Empty<bool>()).Concat(Children.SelectMany(c => c.HealthThresholds(state, owner)));
         internal bool Matches(TeamBattleState state, ParticipantId owner)
         {
             var unit = state.Combat.Get(owner);
@@ -48,19 +51,21 @@ namespace PokerEngine
         public string CardFace { get; }
         public int Count { get; }
         public int LivingLimit { get; }
+        public SummonLimitScope LimitScope { get; }
         public string Zone { get; }
         public CardInsertionPosition Position { get; }
         public bool Disabled { get; }
         public CardEffects CardEffects { get; }
-        private EnemyWorldEffect(string enemyRef, string face, int count, int limit, string zone, bool disabled, CardEffects effects, CardInsertionPosition position = CardInsertionPosition.Bottom)
+        private EnemyWorldEffect(string enemyRef, string face, int count, int limit, string zone, bool disabled, CardEffects effects, CardInsertionPosition position = CardInsertionPosition.Bottom, SummonLimitScope limitScope = SummonLimitScope.Battlefield)
         {
             if (count < 1 || count > 64 || limit < 1 || limit > 63) throw new ArgumentException("Invalid world effect capacity.");
             CardEffectRules.Validate(effects);
             EnemyRef = enemyRef; CardFace = face; Count = count; LivingLimit = limit; Zone = zone; Disabled = disabled; CardEffects = effects;
-            Position = position;
+            if (!Enum.IsDefined(typeof(SummonLimitScope), limitScope)) throw new ArgumentException("Invalid summon limit scope.");
+            Position = position; LimitScope = limitScope;
         }
-        public static EnemyWorldEffect Summon(string enemyRef, int count = 1, int livingLimit = 4) =>
-            new EnemyWorldEffect(Guard.Text(enemyRef, nameof(enemyRef)), null, count, livingLimit, null, false, CardEffects.None);
+        public static EnemyWorldEffect Summon(string enemyRef, int count = 1, int livingLimit = 4, SummonLimitScope limitScope = SummonLimitScope.Battlefield) =>
+            new EnemyWorldEffect(Guard.Text(enemyRef, nameof(enemyRef)), null, count, livingLimit, null, false, CardEffects.None, limitScope: limitScope);
         public static EnemyWorldEffect AddCards(string face, int count = 1, string zone = "discard", bool disabled = false, CardEffects effects = CardEffects.Ineffective | CardEffects.Unplayable,
             CardInsertionPosition position = CardInsertionPosition.Default)
         {
@@ -116,13 +121,18 @@ namespace PokerEngine
         public IReadOnlyList<EnemyBehaviorStage> Stages { get; }
         public BattleEffectSequence OpeningEffects { get; }
         public int Seed { get; }
-        public EnemyBehaviorDefinition(IEnumerable<EnemyBehaviorStage> stages, BattleEffectSequence openingEffects = null, int seed = 1)
+        public int IntentPreviewTurns { get; }
+        public bool RefreshOnHealthThreshold { get; }
+        public bool ConsumeFailedSummon { get; }
+        public EnemyBehaviorDefinition(IEnumerable<EnemyBehaviorStage> stages, BattleEffectSequence openingEffects = null, int seed = 1, int intentPreviewTurns = 1, bool refreshOnHealthThreshold = false, bool consumeFailedSummon = true)
         {
             var copy = stages.ToArray();
             if (copy.Length == 0 || copy.Length > 16 || copy.Any(s => s == null) || copy.Select(s => s.Id).Distinct().Count() != copy.Length)
                 throw new ArgumentException("Invalid enemy behavior stages.");
             if (openingEffects != null && openingEffects.Steps.Any(s => s.Target.Group != EffectTargetGroup.Self || s.Effect.Kind != CombatEffectKind.ApplyStatus))
                 throw new ArgumentException("Opening effects only apply statuses to Self.");
+            if (intentPreviewTurns < 1 || intentPreviewTurns > 8) throw new ArgumentOutOfRangeException(nameof(intentPreviewTurns));
+            IntentPreviewTurns = intentPreviewTurns; RefreshOnHealthThreshold = refreshOnHealthThreshold; ConsumeFailedSummon = consumeFailedSummon;
             Stages = Array.AsReadOnly(copy); OpeningEffects = openingEffects; Seed = seed;
         }
     }

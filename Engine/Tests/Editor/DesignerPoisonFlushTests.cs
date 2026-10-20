@@ -1,0 +1,153 @@
+using System;
+using System.Linq;
+using System.Xml;
+using NUnit.Framework;
+
+namespace PokerEngine.Tests
+{
+    [TestFixture]
+    public sealed class DesignerPoisonFlushTests
+    {
+        private static readonly ParticipantId P = new ParticipantId("player"), E = new ParticipantId("enemy");
+        private static XmlDocument Document(int[] ranks, bool flush, Action<XmlDocument> edit = null)
+        {
+            var d = new XmlDocument(); d.LoadXml(ToolkitTestFiles.Read("Engine/Content/StandardSingleBattle.xml"));
+            d.SelectSingleNode("//Deck[@id='standard-deck']").InnerXml = string.Join("", ranks.Select((r, i) =>
+                "<Card id='test-" + i + "' face='standard:" + (flush ? 1 : i % 4 + 1) + ":" + r + "'/>"));
+            var enemy = (XmlElement)d.SelectSingleNode("//Enemy[@id='rotator']"); enemy.InnerXml = "";
+            enemy.SetAttribute("maxHealth", "10000"); enemy.SetAttribute("damage", "0"); edit?.Invoke(d); return d;
+        }
+        private static BattleSession Load(int[] ranks, bool flush = false, Action<XmlDocument> edit = null)
+        {
+            var result = BattleContentCompiler.CompileXml(Document(ranks, flush, edit).OuterXml);
+            Assert.IsTrue(result.Success, string.Join("; ", result.Diagnostics.Select(x => x.Message)));
+            var build = BattleContentFactory.Create(result.Content, new BattleSetupRequest("standard-single-battle", "designer-feedback", HmacDeckShuffler.FromSeed(new byte[32])));
+            Assert.IsTrue(build.Success); Act(build.Session, CardDuelAction.Start); Act(build.Session, CardDuelAction.SkipDraw); return build.Session;
+        }
+        private static void Gear(XmlDocument d, string inner)
+        {
+            var node = d.CreateElement("Relic"); node.SetAttribute("id", "check"); node.InnerXml = inner;
+            d.SelectSingleNode("/BattleContent/Relics").AppendChild(node);
+            node = d.CreateElement("Relic"); node.SetAttribute("ref", "check"); node.SetAttribute("instanceId", "check");
+            d.SelectSingleNode("//Loadout[@id='baseline']").AppendChild(node);
+        }
+        private static BattleSessionResult Act(BattleSession s, CardDuelAction action, CardInstanceId[] cards = null)
+        { var r = s.Execute(s.State.Revision, P, action, cards); Assert.IsTrue(r.Accepted, action + ": " + r.Error); return r; }
+        private static CardInstanceId[] Hand(BattleSession s) => s.State.Zone(CardZoneKinds.Hand, P).Cards.ToArray();
+        private static CombatEvent[] Hits(BattleSessionResult r) => r.Steps[0].Transition.Events.Where(e => e.Effect.Kind == CombatEffectKind.Damage).ToArray();
+        private static CombatEvent Heal(BattleSessionResult r) => r.Steps[0].Transition.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal);
+        private static int Poison(BattleSession s) => s.State.Duel.Combat.Statuses.Single(x => x.DefinitionId.Value == "bleed").Stacks;
+        [Test] public void EachSubmittedCardHitsOnceAndAddsOneStackBeforeNextHit()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }); var play = Act(s, CardDuelAction.Play, Hand(s));
+            Assert.AreEqual(5, Poison(s)); Assert.AreEqual(5, Hits(play).Length);
+            CollectionAssert.AreEqual(new long[] { 4, 6, 8, 10, 12 }, Hits(play).Select(h => h.SettledAmount).OrderBy(x => x));
+            CollectionAssert.AreEqual(Enumerable.Range(0, 5).SelectMany(_ => new[] { CombatEffectKind.Damage, CombatEffectKind.ApplyStatus }),
+                play.Steps[0].Transition.RuleEvents.Where(e => e.Effect != null).Select(e => e.Effect.Kind));
+            long before = s.State.Duel.Combat.Get(E).Health; Act(s, CardDuelAction.EndTurn);
+            Assert.AreEqual(before - 5, s.State.Duel.Combat.Get(E).Health); Assert.AreEqual(4, Poison(s));
+            Act(s, CardDuelAction.SkipDraw); Act(s, CardDuelAction.EndTurn);
+            Assert.AreEqual(before - 9, s.State.Duel.Combat.Get(E).Health); Assert.AreEqual(3, Poison(s));
+        }
+        [Test] public void ShortStraightAndExtraHitUseActualCardsAndRepeatOnHitStatus()
+        {
+            var s = Load(new[] { 2, 3, 4 }, edit: d => Gear(d, "<RuleValue id='short' key='MinStraightCards' delta='-2'/><HandModifier id='extra' category='Straight' operation='AddHits' stepId='damage/1' hits='1'/>"));
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(4, Hits(r).Length); Assert.AreEqual(4, Poison(s));
+            Assert.AreEqual(18 + Hits(r)[0].SettledAmount, Hits(r).Sum(h => h.SettledAmount));
+        }
+        [TestCase(new[] { 2, 3, 4, 5, 6 }, HandCategory.Straight, 40, 16, 5)]
+        [TestCase(new[] { 7, 7, 7 }, HandCategory.ThreeOfAKind, 42, 16, 1)]
+        [TestCase(new[] { 7, 7, 7, 8 }, HandCategory.ThreeOfAKind, 42, 23, 1)]
+        [TestCase(new[] { 2, 7, 9 }, HandCategory.HighCard, 9, 14, 1)]
+        public void FlushScoresDamageIndependentlyAndHealsWithAllChipsAndBaseMultiplier(int[] ranks, HandCategory category, int damage, int healing, int hits)
+        {
+            var s = Load(ranks, true); var r = Act(s, CardDuelAction.Play, Hand(s));
+            Assert.AreEqual(category, r.Steps[0].Transition.Score.Category); Assert.AreEqual(hits, Hits(r).Length);
+            Assert.AreEqual(damage, Hits(r).Sum(h => h.SettledAmount)); Assert.AreEqual(healing, Heal(r).SettledAmount);
+            if (category == HandCategory.Straight) Assert.AreEqual(5, Poison(s));
+        }
+        [Test] public void ShortStraightFlushInheritsShortStraightAndFlushBonus()
+        {
+            var s = Load(new[] { 2, 3, 4 }, true, d => Gear(d, "<RuleValue id='short' key='MinStraightCards' delta='-2'/>"));
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(3, Hits(r).Length); Assert.AreEqual(3, Poison(s)); Assert.AreEqual(7, Heal(r).SettledAmount);
+        }
+        [Test] public void FlushHealingIgnoresScoringRelicMultipliersAndFlushLevelButRestoresHealth()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, true, d => {
+                Gear(d, "<Score operation='MultiplyMultiplier' amount='3'/><BoundaryTrigger id='injury' timing='BattleStarted'><Effect kind='Damage' amount='100' target='Self'/></BoundaryTrigger>");
+                var level = d.CreateElement("HandLevel"); level.SetAttribute("category", "Flush"); level.SetAttribute("level", "9"); d.SelectSingleNode("//Loadout[@id='baseline']").AppendChild(level);
+            });
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(120, Hits(r).Sum(h => h.SettledAmount));
+            Assert.AreEqual(16, Heal(r).HealthRestored); Assert.AreEqual(716, s.State.Duel.Combat.Get(P).Health);
+        }
+        [Test] public void DuplicateSameSuitTriplesHitEveryEnemy()
+        {
+            var s = Load(new[] { 7, 7, 7 }, true, d => {
+                var encounter = d.SelectSingleNode("//Encounter[@id='standard-single-battle']");
+                var enemy = d.CreateElement("Enemy"); enemy.SetAttribute("id", "second"); enemy.SetAttribute("ref", "rotator"); encounter.AppendChild(enemy);
+            });
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(2, Hits(r).Length); Assert.IsTrue(Hits(r).All(h => h.SettledAmount == 42)); Assert.AreEqual(16, Heal(r).SettledAmount);
+        }
+        [Test] public void RoyalFlushKeepsForcedElimination()
+        {
+            var s = Load(new[] { 10, 11, 12, 13, 14 }, true); var r = Act(s, CardDuelAction.Play, Hand(s));
+            Assert.IsTrue(s.State.Duel.IsFinished); Assert.IsEmpty(Hits(r)); Assert.IsFalse(r.Steps[0].Transition.Events.Any(e => e.Effect.Kind == CombatEffectKind.Heal));
+        }
+        [Test] public void PreviewDoesNotCommitPoisonHealingOrRandomState()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, true); var before = s.State;
+            var preview = s.Engine.PreviewPlay(before, before.Revision, P, Hand(s)); Assert.IsTrue(preview.Accepted); Assert.AreSame(before, s.State); Assert.IsEmpty(s.State.Duel.Combat.Statuses);
+            var result = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(preview.State.Duel.Combat.Get(E).Health, result.State.Duel.Combat.Get(E).Health);
+            Assert.AreEqual(preview.State.Duel.Combat.Statuses.Single().Stacks, Poison(s));
+        }
+        [Test] public void SharedChipBonusesAreCountedOnceAcrossCardHits()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, edit: d => Gear(d, "<Score operation='AddPoints' amount='10'/>"));
+            var r = Act(s, CardDuelAction.Play, Hand(s));
+            Assert.AreEqual(60, Hits(r).Sum(h => h.SettledAmount)); Assert.AreEqual(5, Poison(s));
+        }
+        [Test] public void SameSuitFullHouseKeepsSeparateTriplePairScoresAndHealing()
+        {
+            var s = Load(new[] { 7, 7, 7, 8, 8 }, true); var r = Act(s, CardDuelAction.Play, Hand(s));
+            CollectionAssert.AreEqual(new long[] { 42, 32 }, Hits(r).Select(h => h.SettledAmount)); Assert.AreEqual(29, Heal(r).SettledAmount);
+        }
+        [Test] public void FlushHealingRelicsRecognizeOverlayWhileStraightDamageKeepsItsCategory()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, true, d => Gear(d,
+                "<Numeric id='healing' stat='HealingDone' operation='AddRate' value='0.5' origins='Primary' hand='Flush'/>"));
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(24, Heal(r).SettledAmount);
+            Assert.AreEqual(40, Hits(r).Sum(h => h.SettledAmount)); Assert.AreEqual(5, Poison(s));
+        }
+        [Test] public void PoisonNeverTransfersFromAKillingHitToAnUnhitTarget()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, edit: d => {
+                var weak = d.CreateElement("Enemy"); weak.SetAttribute("id", "weak"); weak.SetAttribute("maxHealth", "1"); weak.SetAttribute("damage", "0");
+                d.SelectSingleNode("/BattleContent/Enemies").AppendChild(weak);
+                ((XmlElement)d.SelectSingleNode("//Encounter[@id='standard-single-battle']/Enemy")).SetAttribute("ref", "weak");
+                var extra = d.CreateElement("Enemy"); extra.SetAttribute("id", "second"); extra.SetAttribute("ref", "rotator");
+                d.SelectSingleNode("//Encounter[@id='standard-single-battle']").AppendChild(extra);
+            });
+            var r = Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(E, Hits(r)[0].Effect.Target);
+            Assert.IsTrue(Hits(r).Skip(1).All(h => h.Effect.Target.Value == "second"));
+            Assert.AreEqual(4, Poison(s)); Assert.AreEqual("second", s.State.Duel.Combat.Statuses.Single().Target.Id);
+        }
+        [Test] public void PerSubmittedCardStatusAmountRemainsConfigurable()
+        {
+            var s = Load(new[] { 2, 3, 4, 5, 6 }, edit: d => {
+                var status = (XmlElement)d.SelectSingleNode("//Hand[@category='Straight']/Effect/OnHitStatus");
+                status.SetAttribute("stacks", "0"); status.SetAttribute("stacksPerSubmittedCard", "1");
+            });
+            Act(s, CardDuelAction.Play, Hand(s)); Assert.AreEqual(25, Poison(s));
+        }
+        [Test] public void OnHitStatusRejectsNonDamageAndEnemySubmittedCardDependencies()
+        {
+            var d = Document(new[] { 2, 3, 4, 5, 6 }, false);
+            ((XmlElement)d.SelectSingleNode("//Hand[@category='Straight']/Effect")).SetAttribute("kind", "Heal");
+            Assert.IsFalse(BattleContentCompiler.CompileXml(d.OuterXml).Success);
+            d = Document(new[] { 2, 3, 4, 5, 6 }, false);
+            var enemy = (XmlElement)d.SelectSingleNode("//Enemy[@id='rotator']"); enemy.RemoveAttribute("damage");
+            enemy.InnerXml = "<Effects><Effect id='hit' kind='Damage' amount='1'><OnHitStatus statusRef='bleed' stacks='0' stacksPerSubmittedCard='1'/></Effect></Effects>";
+            Assert.IsFalse(BattleContentCompiler.CompileXml(d.OuterXml).Success);
+        }
+    }
+}

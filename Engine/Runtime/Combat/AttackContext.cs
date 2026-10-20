@@ -31,20 +31,29 @@ namespace PokerEngine
     public sealed class HandAttackInfo
     {
         public PokerHandClassification Pattern { get; }
+        public PokerHandClassification RankPattern { get; }
+        public bool IsFlush { get; }
+        public long? FlushBaseTotal { get; }
+        public bool UsesFlushOverlay { get; }
+        public bool MatchesCategory(HandCategory category) => Pattern.Category == category || UsesFlushOverlay && IsFlush && (category == HandCategory.Flush || RankPattern.Category == category);
         public IReadOnlyList<AttackCardSnapshot> SubmittedCards { get; }
         public IReadOnlyList<AttackCardSnapshot> PatternCards { get; }
         public IReadOnlyList<AttackCardSnapshot> ScoringCards { get; }
-        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted)
+        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false)
         {
             Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
             var cards = Guard.Copy(submitted, nameof(submitted));
-            if (cards.Length < 1 || cards.Length > 5 || cards.Any(x => x == null) ||
+            if (cards.Length < 1 || cards.Length > 10 || cards.Any(x => x == null) ||
                 cards.Select(x => x.Id).Distinct().Count() != cards.Length ||
                 !cards.Select(x => x.Id).SequenceEqual(pattern.SubmittedCards) ||
                 pattern.ScoringCards.Count == 0 || pattern.ScoringCards.Distinct().Count() != pattern.ScoringCards.Count ||
                 pattern.ScoringCards.Any(id => !cards.Any(card => card.Id == id)))
                 throw new ArgumentException("Card snapshots must preserve the authoritative classification membership and order.");
+            if (flushBaseTotal < 0) throw new ArgumentOutOfRangeException(nameof(flushBaseTotal));
+            FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay;
             SubmittedCards = Guard.View(cards);
+            IsFlush = cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
+            RankPattern = PokerHandClassifier.ClassifyBest(cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)), minFlushCards, minStraightCards, true);
             PatternCards = Guard.View(pattern.ScoringCards.Select(id => cards.Single(card => card.Id == id)).ToArray());
             ScoringCards = Guard.View(PatternCards.Where(card => card.CanScore).ToArray());
         }

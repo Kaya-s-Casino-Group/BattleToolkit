@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum RelicBoundaryTiming { BattleStarted = 1, PhaseStarted, PhaseEnding }
+    public enum RelicBoundaryTiming { BattleStarted = 1, PhaseStarted, PhaseEnding, TurnStarted, BeforeDraw, Draw, Reshuffle, PlayPhaseEnd, BattleEnded }
     public enum RelicPhaseRelation { OwnerTeam = 1, OpponentTeam, Any }
 
     /// <summary>A lifecycle subscription with no fictional effect source, target or origin.</summary>
@@ -26,18 +26,18 @@ namespace PokerEngine
             Id = Guard.Text(id, nameof(id));
             var steps = Guard.Copy(effects, nameof(effects)); var predicates = Guard.Copy(conditions ?? Array.Empty<RelicTriggerConditionSpec>(), nameof(conditions));
             if (!Enum.IsDefined(typeof(RelicBoundaryTiming), timing) || !Enum.IsDefined(typeof(CombatReactionSourcePolicy), sourcePolicy) ||
-                (timing == RelicBoundaryTiming.BattleStarted ? phase.HasValue : !phase.HasValue) ||
+                ((timing == RelicBoundaryTiming.BattleStarted || timing == RelicBoundaryTiming.BattleEnded) ? phase.HasValue : !phase.HasValue) ||
                 phase.HasValue && !Enum.IsDefined(typeof(RelicPhaseRelation), phase.Value) || steps.Length < 1 || steps.Length > 64 || predicates.Length > 16 ||
                 steps.Any(step => step.Target.Group == CombatTargetGroup.EventSource || step.Target.Group == CombatTargetGroup.EventTarget || step.Target.Group == CombatTargetGroup.EventActor) ||
                 predicates.Any(item => item.Kind != RelicTriggerConditionKind.OwnerHealthAtMost && item.Kind != RelicTriggerConditionKind.OwnerHasStatus))
                 throw new ArgumentException("Invalid relic boundary trigger or unavailable boundary facts.");
+            if (steps.Any(s => s.AmountPerHandCard > 0) && timing != RelicBoundaryTiming.PlayPhaseEnd && timing != RelicBoundaryTiming.BeforeDraw && timing != RelicBoundaryTiming.Draw && timing != RelicBoundaryTiming.Reshuffle) throw new ArgumentException("Hand count is unavailable at this boundary.");
             Timing = timing; Phase = phase; Effects = Guard.View(steps); Conditions = Guard.View(predicates);
             Priority = priority; CanTriggerReactions = canTriggerReactions; SourcePolicy = sourcePolicy;
         }
         internal bool Matches(CombatState combat, ParticipantId owner, CombatTimingSignal signal)
         {
-            var kind = Timing == RelicBoundaryTiming.BattleStarted ? CombatTimingKind.BattleStarted :
-                Timing == RelicBoundaryTiming.PhaseStarted ? CombatTimingKind.PhaseStarted : CombatTimingKind.PhaseEnding;
+            var kind = (CombatTimingKind)Enum.Parse(typeof(CombatTimingKind), Timing.ToString());
             if (signal.Kind != kind) return false;
             if (!Phase.HasValue || Phase == RelicPhaseRelation.Any) return true;
             bool same = signal.Participants.All(id => combat.Get(id).TeamId == combat.Get(owner).TeamId);

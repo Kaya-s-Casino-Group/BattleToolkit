@@ -109,6 +109,32 @@ class PlaytestTests(unittest.TestCase):
         result.pop('runId', None)
         return result
 
+    def test_standard_flush_independent_damage_and_on_hit_poison_preview(self):
+        xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        def edit(root):
+            deck = root.find("Decks/Deck[@id='standard-deck']")
+            for card in list(deck):
+                deck.remove(card)
+            for rank in range(2, 7):
+                ET.SubElement(deck, 'Card', id='flush-' + str(rank), face='standard:1:' + str(rank))
+        battle = self.start(changed_xml(xml, edit), encounter='standard-single-battle', draw=False)['battle']
+        battle = self.assert_success(self.action(battle, 'SkipDraw'))
+        cards = [c['id'] for c in battle['players'][0]['hand']]
+        preview = self.action(battle, 'Play', cards, op='preview')['preview']
+        self.assertTrue(preview['legal'], preview)
+        self.assertIsNone(preview['targetMessage'])
+        self.assertEqual('顺子＋同花治疗', preview['hand']['label'])
+        self.assertEqual('2', str(preview['hand']['multiplier']))
+        self.assertEqual(battle, self.state(battle))
+        played = self.action(battle, 'Play', cards)
+        self.assertTrue(played['success'], played)
+        lines = '\n'.join(line for step in played['steps'] for line in step['lines'])
+        self.assertIn('中毒', lines)
+        self.assertIn('层', lines)
+        self.assertIn('持有者行动前', lines)
+        self.assertNotIn('阶段结束时', lines)
+        self.assertEqual(5, played['battle']['enemies'][0]['statuses'][0]['stacks'])
+
     def test_enemy_behavior_templates_expose_world_effect_intents(self):
         for file, word in [('07_RotationGrunt', '试探'), ('08_ArmoredSummoner', '召唤'), ('09_GluttonyBoss', '吞食')]:
             with self.subTest(file=file):
@@ -201,7 +227,7 @@ class PlaytestTests(unittest.TestCase):
         self.assertEqual({'count': 0, 'unplayableCount': 0, 'cards': []}, battle['players'][0]['piles']['discard'])
         for expected in (1, 2):
             if battle['players'][0]['window'] == 'Draw':
-                battle = self.assert_success(self.action(battle, 'Draw', drawCount=1))
+                battle = self.assert_success(self.action(battle, 'SkipDraw'))
             result = self.action(battle, 'EndTurn')
             after = self.assert_success(result)
             player = after['players'][0]
@@ -225,6 +251,7 @@ class PlaytestTests(unittest.TestCase):
 
     def test_pile_composition_is_sorted_without_instance_ids_or_draw_order(self):
         xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
+        xml = changed_xml(xml, lambda root: root.find('Players/Player').set('openingDeal', 'false'))
         first = self.start(xml, encounter='standard-gluttony-boss', seed='pile-a', draw=False)['battle']
         second = self.start(xml, encounter='standard-gluttony-boss', seed='pile-b', draw=False)['battle']
         pile = first['players'][0]['piles']['deck']
@@ -239,19 +266,15 @@ class PlaytestTests(unittest.TestCase):
     def test_previewed_junk_creation_does_not_change_piles(self):
         xml = (server_module.ROOT / 'Engine/Content/StandardSingleBattle.xml').read_text(encoding='utf-8')
         battle = self.start(xml, encounter='standard-gluttony-boss')['battle']
-        # Stop in the ending window so previewing FinishTurn includes the enemy's actual planned settlement.
-        _, result = self.request({'op': 'command', 'sessionId': battle['sessionId'], 'runId': battle['runId'],
-            'revision': battle['revision'], 'actor': battle['players'][0]['id'], 'action': 'EndTurn', 'selected': []})
-        ending = self.assert_success(result)
-        self.assertEqual('Ending', ending['players'][0]['window'])
-        preview = self.action(ending, 'FinishTurn', op='preview')
+        # Standard ends immediately, so preview EndTurn directly includes the enemy settlement.
+        preview = self.action(battle, 'EndTurn', op='preview')
         self.assertTrue(preview['preview']['legal'])
-        self.assertEqual([{'actor': ending['enemies'][0]['id'], 'owner': ending['players'][0]['id'],
+        self.assertEqual([{'actor': battle['enemies'][0]['id'], 'owner': battle['players'][0]['id'],
                            'zone': 'discard', 'position': 'Bottom', 'count': 1, 'unplayableCount': 1}],
                          [fact for step in preview['preview']['steps'] for fact in step['cardCreations']])
-        self.assertEqual(ending, preview['battle'])
-        self.assertEqual(ending, self.state(ending))
-        committed = self.assert_success(self.action(ending, 'FinishTurn'))
+        self.assertEqual(battle, preview['battle'])
+        self.assertEqual(battle, self.state(battle))
+        committed = self.assert_success(self.action(battle, 'EndTurn'))
         self.assertEqual(1, committed['players'][0]['piles']['discard']['unplayableCount'])
 
     def test_presentation_labels_statuses_and_relics_come_from_frozen_content(self):

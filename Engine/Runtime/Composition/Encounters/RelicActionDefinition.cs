@@ -32,6 +32,7 @@ namespace PokerEngine
                 steps.Any(step => step.Target.Group == CombatTargetGroup.EventSource || step.Target.Group == CombatTargetGroup.EventTarget) ||
                 predicates.Any(item => !Supports(timing, item.Kind)))
                 throw new ArgumentException("Invalid relic action trigger or unavailable completion facts.");
+            if (discardKind.HasValue && !Enum.IsDefined(typeof(BattleDiscardKind), discardKind.Value)) throw new ArgumentException("Unknown discard kind.");
             DiscardKind = discardKind; Timing = timing; Relation = relation; Effects = Guard.View(steps); Conditions = Guard.View(predicates);
             Priority = priority; CanTriggerReactions = canTriggerReactions; SourcePolicy = sourcePolicy;
         }
@@ -54,7 +55,7 @@ namespace PokerEngine
         internal bool MatchesConditions(CombatState combat, ParticipantId owner, BattleActionCompletionContext context) =>
             (Timing != RelicActionTiming.DiscardCompleted || !DiscardKind.HasValue || DiscardKind == context.DiscardKind ||
                 DiscardKind == BattleDiscardKind.Defense && context.DefenseEligible) &&
-            Conditions.All(condition => condition.Kind == RelicTriggerConditionKind.HandCategory ? context.Hand?.Pattern.Category == condition.Category :
+            Conditions.All(condition => condition.Kind == RelicTriggerConditionKind.HandCategory ? context.Hand?.MatchesCategory(condition.Category.Value) == true :
                 condition.Kind == RelicTriggerConditionKind.SubmittedCardsAtLeast ? context.Hand != null && context.Hand.SubmittedCards.Count >= condition.Threshold :
                 condition.Kind == RelicTriggerConditionKind.DiscardedCardsAtLeast ? context.DiscardedCards != null && context.DiscardedCards.Count >= condition.Threshold :
                 BattleRelicTriggerResolver.OwnerCondition(condition, combat, owner));

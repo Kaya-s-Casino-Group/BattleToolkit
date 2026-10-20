@@ -12,7 +12,7 @@ Enemy 可以声明一个 Behavior，与固定 damage / Effects 互斥。Stage �
 - `cooldownRounds="1"`：使用后至少间隔一轮才能再用；`maxUses="0"` 表示不限次数。
 - `When` 支持 Always、All、Any、Not、HealthAtMost（0..1）、RoundAtLeast（从1开始）、AlliesBelow（不含自身的存活敌人数）、HasStatus。All/Any/Not 内继续嵌套 When，最多12层。
 
-在开局状态结算后、每个玩家阶段开始时提交意图。动作、阶段和每个效果的目标锁定在不可变 `BattleEnemySetup.BehaviorState` 中；玩家造成伤害不立即换招。下次规划才按新生命/状态选招。敌人受击致死或眩晕时由实际行动规则取消/跳过。
+在开局状态结算后、每个玩家阶段开始时提交意图。动作、阶段和每个效果的目标锁定在不可变 `BattleEnemySetup.BehaviorState` 中；默认玩家造成伤害不立即换招。`refreshOnHealthThreshold="true"` 时，阶段或动作中的血量条件跨过阈值会立即重选；标准 Boss 启用该选项。`intentPreviewTurns="8"` 提供未来八轮预告，小怪默认 1。敌人受击致死或眩晕时由实际行动规则取消/跳过。
 
 意图目标仍存活时保留。`Action.deadTarget="Retarget"`（默认）使用原目标选择规则补足死亡目标；设为 Skip 则跳过死亡目标。伤害数值仍根据实际行动时的状态结算。`PreviewEnemyAction` 复用真实结算，只操作预测副本，不消耗正式行为记忆或随机流。
 
@@ -51,7 +51,7 @@ OpeningEffects 只允许给自己施加状态，原生入场与召唤入场共�
 
 ### 召唤
 
-`enemyRef` 引用本包任何敌人定义，可以复用同一模板甚至自引用；实例化时才查表，避免配置递归展开。`livingLimit` 计入召唤者及所有存活敌人，达到上限则不再生成。全场最多保留64个单位（包含已死亡者），到达此硬上限后召唤不再产生单位。
+`enemyRef` 引用本包任何敌人定义，可以复用同一模板甚至自引用；实例化时才查表，避免配置递归展开。`livingLimit` 默认计入所有存活敌人；`limitScope="Summoner"` 只计本体及自己直属的存活召唤物。标准小怪设为 3，Boss 如需召唤可设为 6。达到上限则不再生成，`Behavior.consumeFailedSummon="false"` 保留失败动作的使用次数、冷却和轮换游标。全场最多保留64个单位（包含已死亡者），到达此硬上限后召唤不再产生单位。
 
 新怪物追加到敌方队尾，获得独立身份和行为记忆；不会进入当前敌方待行动队列，从下一敌方阶段行动。生成 `EnemySummoned` 时间线快照。召唤者在战斗效果中死亡则不继续召唤。
 
@@ -82,3 +82,8 @@ face 使用标准牌面 ID（可从模板或网页牌面选择器取得）。对
 ## 接口边界
 
 XML 网页编辑器提供上述字段、引用重命名和试玩意图显示；规则测试使用真实 XML。Unity 项目能引用同一套规则和模板，现有固定怪物接口保持兼容。**Unity 场景中的动态怪物生成/绑定、召唤动画、废牌美术及新时间线事件表现尚需表现层接入**；当前不会自动创建 Prefab。绝杀及局外流程没有改动。
+
+
+## revision 1582 / battle-content.5
+
+标准 XML 和新增字段、遗物边界、召唤归属、狂暴及意图预告约定见 [标准局内规则](../../../Content/README.md#revision-1582-扩展)。Combat 契约升级为 `combat.12`，新增卡牌边界事实；核心默认牌型仍保持传统扑克五张同花，标准对局通过配置启用短同花。

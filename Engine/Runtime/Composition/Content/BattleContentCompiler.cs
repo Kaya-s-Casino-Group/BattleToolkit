@@ -50,10 +50,11 @@ namespace PokerEngine
             var scores = ReadScores(section("ScoringProfiles"));
             var rules = ReadDefinitions(section("BattleRules"), "Rules", node =>
             {
-                Check(node, new[] { "id", "name", "version", "scoringRef", "roundLimit", "blockExpiry", "maxReactionEffects", "maxReactionDepth" }, new string[0]);
+                Check(node, new[] { "id", "name", "version", "scoringRef", "roundLimit", "blockExpiry", "maxReactionEffects", "maxReactionDepth", "clearEnemyBlock", "roundLimitBehavior", "enrageDamagePerRound" }, new string[0]);
                 string score = Text(node, "scoringRef"); Reference(node, "scoringRef", score, scores);
                 return new BattleRuleContentDefinition(score, new BattleRules(Text(node, "version", ContentVersion), Int(node, "roundLimit", 20),
-                    Enum(node, "blockExpiry", PlayerBlockExpiry.Retain), catalog, reactionLimits: new CombatReactionLimits(Int(node, "maxReactionEffects", 256), Int(node, "maxReactionDepth", 16))));
+                    Enum(node, "blockExpiry", PlayerBlockExpiry.Retain), catalog, reactionLimits: new CombatReactionLimits(Int(node, "maxReactionEffects", 256), Int(node, "maxReactionDepth", 16)), clearEnemyBlock: Bool(node, "clearEnemyBlock", false),
+                    roundLimitBehavior: Enum(node, "roundLimitBehavior", BattleRoundLimitBehavior.Lose), enrageDamagePerRound: Long(node, "enrageDamagePerRound", 0)));
             });
             var players = ReadPlayers(section("Players"), hands);
             var enemies = ReadEnemies(section("Enemies"));

@@ -94,7 +94,7 @@ namespace PokerEngine
                 spec.Conditions.Any(condition => !MatchesCondition(condition, context))) return null;
 
             var batch = RelicTriggerSettlement.Bind(context.ActionStart, combat, fact, context.Loadout, relic, spec.Id,
-                spec.Effects, spec.CanTriggerReactions, spec.SourcePolicy, context.Boundary);
+                spec.Effects, spec.CanTriggerReactions, spec.SourcePolicy, context.Boundary, context.Hand);
             return batch == null ? null : new RelicTriggerActivation(context, RelicTriggerSettlement.Pay(relic, budget), batch);
         }
         internal static bool OwnerCondition(RelicTriggerConditionSpec condition, CombatState combat, ParticipantId owner)
@@ -145,7 +145,7 @@ namespace PokerEngine
                 case RelicTriggerConditionKind.OwnerHealthAtMost:
                 case RelicTriggerConditionKind.OwnerHasStatus: return OwnerCondition(condition, context.Fact.State, context.Relic.OwnerId);
                 case RelicTriggerConditionKind.EventStatus: return fact.Effect?.Status?.DefinitionId == condition.StatusId;
-                case RelicTriggerConditionKind.HandCategory: return context.Hand?.Pattern.Category == condition.Category;
+                case RelicTriggerConditionKind.HandCategory: return context.Hand?.MatchesCategory(condition.Category.Value) == true;
                 case RelicTriggerConditionKind.SubmittedCardsAtLeast: return context.Hand != null && context.Hand.SubmittedCards.Count >= condition.Threshold;
                 case RelicTriggerConditionKind.DiscardedCardsAtLeast: return context.DiscardedCardCount.HasValue && context.DiscardedCardCount.Value >= condition.Threshold;
                 default: return false;
@@ -181,15 +181,17 @@ namespace PokerEngine
 
         internal static CombatReactionBatch Bind(TeamBattleState windowStart, CombatState combat, CombatRuleEvent fact,
             BattleRelicLoadout loadout, BattleRelicState relic, string triggerId, IReadOnlyList<RelicTriggeredEffectSpec> steps,
-            bool canTriggerReactions, CombatReactionSourcePolicy sourcePolicy, CombatTimingSignal boundary)
+            bool canTriggerReactions, CombatReactionSourcePolicy sourcePolicy, CombatTimingSignal boundary, HandAttackInfo hand = null)
         {
+            if (hand == null && steps.Any(s => s.Effect.Status?.StacksPerSubmittedCard > 0)) return null;
             string activationId = "relic-activation/" + Part(combat.Id) + fact.Revision.ToString(CultureInfo.InvariantCulture) + "/" +
                 fact.SequenceIndex.ToString(CultureInfo.InvariantCulture) + "/" + Part(relic.InstanceId) + Part(triggerId);
             var effects = new List<CombatReaction>();
             for (int index = 0; index < steps.Count; index++)
             {
                 var step = steps[index]; var effect = step.Effect;
-                if ((effect.Kind == CombatEffectKind.Damage || effect.Kind == CombatEffectKind.Heal || effect.Kind == CombatEffectKind.GainBlock) && effect.Amount == 0) continue;
+                long amount = checked(effect.Amount + step.AmountPerHandCard * (boundary?.HandCount ?? 0));
+                if ((effect.Kind == CombatEffectKind.Damage || effect.Kind == CombatEffectKind.Heal || effect.Kind == CombatEffectKind.GainBlock) && amount == 0) continue;
                 var targets = CombatTargetResolver.Resolve(combat, relic.OwnerId, step.Target, fact);
                 if (effects.Count + targets.Count > 64) throw new ArgumentException("Relic activation exceeds 64 bound effects.");
                 for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
@@ -202,9 +204,9 @@ namespace PokerEngine
                         var duration = status.Duration ?? BattleStatusTiming.Bind(windowStart, status.Lifetime ?? definition.DefaultLifetime, boundary);
                         var id = new StatusInstanceId(activationId + "/" + index.ToString(CultureInfo.InvariantCulture) + "/" + targetIndex.ToString(CultureInfo.InvariantCulture));
                         bound = CombatEffect.ApplyStatus(new StatusInstance(id, status.DefinitionId, EntityRef.Participant(relic.OwnerId),
-                            EntityRef.Participant(target), status.Stacks, duration));
+                            EntityRef.Participant(target), status.ResolveStacks(hand), duration));
                     }
-                    else bound = new CombatEffect(effect.Kind, relic.OwnerId, target, effect.Amount);
+                    else bound = new CombatEffect(effect.Kind, relic.OwnerId, target, amount);
                     effects.Add(new CombatReaction(bound, loadout.RulesFor(relic.InstanceId).Version + "/" + triggerId, relic.OwnerId,
                         CombatEffectOrigin.Triggered, canTriggerReactions, sourcePolicy, relic.InstanceId));
                 }
@@ -317,7 +319,7 @@ namespace PokerEngine
             var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
                 loadout.RulesFor(relic.InstanceId).BoundaryTriggers.OrderBy(spec => spec.Priority)
                 .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })));
-            if (!finished) foreach (var entry in entries)
+            if (!finished || boundary.Kind == CombatTimingKind.BattleEnded) foreach (var entry in entries)
             {
                 var loadout = nextLoadouts[entry.Owner]; var relic = loadout.Relics.Single(item => item.InstanceId == entry.Source);
                 var spec = entry.Spec; var budget = loadout.RulesFor(entry.Source).TriggerBudget;

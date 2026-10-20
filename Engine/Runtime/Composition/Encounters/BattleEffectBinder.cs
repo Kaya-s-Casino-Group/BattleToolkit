@@ -81,7 +81,7 @@ namespace PokerEngine
                             // Capacity and instance uniqueness are checked only when Combat actually applies the status.
                             // An earlier effect may defeat this target, in which case this status will be skipped.
                             var status = new StatusInstance(id, spec.Status.DefinitionId, EntityRef.Participant(source), EntityRef.Participant(target),
-                                spec.Status.Stacks, duration);
+                                spec.Status.ResolveStacks(hand), duration);
                             effects.Add(WithChain(state, step, source, CombatEffect.ApplyStatus(status)));
                         }
                         else
@@ -89,6 +89,16 @@ namespace PokerEngine
                             var attack = spec.Kind == CombatEffectKind.Damage ?
                                 new AttackContext(source, origin ?? (hand == null ? AttackOrigin.Other : AttackOrigin.ScoredHand), spec.Amount, hand) : null;
                             effects.Add(WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack)));
+                            if (spec.OnHitStatus != null)
+                            {
+                                var application = spec.OnHitStatus;
+                                var definition = state.Rules.StatusCatalog.Get(application.DefinitionId);
+                                var onHitDuration = application.Duration ?? BattleStatusTiming.Bind(state, application.Lifetime ?? definition.DefaultLifetime);
+                                var status = new StatusInstance(new StatusInstanceId(state.Combat.Id + "/on-hit/" + source.Value.Length + ":" + source.Value + "/" + state.Revision + "/" + stepIndex + "/" + targetIndex),
+                                    application.DefinitionId, EntityRef.Participant(source), EntityRef.Participant(target), application.ResolveStacks(hand), onHitDuration);
+                                effects.Add(WithChain(state, step, source, CombatEffect.ApplyStatus(status)));
+                            }
+                            if (effects.Count > 64) return new BattleEffectBinding(CardDuelError.InvalidEffectPlan);
                         }
                     }
                 }

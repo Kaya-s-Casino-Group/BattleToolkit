@@ -38,7 +38,9 @@ namespace PokerEngine
                     foreach (var branch in handRule.Entries)
                     {
                         var applicable = entries.Where(entry => entry.Spec.HandCategory == branch.Category).ToArray();
-                        int count = branch.Effects.Count + applicable.Count(entry => entry.Spec.Operation == RelicHandEffectOperation.AppendEffect);
+                        int count = branch.Effects.Sum(step => (step.OnHitStatus == null ? 1 : 2) * (step.PerSubmittedCard ? content.Players[player.TemplateId].Rules.MaxPlayCards : 1)) +
+                            handRule.FlushBonus.Sum(step => step.OnHitStatus == null ? 1 : 2) +
+                            applicable.Where(entry => entry.Spec.Operation == RelicHandEffectOperation.AppendEffect).Sum(entry => entry.Spec.Effect.OnHitStatus == null ? 1 : 2);
                         foreach (var step in branch.Effects)
                         {
                             var edits = applicable.Where(entry => entry.Spec.StepId == step.Id).ToArray();
@@ -51,7 +53,7 @@ namespace PokerEngine
                                         "Player " + player.Id + ": " + branch.Category + "/" + branch.Variant + " step " + step.Id +
                                         " must be damage both before and after replacement to receive additional hits.",
                                         location, entry.Relic.Definition.Id, entry.Spec.Id + ".stepId"));
-                                count += entry.Spec.AdditionalHits;
+                                count += entry.Spec.AdditionalHits * ((replacement == null ? step.OnHitStatus : replacement.Spec.Effect.OnHitStatus) == null ? 1 : 2);
                             }
                         }
                         if (count > 64)

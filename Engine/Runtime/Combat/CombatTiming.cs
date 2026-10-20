@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CombatTimingKind { ActionCompleted = 1, PhaseEnding = 2, BattleStarted = 3, PhaseStarted = 4, TurnStarted = 5 }
+    public enum CombatTimingKind { ActionCompleted = 1, PhaseEnding = 2, BattleStarted = 3, PhaseStarted = 4, TurnStarted = 5, BeforeDraw, Draw, Reshuffle, PlayPhaseEnd, BattleEnded }
 
     /// <summary>Mode-neutral clock declaration. Composition owns which actions and phase rosters qualify.</summary>
     public sealed class CombatTimingSignal
@@ -14,6 +14,14 @@ namespace PokerEngine
         public IReadOnlyList<ParticipantId> Participants { get; }
         public string ActionKey { get; }
         public string PhaseKey { get; }
+        public IReadOnlyList<CardInstanceId> Cards { get; private set; } = Array.AsReadOnly(new CardInstanceId[0]);
+        public int? HandCount { get; private set; }
+        public static CombatTimingSignal CardBoundary(CombatTimingKind kind, string id, ParticipantId actor, IEnumerable<CardInstanceId> cards, int handCount, string trigger = null)
+        {
+            if (kind != CombatTimingKind.BeforeDraw && kind != CombatTimingKind.Draw && kind != CombatTimingKind.Reshuffle && kind != CombatTimingKind.PlayPhaseEnd || handCount < 0) throw new ArgumentException("Invalid card boundary.");
+            return new CombatTimingSignal(kind, id, new[] { actor }, actionKey: trigger) { Cards = Guard.View(Guard.Copy(cards ?? Array.Empty<CardInstanceId>(), nameof(cards))), HandCount = handCount };
+        }
+        public static CombatTimingSignal BattleEnded(string id, IEnumerable<ParticipantId> participants) => new CombatTimingSignal(CombatTimingKind.BattleEnded, id, participants);
         private CombatTimingSignal(CombatTimingKind kind, string boundaryId, IEnumerable<ParticipantId> participants,
             string actionKey = null, string phaseKey = null)
         {

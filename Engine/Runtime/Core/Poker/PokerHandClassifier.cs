@@ -27,10 +27,10 @@ namespace PokerEngine
     /// <summary>Shared high-poker pattern classifier for one to five cards. No betting, run, or scoring rules.</summary>
     public static class PokerHandClassifier
     {
-        public static PokerHandClassification ClassifyBest(IEnumerable<EffectiveCard> source)
+        public static PokerHandClassification ClassifyBest(IEnumerable<EffectiveCard> source, int minFlushCards = 5, int minStraightCards = 5, bool ignoreFlush = false)
         {
             var cards = Guard.Copy(source, nameof(source));
-            if (cards.Length <= 5) return Classify(cards);
+            if (cards.Length <= 5) return Classify(cards, minFlushCards, minStraightCards, ignoreFlush);
             if (cards.Length > 10 || cards.Select(c => c.Id).Distinct().Count() != cards.Length)
                 throw new ArgumentException("Expanded plays support up to ten distinct cards.");
             PokerHandClassification best = null;
@@ -40,24 +40,24 @@ namespace PokerEngine
             for (int d = c + 1; d < cards.Length - 1; d++)
             for (int e = d + 1; e < cards.Length; e++)
             {
-                var next = Classify(new[] { cards[a], cards[b], cards[c], cards[d], cards[e] });
+                var next = Classify(new[] { cards[a], cards[b], cards[c], cards[d], cards[e] }, minFlushCards, minStraightCards, ignoreFlush);
                 if (best == null || Compare(next.Category, next.TieBreakRanks, best.Category, best.TieBreakRanks) > 0) best = next;
             }
             return new PokerHandClassification(best.Category, best.TieBreakRanks, cards.Select(c => c.Id), best.ScoringCards);
         }
-        public static PokerHandClassification Classify(IEnumerable<EffectiveCard> source)
+        public static PokerHandClassification Classify(IEnumerable<EffectiveCard> source, int minFlushCards = 5, int minStraightCards = 5, bool ignoreFlush = false)
         {
             var cards = Guard.Copy(source, nameof(source));
-            if (cards.Length < 1 || cards.Length > 5 || cards.Select(c => c.Id).Distinct().Count() != cards.Length)
+            if (minFlushCards < 3 || minFlushCards > 5 || minStraightCards < 3 || minStraightCards > 5 || cards.Length < 1 || cards.Length > 5 || cards.Select(c => c.Id).Distinct().Count() != cards.Length)
                 throw new ArgumentException("Classification requires one to five distinct card instances.");
             var ranks = cards.Select(c => (int)c.Rank).OrderByDescending(r => r).ToArray();
             var groups = ranks.GroupBy(r => r).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key).ToArray();
-            bool flush = cards.Length == 5 && cards.All(c => c.Suit == cards[0].Suit);
-            int straight = cards.Length == 5 && ranks.Distinct().Count() == 5 && ranks[0] - ranks[4] == 4 ? ranks[0] : 0;
-            if (ranks.SequenceEqual(new[] { 14, 5, 4, 3, 2 })) straight = 5;
+            bool flush = !ignoreFlush && cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
+            int straight = cards.Length >= minStraightCards && ranks.Distinct().Count() == cards.Length && ranks[0] - ranks[cards.Length - 1] == cards.Length - 1 ? ranks[0] : 0;
+            if (cards.Length >= minStraightCards && ranks[0] == 14 && ranks.Skip(1).SequenceEqual(Enumerable.Range(2, cards.Length - 1).Reverse())) straight = cards.Length;
             HandCategory category; int[] tie; Func<EffectiveCard, bool> scores;
             if (groups[0].Count() == 5) { category = HandCategory.FiveOfAKind; tie = new[] { groups[0].Key }; scores = c => true; }
-            else if (flush && straight > 0) { category = HandCategory.StraightFlush; tie = new[] { straight }; scores = c => true; }
+            else if (flush && straight > 0 && cards.Length == 5) { category = HandCategory.StraightFlush; tie = new[] { straight }; scores = c => true; }
             else if (groups[0].Count() == 4) { category = HandCategory.FourOfAKind; tie = groups.Select(g => g.Key).ToArray(); scores = c => (int)c.Rank == groups[0].Key; }
             else if (groups[0].Count() == 3 && groups.Length > 1 && groups[1].Count() == 2) { category = HandCategory.FullHouse; tie = groups.Select(g => g.Key).ToArray(); scores = c => true; }
             else if (flush) { category = HandCategory.Flush; tie = ranks; scores = c => true; }

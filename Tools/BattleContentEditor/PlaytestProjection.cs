@@ -54,13 +54,14 @@ internal static partial class PlaytestBridge
                 var active = intent != null && intent.Accepted && !intent.IsSkipped;
                 var hits = active ? intent.Hits.Where(hit => hit.Effect.Source == enemy.Id &&
                     (hit.Provenance == null || hit.Provenance.Origin == CombatEffectOrigin.Primary)).ToArray() : Array.Empty<CombatEvent>();
+                unit["intentSchedule"] = entry.Session.Engine.Duel.PreviewEnemyIntents(duel, enemy.Id).Select((action, offset) => D("round", duel.CompletedRounds + offset + 1, "actionId", action?.Id, "name", action?.Name ?? "等待")).ToArray();
                 unit["intentMeta"] = D("actionId", planned?.Id, "name", planned?.Name ?? (active ? "行动" : "等待"),
                     "stageId", enemy.BehaviorState.StageId, "available", intent?.Accepted ?? false, "skipped", intent?.IsSkipped ?? false,
                     "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,
                     "worldEffects", (active ? planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>() : Array.Empty<EnemyWorldEffect>())
                         .Select(effect => D("kind", effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
                             "enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone, "position", effect.EnemyRef == null ? effect.Position.ToString() : null)).ToArray());
-                unit["intent"] = intent == null ? new string[0] : intent.Accepted ? EventLines(intent.RuleEvents, duel, catalog).ToArray() : new[] { "意图暂不可预览：" + Error(intent.Error) };
+                unit["intent"] = intent == null ? new string[0] : intent.Accepted ? EventLines(intent.RuleEvents, duel, catalog, entry).ToArray() : new[] { "意图暂不可预览：" + Error(intent.Error) };
                 if (enemy.Behavior != null && intent != null && intent.Accepted && !intent.IsSkipped)
                 {
                     unit["intent"] = new[] { planned?.Name ?? "等待" }.Concat((string[])unit["intent"])
@@ -96,7 +97,7 @@ internal static partial class PlaytestBridge
                 .Select(status => {
                     var definition = catalog?.Find(status.DefinitionId);
                     var tags = definition?.Tags ?? StatusTags.None;
-                    return D("id", status.Id.Value, "definitionId", status.DefinitionId.Value, "name", StatusName(status.DefinitionId, catalog),
+                    return D("id", status.Id.Value, "definitionId", status.DefinitionId.Value, "name", StatusName(status.DefinitionId, catalog, entry),
                         "displayName", ContentName(entry, "Statuses", status.DefinitionId.Value),
                         "tags", Enum.GetValues(typeof(StatusTags)).Cast<StatusTags>().Where(tag => tag != StatusTags.None && (tags & tag) == tag).Select(tag => tag.ToString()).ToArray(),
                         "behaviorKeys", (definition?.Behaviors ?? Array.Empty<StatusBehaviorSpec>()).Select(behavior => behavior.GetType().Name.Replace("Spec", "")).ToArray(),
@@ -138,7 +139,7 @@ internal static partial class PlaytestBridge
         }
     }
 
-    private static object Hand(ScoreResult score) => D("category", score.Category.ToString(), "label", HandName(score.Category),
+    private static object Hand(ScoreResult score, HandAttackInfo facts = null) => D("category", score.Category.ToString(), "label", HandName(score.Category) + (facts?.UsesFlushOverlay == true && facts.IsFlush && score.Category != HandCategory.StraightFlush ? "＋同花治疗" : ""),
         "points", Number(score.Points), "kickerPoints", Number(score.UnmultipliedPoints), "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
 
     private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog, Entry entry) => result.Steps.Select(step => {
@@ -146,7 +147,7 @@ internal static partial class PlaytestBridge
         if (transition.Score != null) lines.Add(HandName(transition.Score.Category) + " · 点数 " + Number(transition.Score.Points) +
             " × 倍率 " + transition.Score.Multiplier.ToString(CultureInfo.InvariantCulture) + " = 牌型得分 " + Number(transition.Score.Total));
         if (transition.ActionCost != null) lines.Add("消耗能量 " + transition.ActionCost.Cost);
-        lines.AddRange(EventLines(transition.RuleEvents, step.Before.Duel, catalog));
+        lines.AddRange(EventLines(transition.RuleEvents, step.Before.Duel, catalog, entry));
         lines.AddRange(WorldEffectLines(transition.Timeline, entry));
         foreach (var activation in transition.RelicActivations)
             lines.Add("遗物触发：" + activation.Before.DefinitionId + " / " + activation.TriggerId);
@@ -208,7 +209,7 @@ internal static partial class PlaytestBridge
     private static string DisplayName(Entry entry, TeamBattleState state, ParticipantId id) => ContentName(entry,
         state.Players.Any(player => player.Id == id) ? "Players" : "Enemies", state.Combat.Get(id).DefinitionId);
 
-    private static IEnumerable<string> EventLines(IEnumerable<CombatRuleEvent> events, TeamBattleState names, CombatStatusCatalog catalog)
+    private static IEnumerable<string> EventLines(IEnumerable<CombatRuleEvent> events, TeamBattleState names, CombatStatusCatalog catalog, Entry entry)
     {
         foreach (var item in events)
         {
@@ -218,15 +219,21 @@ internal static partial class PlaytestBridge
             if (changed != null)
             {
                 var status = changed.StatusAfter ?? changed.StatusBefore;
-                string reason = changed.Reason == CombatStatusChangeReason.Cleansed ? "净化" : changed.Reason == CombatStatusChangeReason.Expired ? "到期" : changed.Reason == CombatStatusChangeReason.Refreshed ? "刷新" : changed.StatusAfter == null ? "耗尽" : "消耗";
+                string reason = changed.Reason == CombatStatusChangeReason.Cleansed ? "净化" : changed.Reason == CombatStatusChangeReason.Expired ? "到期" : changed.Reason == CombatStatusChangeReason.Refreshed ? (changed.StatusAfter.Stacks > changed.StatusBefore.Stacks ? "叠加" : "刷新") : changed.StatusAfter == null ? "耗尽" : "消耗";
                 string owner = status.Target.Kind == EntityKind.Participant ? Name(names, new ParticipantId(status.Target.Id)) : status.Target.Id;
-                yield return owner + "：" + StatusName(status.DefinitionId, catalog) + " " + reason + (changed.StatusAfter == null ? "" : "（" + Duration(changed.StatusAfter.Duration) + "）");
+                yield return owner + "：" + StatusName(status.DefinitionId, catalog, entry) + " " + reason + (changed.StatusAfter == null ? "" : "（" + changed.StatusAfter.Stacks + " 层，" + Duration(changed.StatusAfter.Duration) + "）");
                 continue;
             }
             var timing = item as CombatTimingEvent;
             if (timing != null)
             {
                 if (timing.Signal.Kind == CombatTimingKind.BattleStarted) yield return "战斗开始";
+                if (timing.Signal.Kind == CombatTimingKind.BattleEnded) yield return "战斗结束事件";
+                if (timing.Signal.Kind == CombatTimingKind.TurnStarted) yield return "持有者回合开始";
+                if (timing.Signal.Kind == CombatTimingKind.BeforeDraw) yield return "摸牌前事件";
+                if (timing.Signal.Kind == CombatTimingKind.Draw) yield return "摸牌后事件：" + timing.Signal.Cards.Count + " 张";
+                if (timing.Signal.Kind == CombatTimingKind.Reshuffle) yield return "洗回抽牌堆事件：" + timing.Signal.Cards.Count + " 张";
+                if (timing.Signal.Kind == CombatTimingKind.PlayPhaseEnd) yield return "出牌阶段结束：保留 " + timing.Signal.HandCount + " 张手牌";
                 if (timing.Signal.Kind == CombatTimingKind.PhaseStarted) yield return PhaseName(timing.Signal.PhaseKey) + "开始";
                 if (timing.Signal.Kind == CombatTimingKind.PhaseEnding) yield return PhaseName(timing.Signal.PhaseKey) + "结束";
                 continue;
@@ -234,8 +241,8 @@ internal static partial class PlaytestBridge
             var effect = item.Effect;
             if (effect == null) continue;
             string target = Name(names, effect.Target) + "：";
-            if (item is CombatStatusBlockedEvent) { yield return target + "免疫 " + StatusName(effect.Status.DefinitionId, catalog); continue; }
-            if (item is CombatStatusEvent) { yield return target + "获得 " + StatusName(effect.Status.DefinitionId, catalog) + " ×" + effect.Status.Stacks + "（" + Duration(effect.Status.Duration) + "）"; continue; }
+            if (item is CombatStatusBlockedEvent) { yield return target + "免疫 " + StatusName(effect.Status.DefinitionId, catalog, entry); continue; }
+            if (item is CombatStatusEvent) { yield return target + "获得 " + StatusName(effect.Status.DefinitionId, catalog, entry) + " ×" + effect.Status.Stacks + "（" + Duration(effect.Status.Duration) + "）"; continue; }
             var fact = item as CombatEvent;
             if (fact == null) continue;
             string origin = Origin(item.Provenance == null ? CombatEffectOrigin.Primary : item.Provenance.Origin);
@@ -259,10 +266,11 @@ internal static partial class PlaytestBridge
         return index >= 0 ? "敌人 " + (index + 1) + " · " + id.Value : id.Value;
     }
     private static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
-    private static string StatusName(StatusDefinitionId id, CombatStatusCatalog catalog)
+    private static string StatusName(StatusDefinitionId id, CombatStatusCatalog catalog, Entry entry)
     {
         var definition = catalog == null ? null : catalog.Find(id);
-        return definition == null || definition.Behaviors.Count == 0 ? id.Value : id.Value + " · " + string.Join(" + ", definition.Behaviors.Select(BehaviorName));
+        string name = ContentName(entry, "Statuses", id.Value);
+        return definition == null || definition.Behaviors.Count == 0 ? name : name + " · " + string.Join(" + ", definition.Behaviors.Select(BehaviorName));
     }
     private static string BehaviorName(StatusBehaviorSpec behavior)
     {
@@ -273,7 +281,7 @@ internal static partial class PlaytestBridge
         if (behavior is OverhealDamageSpec) return "溢出治疗转伤 " + Ratio(((OverhealDamageSpec)behavior).Ratio);
         if (behavior is HitArmorSpec armor) return "护甲 · 承伤 " + Ratio(armor.Multiplier) + " · 每击消耗 " + armor.ConsumeStacks + " 层";
         var periodic = behavior as PeriodicDamageSpec;
-        if (periodic != null) return (periodic.Timing == CombatTimingKind.ActionCompleted ? "行动后" : "阶段结束时") + Number(periodic.DamagePerStack) + " 伤害/层";
+        if (periodic != null) return (periodic.Timing == CombatTimingKind.TurnStarted ? "持有者行动前" : periodic.Timing == CombatTimingKind.ActionCompleted ? "行动后" : "阶段结束时") + Number(periodic.DamagePerStack) + " 伤害/层" + (periodic.StackDecay > 0 ? "，随后减 " + periodic.StackDecay + " 层" : "");
         return "状态效果";
     }
     private static string Ratio(decimal ratio) => ratio <= decimal.MaxValue / 100

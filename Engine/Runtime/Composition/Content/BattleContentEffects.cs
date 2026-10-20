@@ -6,7 +6,7 @@ namespace PokerEngine
 {
     internal partial class BattleContentBuildContext
     {
-        private static readonly string[] EffectAttributes = { "id", "kind", "amount", "amountKind", "retargetChain", "target", "selection", "requestSlot", "statusRef", "stacks", "lifetime", "count", "phase" };
+        private static readonly string[] EffectAttributes = { "id", "kind", "amount", "amountKind", "perSubmittedCard", "retargetChain", "target", "selection", "requestSlot", "statusRef", "stacks", "stacksPerSubmittedCard", "lifetime", "count", "phase" };
         private static readonly string[] TargetAttributes = { "target", "selection", "requestSlot", "retargetChain" };
 
         internal Dictionary<string, CombatStatusDefinition> ReadStatuses(BattleContentNode section)
@@ -57,14 +57,18 @@ namespace PokerEngine
         {
             return ReadDefinitions(section, "HandRule", node =>
             {
-                Check(node, new[] { "id", "name", "version" }, new[] { "Hand" });
+                Check(node, new[] { "id", "name", "version", "flushUsesRankEffects" }, new[] { "Hand", "FlushBonus" });
                 var entries = node.Children.Where(item => item.Name == "Hand").Select(hand => Capture(hand, () =>
                 {
                     Check(hand, new[] { "category", "variant" }, new[] { "Effect" });
                     var steps = hand.Children.Where(item => item.Name == "Effect").Select(effect => Capture(effect, () => ReadConfiguredStep(effect, true))).Where(item => item != null).ToArray();
                     return new HandEffectEntry(ReadRequiredEnum<HandCategory>(hand, "category"), steps, Enum(hand, "variant", HandEffectVariant.Any));
                 })).Where(item => item != null).ToArray();
-                return new ConfiguredHandEffectRule(Text(node, "version", ContentVersion), entries);
+                var bonus = node.Children.Where(c => c.Name == "FlushBonus").ToArray();
+                if (bonus.Length > 1) throw new ArgumentException("Only one FlushBonus is supported.");
+                if (bonus.Length == 1) Check(bonus[0], Array.Empty<string>(), new[] { "Effect" });
+                return new ConfiguredHandEffectRule(Text(node, "version", ContentVersion), entries,
+                    bonus.SelectMany(b => b.Children).Select(e => ReadConfiguredStep(e, true, true)), Bool(node, "flushUsesRankEffects", false));
             });
         }
 
@@ -82,17 +86,28 @@ namespace PokerEngine
                 steps);
         }
 
-        private ConfiguredEffectStep ReadConfiguredStep(BattleContentNode node, bool allowScore)
+        private ConfiguredEffectStep ReadConfiguredStep(BattleContentNode node, bool allowScore, bool flushBonus = false)
         {
-            Check(node, EffectAttributes, new string[0]);
+            Check(node, EffectAttributes, new[] { "OnHitStatus" });
             var kind = ReadEffectKind(node);
+            bool perCard = Bool(node, "perSubmittedCard", false);
+            if (perCard && !allowScore) throw new ArgumentException("Per-card repetition is only available to hand effects.");
+            var amountKind = Enum(node, "amountKind", EffectAmountKind.Constant);
+            if (amountKind == EffectAmountKind.FlushBaseTotalScale && !flushBonus)
+                throw new ArgumentException("Flush base amounts are only available to FlushBonus effects.");
+            if (flushBonus && (amountKind == EffectAmountKind.ThreeOfAKindTotalScale || amountKind == EffectAmountKind.OnePairTotalScale))
+                throw new ArgumentException("Flush bonus cannot assume a full-house component score.");
+            var onHit = node.Children.Where(c => c.Name == "OnHitStatus").ToArray();
+            if (onHit.Length > 1 || onHit.Length > 0 && kind != CombatEffectKind.Damage) throw new ArgumentException("One OnHitStatus is allowed on a damage effect.");
+            if (onHit.Length > 0) Check(onHit[0], new[] { "statusRef", "stacks", "stacksPerSubmittedCard", "lifetime", "count", "phase" }, Array.Empty<string>());
             return new ConfiguredEffectStep(Text(node, "id"), kind, ReadEffectTarget(node),
-                IsNumeric(kind) ? ReadAmount(node, allowScore) : null, kind == CombatEffectKind.ApplyStatus ? ReadStatusApplication(node) : null);
+                IsNumeric(kind) ? ReadAmount(node, allowScore) : null, kind == CombatEffectKind.ApplyStatus ? ReadStatusApplication(node, allowScore) : null,
+                onHit.Length == 0 ? null : ReadStatusApplication(onHit[0], allowScore), perCard);
         }
 
-        private BattleEffectSpec ReadConstantEffect(BattleContentNode node, bool allowTarget = true, bool allowId = true)
+        private BattleEffectSpec ReadConstantEffect(BattleContentNode node, bool allowTarget = true, bool allowId = true, bool allowHandCount = false, bool allowSubmittedCards = false)
         {
-            Check(node, EffectAttributes.Where(item => (allowTarget || !TargetAttributes.Contains(item)) && (allowId || item != "id")).ToArray(), new string[0]);
+            Check(node, EffectAttributes.Where(item => item != "perSubmittedCard" && (allowTarget || !TargetAttributes.Contains(item)) && (allowId || item != "id")).Concat(allowHandCount ? new[] { "amountPerHandCard" } : Array.Empty<string>()).ToArray(), new string[0]);
             var kind = ReadEffectKind(node);
             long amount = IsNumeric(kind) ? ReadAmount(node, false).Resolve() : 0;
             switch (kind)
@@ -101,7 +116,7 @@ namespace PokerEngine
                 case CombatEffectKind.Heal: return BattleEffectSpec.Heal(amount);
                 case CombatEffectKind.GainBlock: return BattleEffectSpec.GainBlock(amount);
                 case CombatEffectKind.DrawCards: return BattleEffectSpec.DrawCards(amount);
-                case CombatEffectKind.ApplyStatus: return BattleEffectSpec.ApplyStatus(ReadStatusApplication(node));
+                case CombatEffectKind.ApplyStatus: return BattleEffectSpec.ApplyStatus(ReadStatusApplication(node, allowSubmittedCards));
                 case CombatEffectKind.Cleanse: return BattleEffectSpec.Cleanse();
                 default: return BattleEffectSpec.Eliminate();
             }
@@ -111,9 +126,9 @@ namespace PokerEngine
             var kind = ReadRequiredEnum<CombatEffectKind>(node, "kind");
             if (!IsNumeric(kind) && kind != CombatEffectKind.ApplyStatus && kind != CombatEffectKind.Eliminate && kind != CombatEffectKind.Cleanse)
                 throw new ArgumentException("Only Damage, Heal, GainBlock, ApplyStatus, Cleanse and Eliminate are content effects.");
-            RejectAttributes(node, IsNumeric(kind) ? new[] { "statusRef", "stacks", "lifetime", "count", "phase" } :
+            RejectAttributes(node, IsNumeric(kind) ? new[] { "statusRef", "stacks", "stacksPerSubmittedCard", "lifetime", "count", "phase" } :
                 kind == CombatEffectKind.ApplyStatus ? new[] { "amount", "amountKind" } :
-                new[] { "amount", "amountKind", "statusRef", "stacks", "lifetime", "count", "phase" });
+                new[] { "amount", "amountKind", "statusRef", "stacks", "stacksPerSubmittedCard", "lifetime", "count", "phase" });
             return kind;
         }
         private static bool IsNumeric(CombatEffectKind kind) => kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock || kind == CombatEffectKind.DrawCards;
@@ -124,13 +139,14 @@ namespace PokerEngine
             if (!allowScore && kind != EffectAmountKind.Constant) throw new ArgumentException("Score amount sources are only available to hand effects.");
             return new EffectAmountSpec(kind, Decimal(node, "amount", 0));
         }
-        private StatusApplicationSpec ReadStatusApplication(BattleContentNode node)
+        private StatusApplicationSpec ReadStatusApplication(BattleContentNode node, bool allowSubmittedCards = false)
         {
             var id = new StatusDefinitionId(Text(node, "statusRef"));
             if (!Statuses.ContainsKey(id.Value)) throw new ArgumentException("Unknown status reference: " + id.Value);
             var lifetime = ReadLifetime(node, false);
-            int stacks = Int(node, "stacks", 1);
-            var application = lifetime == null ? new StatusApplicationSpec(id, stacks) : StatusApplicationSpec.WithLifetime(id, lifetime, stacks);
+            int stacks = Int(node, "stacks", 1), perCard = Int(node, "stacksPerSubmittedCard", 0);
+            if (perCard != 0 && !allowSubmittedCards) throw new ArgumentException("Submitted-card stacks require a hand effect or hand fact trigger.");
+            var application = lifetime == null ? new StatusApplicationSpec(id, stacks, perCard) : StatusApplicationSpec.WithLifetime(id, lifetime, stacks, perCard);
             var definition = Statuses[id.Value];
             if ((lifetime ?? definition.DefaultLifetime).Kind == StatusLifetimeKind.TriggerCount && definition.Behaviors.Count > 1)
                 throw new ArgumentException("A trigger budget cannot be shared by different status behaviors.");

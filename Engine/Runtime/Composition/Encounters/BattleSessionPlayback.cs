@@ -66,7 +66,7 @@ namespace PokerEngine
                 var card = state.Table.GetCard(id);
                 if (discard ? !card.CanDiscard : !card.CanPlay) return false;
             }
-            if (rules.Flow.ManualDraw && (discard && (state.FlowFor(actor).DefenseUsed || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
+            if (rules.Flow.ManualDraw && (discard && (state.FlowFor(actor).DefenseUsed && BattleRuleResolver.Value(rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
                 !discard && state.FlowFor(actor).ActionsRemaining == 0)) return false;
             return seen.Count >= (discard ? 1 : Session.Engine.PlayLimit(state, actor, true));
         }

@@ -105,7 +105,7 @@ internal static partial class PlaytestBridge
             return D("success", true, "battle", Snapshot(entry), "preview", D(
                 "action", action.ToString(), "actor", actor.Value, "selected", cards.Select(card => card.Value).ToArray(),
                 "legal", result.Accepted, "error", result.Error.ToString(), "message", result.Accepted ? "可以执行" : Error(result.Error),
-                "hand", hand.Accepted ? Hand(hand.Score) : null, "targets", targets, "targetMessage", targetError,
+                "hand", hand.Accepted ? Hand(hand.Score, entry.Session.Engine.PreviewHandFacts(state, actor, cards)) : null, "targets", targets, "targetMessage", targetError,
                 "steps", Steps(result, entry.Session.Engine.Duel.Definition.StatusCatalog, entry)));
         }
         if (!result.Accepted) return Fail(result.Error.ToString(), Error(result.Error), entry);
@@ -156,10 +156,7 @@ internal static partial class PlaytestBridge
         if (player.Rules.EffectRule == null) specs = new[] { EffectTargetSpec.Opponents() };
         else
         {
-            var ordered = state.Zone(CardZoneKinds.Hand, actor).Cards.Where(selected.Contains).Select(state.Table.GetCard);
-            var hand = new HandAttackInfo(preview.Pattern, ordered.Select(card => {
-                var face = entry.Session.Engine.Face(card); return new AttackCardSnapshot(card, new EffectiveCard(card.Id, face.Rank, face.Suit));
-            }));
+            var hand = entry.Session.Engine.PreviewHandFacts(state, actor, selected);
             var context = new ScoredHandEffectContext(state.Duel.Combat, actor, preview.Score, hand);
             var sequence = player.Rules.EffectRule.Resolve(context);
             specs = new RelicHandEffectModifier().Modify(new HandEffectModifierContext(player.Relics, context, sequence)).Output.Steps.Select(step => step.Target);

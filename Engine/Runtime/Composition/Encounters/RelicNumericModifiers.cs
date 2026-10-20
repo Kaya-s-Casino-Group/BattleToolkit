@@ -170,7 +170,7 @@ namespace PokerEngine
             foreach (var spec in query.Loadout.RulesFor(relic.InstanceId).Modifiers)
             {
                 if (spec.Stat != query.Stat || !spec.Origins.Contains(query.Origin) ||
-                    spec.HandCategory.HasValue && (query.Hand == null || query.Hand.Pattern.Category != spec.HandCategory.Value)) continue;
+                    spec.HandCategory.HasValue && (query.Hand == null || !query.Hand.MatchesCategory(spec.HandCategory.Value))) continue;
                 contributions.Add(new CombatAmountContribution(relic.InstanceId, spec.Id,
                     spec.Operation == RelicNumericOperation.AddFlat ? (long)spec.Value : 0,
                     spec.Operation == RelicNumericOperation.AddRate ? spec.Value : 0));

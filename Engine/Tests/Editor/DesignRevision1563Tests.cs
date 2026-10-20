@@ -207,17 +207,18 @@ namespace PokerEngine.Tests
         [TestCase("standard-single-battle")]
         [TestCase("standard-armored-summoner")]
         [TestCase("standard-gluttony-boss")]
-        public void StandardXmlStartsEmptyAndUsesTheDesignDefaults(string encounter)
+        public void StandardXmlUsesRevision1582OpeningDefaults(string encounter)
         {
             var build = BattleContentCompiler.CompileXml(ToolkitTestFiles.Read("Engine/Content/StandardSingleBattle.xml"));
             Assert.IsTrue(build.Success, string.Join("; ", build.Diagnostics.Select(d => d.Message)));
             var created = BattleContentFactory.Create(build.Content, new BattleSetupRequest(encounter, "standard-test", HmacDeckShuffler.FromSeed(new byte[32])));
             Assert.IsTrue(created.Success); var s = created.Session; var player = s.State.Duel.PlayerId;
             Assert.IsTrue(s.Execute(s.State.Revision, player, CardDuelAction.Start).Accepted);
-            Assert.IsEmpty(s.State.Zone(CardZoneKinds.Hand, player).Cards); Assert.AreEqual(5, s.Engine.DrawLimit(s.State, player));
+            Assert.AreEqual(8, s.State.Zone(CardZoneKinds.Hand, player).Cards.Count); Assert.AreEqual(0, s.Engine.DrawLimit(s.State, player));
+            Assert.AreEqual(1, s.State.FlowFor(player).DrawUsesRemaining);
             Assert.AreEqual(3, s.State.FlowFor(player).ActionsRemaining); Assert.AreEqual(8, s.State.Duel.Player(player).Limits.HandLimit.Value);
-            Assert.IsTrue(s.Execute(s.State.Revision, player, CardDuelAction.Draw, drawCount: 5).Accepted);
-            Assert.AreEqual(5, s.State.Zone(CardZoneKinds.Hand, player).Cards.Count);
+            Assert.IsTrue(s.Execute(s.State.Revision, player, CardDuelAction.SkipDraw).Accepted);
+            Assert.AreEqual(8, s.State.Zone(CardZoneKinds.Hand, player).Cards.Count);
         }
         [Test] public void XmlScoreRelicsChangeAuthorityScoreAndInvalidRewardConfigurationIsRejected()
         {
@@ -230,7 +231,7 @@ namespace PokerEngine.Tests
             var build = BattleContentCompiler.CompileXml(document.OuterXml); Assert.IsTrue(build.Success);
             var s = BattleContentFactory.Create(build.Content, new BattleSetupRequest("standard-single-battle", "score-xml", HmacDeckShuffler.FromSeed(new byte[32]))).Session;
             var actor = s.State.Duel.PlayerId; Assert.IsTrue(s.Execute(s.State.Revision, actor, CardDuelAction.Start).Accepted);
-            Assert.IsTrue(s.Execute(s.State.Revision, actor, CardDuelAction.Draw, drawCount: 5).Accepted);
+            Assert.IsTrue(s.Execute(s.State.Revision, actor, CardDuelAction.SkipDraw).Accepted);
             var card = s.State.Zone(CardZoneKinds.Hand, actor).Cards.Take(1).ToArray();
             var result = s.Execute(s.State.Revision, actor, CardDuelAction.Play, card); Assert.IsTrue(result.Accepted);
             Assert.AreEqual(9, result.Steps[0].Transition.Score.Multiplier);

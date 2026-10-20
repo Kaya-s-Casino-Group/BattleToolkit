@@ -13,9 +13,11 @@ export const sections = [
   ['ScoringProfiles','Scoring','计分规则','基础规则','牌型分值、倍率及等级成长']
 ];
 export const labels = {
+ Draw:'摸牌后', Reshuffle:'弃牌堆洗回', PlayPhaseEnd:'出牌阶段结束', BattleEnded:'战斗结束', Enrage:'进入狂暴', Lose:'判负', Battlefield:'全场敌人', Summoner:'各召唤者独立计算',
+ MinPlayCards:'最少出牌张数', MaxPlayCards:'最多出牌张数', DrawCount:'单次摸牌上限', DrawUses:'主动摸牌次数', DrawWarningThreshold:'摸牌提醒阈值', ActionsPerTurn:'每回合行动次数', AllCardsScore:'全部牌计分', DiscardEndsTurn:'弃牌结束回合', MinFlushCards:'同花最少张数', MinStraightCards:'顺子最少张数', RetainBlock:'保留玩家护盾',
  Shuffle:'随机洗入', Top:'牌顶（先摸）', Bottom:'牌底 / 末尾', deck:'抽牌堆', discard:'弃牌堆', hand:'直接入手',
  Unplayable:'不可出牌（可弃牌）', Behavior:'怪物行为', Stage:'行为阶段', Action:'行为动作', When:'行为条件', OpeningEffects:'入场状态', Summon:'召唤怪物', AddCards:'生成卡牌', HitArmor:'逐击护甲', Sequence:'顺序轮换', Priority:'条件优先', Weighted:'权重随机',
- BattleContent:'内容包', Hand:'牌型', Effect:'效果步骤', Effects:'行动效果', CardPoints:'单牌计分', Rank:'点数分值', Face:'指定牌面分值', Card:'卡牌', HandLevel:'牌型等级',
+ BattleContent:'内容包', Hand:'牌型', Effect:'效果步骤', OnHitStatus:'每次命中附加状态', FlushBonus:'同花额外效果', FlushBaseTotalScale:'同花基础筹码 × 一级基础倍率', CardScoreScale:'本牌筹码 × 伤害牌型倍率', Effects:'行动效果', CardPoints:'单牌计分', Rank:'点数分值', Face:'指定牌面分值', Card:'卡牌', HandLevel:'牌型等级',
  BlockActionWindow:'眩晕 · 阻止行动', PreventStatusApplication:'控制免疫 · 阻止施加', ReflectBlockedDamage:'盾反', LifeSteal:'吸血', OverhealDamage:'溢出治疗转伤害', PeriodicDamage:'周期伤害 / 流血',
  Numeric:'数值修正', HandModifier:'牌型效果修正', RuleValue:'战斗规则修正', Refill:'补牌修正', Budget:'共用次数与冷却', FactTrigger:'战斗事件触发', BoundaryTrigger:'开战 / 回合阶段触发', ActionTrigger:'出牌 / 弃牌完成触发', Conditions:'全部条件同时满足',
  FactAtLeast:'本次结算数值至少达到', OwnerHealthAtMost:'持有者生命比例不高于', OwnerHasStatus:'持有者具有状态', EventStatus:'本次施加的状态', HandIs:'出牌牌型为', SubmittedCardsAtLeast:'出牌张数至少', DiscardedCardsAtLeast:'弃牌张数至少',
@@ -29,7 +31,7 @@ export const labels = {
  Primary:'主效果', Triggered:'触发效果', Periodic:'周期伤害', Reflection:'盾反', Lifesteal:'吸血', Overheal:'溢疗转伤',
  AppendEffect:'追加效果', AddHits:'增加段数', ReplaceEffect:'替换效果', ChangeTarget:'修改目标', MaxEnergy:'能量上限', InitialEnergy:'初始能量', PlayEnergyCost:'出牌费用', DiscardEnergyCost:'弃牌费用', HandLimit:'手牌上限',
  OpeningTurn:'开局发牌', AfterPlay:'出牌后', AfterDiscard:'弃牌后', PlayerTurnStart:'玩家回合开始', Skip:'跳过补牌', FillToLimit:'补满手牌', FixedCount:'固定张数',
- DrawCards:'效果摸牌', TurnStarted:'持有者回合开始', AddStacks:'叠加层数且不刷新期限', ChipsOnly:'踢脚牌只加筹码', AllCards:'全部牌参与倍率', ThreeOfAKindTotalScale:'葫芦三条部分得分', OnePairTotalScale:'葫芦对子部分得分', Defense:'主动防御弃牌', BeforeDraw:'摸牌前弃牌', Overflow:'超限强制弃牌', DamageSettled:'伤害结算', HealingSettled:'治疗结算', BlockGained:'获得护盾', UnitDied:'单位死亡', StatusApplied:'状态施加', StatusBlocked:'状态被阻止',
+ DrawCards:'效果摸牌', TurnStarted:'持有者回合开始', AddStacks:'叠加层数且不刷新期限', ChipsOnly:'踢脚牌只加筹码', AllCards:'全部牌参与倍率', ThreeOfAKindTotalScale:'葫芦三条部分得分', OnePairTotalScale:'葫芦对子部分得分', Defense:'主动防御弃牌', BeforeDraw:'摸牌前', Overflow:'超限强制弃牌', DamageSettled:'伤害结算', HealingSettled:'治疗结算', BlockGained:'获得护盾', UnitDied:'单位死亡', StatusApplied:'状态施加', StatusBlocked:'状态被阻止',
  OwnerIsSource:'遗物持有者施加效果', OwnerIsTarget:'遗物持有者承受效果', AllyIsSource:'友方施加效果', AllyIsTarget:'友方承受效果', OpponentIsSource:'敌方施加效果', OpponentIsTarget:'敌方承受效果',
  PerEvent:'每次符合条件的事件', PerAction:'每次行动', PerBoundary:'每次开战或阶段切换', DamageToHealth:'实际生命伤害', BlockAbsorbed:'护盾吸收量', HealthRestored:'实际治疗量',
  BattleStarted:'战斗开始', PhaseStarted:'阶段开始', OwnerTeam:'己方阶段', OpponentTeam:'敌方阶段', PlayCompleted:'出牌完成', DiscardCompleted:'弃牌完成',
@@ -70,7 +72,7 @@ function target(node,automatic=false,groups=null,defaultGroup=null) {
  if(!automatic&&group==='Opponents'&&node.tagName==='Effect'&&['Damage','ApplyStatus'].includes(node.getAttribute('kind')))fields.push(text('retargetChain','击杀转火分组（伤害与附加状态使用同名）'));
  return fields;
 }
-const flowFields=()=>[bool('manualDraw','启用主动摸牌流程',false),bool('openingDeal','开局自动发牌'),num('drawCount','主动摸牌上限',5),num('drawUses','每回合主动摸牌次数',1),num('drawWarningThreshold','摸牌提醒阈值',3),num('actionsPerTurn','每回合行动次数',3),num('minPlayCards','最少出牌张数',1),bool('effectDrawOverflow','效果摸牌允许临时超限',true),bool('discardEndsTurn','防御弃牌后结束回合',true),bool('discardCostsAction','防御弃牌消耗行动',true),bool('endDefense','结束阶段可弃牌防御',true),bool('overflowTriggersDefense','强制弃牌也触发防御收益'),en('kickerScoring','踢脚牌计分','KickerScoring','None'),bool('layeredScoreRelics','计分遗物先加后乘',false),num('discardBlockPerPoint','每点弃牌筹码转护盾')];
+const flowFields=()=>[bool('manualDraw','启用主动摸牌流程',false),bool('openingDeal','开局自动发牌'),num('drawCount','主动摸牌上限',5),num('drawUses','每回合主动摸牌次数',1),num('drawWarningThreshold','摸牌提醒阈值',3),num('actionsPerTurn','每回合行动次数',3),num('minPlayCards','最少出牌张数',1),num('minFlushCards','同花最少张数',5),num('minStraightCards','顺子最少张数',5),bool('effectDrawOverflow','效果摸牌允许临时超限',true),bool('discardEndsTurn','防御弃牌后结束回合',true),bool('discardCostsAction','防御弃牌消耗行动',true),bool('endDefense','结束阶段可弃牌防御',true),bool('overflowTriggersDefense','强制弃牌也触发防御收益'),en('kickerScoring','踢脚牌计分','KickerScoring','None'),bool('layeredScoreRelics','计分遗物先加后乘',false),num('discardBlockPerPoint','每点弃牌筹码转护盾')];
 const actor=()=>[...base(),num('maxHealth','生命上限',100),num('initialBlock','初始护盾',0),
  num('attackMultiplier','攻击倍率',1),num('attackFlat','攻击固定修正',0),num('incomingMultiplier','承伤倍率',1),num('incomingFlat','承伤固定修正',0),
  en('attackTarget','角色攻击目标','OpponentTargetSelection','FirstLiving'),bool('allowRequestedTargets','接受手动目标',true)];
@@ -83,15 +85,20 @@ export function descriptor(node) {
  else if(name==='Score')fields=[en('operation','计分修正',['AddPoints','AddMultiplier','MultiplyMultiplier'],null,true),num('amount','数值',0,true),en('hand','限定牌型','HandCategory')];
  else if(name==='CardPoints') children=['Rank','Face'];
  else if(name==='Rank'||name==='Face') fields=[en('rank','点数','Rank',null,true),...(name==='Face'?[en('suit','花色','Suit',null,true)]:[]),num('points','单牌筹码',0,true)];
- else if(name==='Rules') fields=[...base(),version(),ref('scoringRef','计分规则','ScoringProfiles',true),num('roundLimit','回合上限',20),en('blockExpiry','护盾清除方式','PlayerBlockExpiry','Retain'),num('maxReactionEffects','单次结算最多触发效果数',256),num('maxReactionDepth','连锁触发最多层数',16)];
- else if(name==='HandRule') { fields=[...base(),version()];children=['Hand']; }
+ else if(name==='Rules') fields=[...base(),version(),ref('scoringRef','计分规则','ScoringProfiles',true),num('roundLimit','回合上限',20),en('roundLimitBehavior','达到回合上限后',['Lose','Enrage'],'Lose'),num('enrageDamagePerRound','狂暴每回合叠加伤害',0),bool('clearEnemyBlock','敌人阶段结束清空敌方护盾'),en('blockExpiry','护盾清除方式','PlayerBlockExpiry','Retain'),num('maxReactionEffects','单次结算最多触发效果数',256),num('maxReactionDepth','连锁触发最多层数',16)];
+ else if(name==='HandRule') { fields=[...base(),version(),bool('flushUsesRankEffects','伤害忽略花色独立判型')];children=['Hand','FlushBonus']; }
  else if(name==='Hand') { fields=[en('category','牌型','HandCategory',null,true)];if(a('category')==='StraightFlush') fields.push(en('variant','同花顺分支','HandEffectVariant','Any'));children=['Effect']; }
+ else if(name==='FlushBonus') children=['Effect'];
+ else if(name==='OnHitStatus') fields=[ref('statusRef','状态配置','Statuses',true),num('stacks','固定层数',1),num('stacksPerSubmittedCard','每张实际出牌追加层数',0),...lifetime(node)];
  else if(name==='Effect') {
   const trigger=['FactTrigger','BoundaryTrigger','ActionTrigger'].includes(parent), modifier=parent==='HandModifier';
   if(!trigger&&!modifier) fields.push(text('id','效果编号',true));
   fields.push(en('kind','基础能力',['Damage','Heal','GainBlock','ApplyStatus','Cleanse','Eliminate','DrawCards'],null,true));
-  if(['Damage','Heal','GainBlock','DrawCards'].includes(a('kind'))) fields.push(en('amountKind','数值来源',parent==='Hand'?meta.enums.EffectAmountKind:['Constant'],'Constant'),num('amount','数值 / 系数',undefined,true));
-  if(a('kind')==='ApplyStatus') fields.push(ref('statusRef','状态配置','Statuses',true),num('stacks','施加层数',1),...lifetime(node));
+  if(['Damage','Heal','GainBlock','DrawCards'].includes(a('kind'))) fields.push(en('amountKind','数值来源',['Hand','FlushBonus'].includes(parent)?meta.enums.EffectAmountKind:['Constant'],'Constant'),num('amount','数值 / 系数',undefined,true));
+  if(['Hand','FlushBonus'].includes(parent)) fields.push(bool('perSubmittedCard','按实际出牌逐张重复效果'));
+  if(parent==='BoundaryTrigger'&&['Damage','Heal','GainBlock'].includes(a('kind'))) fields.push(num('amountPerHandCard','每张当前手牌追加数值',0));
+  if(a('kind')==='ApplyStatus') fields.push(ref('statusRef','状态配置','Statuses',true),num('stacks','固定层数',1),...(['Hand','FlushBonus','FactTrigger'].includes(parent)?[num('stacksPerSubmittedCard','每张实际出牌追加层数',0)]:[]),...lifetime(node));
+  if(a('kind')==='Damage'&&['Hand','FlushBonus','Effects'].includes(parent)) children=['OnHitStatus'];
   if(!(modifier && node.parentElement.getAttribute('operation')==='ReplaceEffect')) {
    const groups=parent==='ActionTrigger'?['Self','Opponents','Allies','EventActor']:parent==='FactTrigger'?['Self','Opponents','Allies','EventSource','EventTarget']:null;
    fields.push(...target(node,trigger,groups));
@@ -114,13 +121,13 @@ export function descriptor(node) {
   if(a('operation')==='ChangeTarget') fields.push(...target(node));
   if(['AppendEffect','ReplaceEffect'].includes(a('operation'))) children=['Effect'];
  }
- else if(name==='RuleValue') fields=[text('id','效果编号（ID）',true),en('key','修正规则','BattleRuleValueKey',null,true),num('delta','整数增减',undefined,true)];
+ else if(name==='RuleValue') fields=[text('id','效果编号（ID）',true),en('key','修正规则','BattleRuleValueKey',null,true),num('delta','整数增减',0),num('multiplier','加法结算后乘倍率',1)];
  else if(name==='Refill') fields=[text('id','效果编号（ID）',true),en('timing','补牌时机','CardDuelDealTrigger',null,true),en('mode','补牌方式','BattleRefillMode','沿用原规则'),...(a('mode')==='FixedCount'?[num('fixedCount','固定补牌张数',undefined,true)]:[]),num('delta','额外补牌张数',0)];
  else if(['FactTrigger','BoundaryTrigger','ActionTrigger'].includes(name)) {
   fields=[text('id','触发规则编号（ID）',true),en('timing','触发时机',name==='FactTrigger'?'RelicTriggerTiming':name==='BoundaryTrigger'?'RelicBoundaryTiming':'RelicActionTiming',null,true)];
   if(name==='FactTrigger') fields.push(en('relation','谁施加或承受本次效果','RelicEventRelation','OwnerIsSource'),en('occurrence','触发频率','RelicTriggerOccurrence','PerEvent'),f('origins','哪些效果可以触发','multi',{options:meta.enums.CombatEffectOrigin,default:'Primary'}));
-  if(name==='BoundaryTrigger'&&a('timing')!=='BattleStarted') fields.push(en('phase','所属阶段','RelicPhaseRelation'));
-  if(name==='ActionTrigger') fields.push(en('relation','行动者关系','RelicActionRelation','OwnerIsActor'));
+  if(name==='BoundaryTrigger'&&!['BattleStarted','BattleEnded'].includes(a('timing'))) fields.push(en('phase','所属阶段','RelicPhaseRelation'));
+  if(name==='ActionTrigger') {fields.push(en('relation','行动者关系','RelicActionRelation','OwnerIsActor'));if(a('timing')==='DiscardCompleted')fields.push(en('discardKind','弃牌类型',['Any',...meta.enums.BattleDiscardKind],'Defense'));}
   fields.push(num('priority','同件遗物内优先级',0),bool('chain','允许派生效果继续触发'),en('sourcePolicy','来源存活要求','CombatReactionSourcePolicy','RequireLiving'));children=['Conditions','Effect'];
  }
  else if(name==='Conditions') {
@@ -137,11 +144,11 @@ export function descriptor(node) {
  else if(name==='Player'&&parent==='Players') fields=[...actor(),ref('handRuleRef','牌型效果规则','HandRules'),num('pointsPerDamage','旧版伤害换算除数（使用牌型效果时留空）'),num('maxEnergy','能量上限',3),num('initialEnergy','初始能量',3),num('playEnergyCost','出牌费用',1),num('discardEnergyCost','弃牌费用',1),num('handSize','手牌上限',8),num('discards','整场战斗可弃牌次数',3),bool('unlimitedDiscards','无限弃牌次数'),num('maxPlayCards','最多出牌张数',5),num('maxDiscardCards','最多弃牌张数',5),en('playRefill','出牌补牌时机','CardDuelRefillTiming','NextPlayerTurn'),en('discardRefill','弃牌补牌时机','CardDuelRefillTiming','AfterAction'),num('discardBlockPerCard','每张弃牌获得护盾（空为无收益）'),...flowFields()];
  else if(name==='Enemy'&&parent==='Enemies') {fields=[...actor()];if(![...node.children].some(n=>['Effects','Behavior'].includes(n.tagName)))fields.push(num('damage','固定攻击伤害',0));children=['Effects','Behavior'];}
  else if(name==='Effects'||name==='OpeningEffects') {fields=[version(),text('explanation','效果说明')];children=['Effect'];}
- else if(name==='Behavior') {fields=[num('seed','行为随机种子',1)];children=['OpeningEffects','Stage'];}
+ else if(name==='Behavior') {fields=[num('seed','行为随机种子',1),num('intentPreviewTurns','预告回合数（1—8）',1),bool('refreshOnHealthThreshold','血量阈值变化立即刷新意图'),bool('consumeFailedSummon','召唤失败消耗意图',true)];children=['OpeningEffects','Stage'];}
  else if(name==='Stage') {fields=[text('id','阶段 ID',true),en('mode','选择方式',['Sequence','Priority','Weighted'],'Sequence')];children=['When','Action'];}
  else if(name==='Action') {fields=[text('id','动作 ID',true),text('name','意图名称'),num('weight','权重',1),num('cooldownRounds','间隔回合数',0),num('maxUses','最多使用次数（0不限）',0),en('deadTarget','锁定目标死亡时',['Retarget','Skip'],'Retarget')];children=['When','Effects','Summon','AddCards'];}
  else if(name==='When') {fields=[en('kind','条件类型',['Always','All','Any','Not','HealthAtMost','RoundAtLeast','AlliesBelow','HasStatus'],'Always')];if(['HealthAtMost','RoundAtLeast','AlliesBelow'].includes(a('kind')))fields.push(num('value','阈值（生命比例0..1）',0));if(a('kind')==='HasStatus')fields.push(ref('statusRef','状态','Statuses',true));if(['All','Any','Not'].includes(a('kind')))children=['When'];}
- else if(name==='Summon') fields=[ref('enemyRef','召唤模板','Enemies',true),num('count','数量',1),num('livingLimit','场上存活敌人上限',4)];
+ else if(name==='Summon') fields=[ref('enemyRef','召唤模板','Enemies',true),num('count','数量',1),num('livingLimit','含本体的存活上限',4),en('limitScope','上限计算范围',['Battlefield','Summoner'],'Battlefield')];
  else if(name==='AddCards') fields=[f('face','牌面','card',{required:true}),num('count','数量',1),en('zone','放入区域',['deck','discard','hand'],'discard'),en('position','插入位置（默认：抽牌堆随机洗入，其他末尾）','CardInsertionPosition',node.getAttribute('zone')==='deck'?'Shuffle':'Bottom'),bool('disabled','完全禁用（不可出牌也不可弃牌）',false),f('effects','卡牌效果','multi',{options:meta.enums.CardEffects,default:'Ineffective,Unplayable'})];
  else if(name==='HitArmor') fields=[num('multiplier','伤害倍率',0.5),num('reduction','固定减伤',0),num('consumeStacks','每击消耗层数',1),bool('primaryOnly','仅主效果消耗',true)];
  else if(name==='Deck') {fields=base();children=['Card'];}

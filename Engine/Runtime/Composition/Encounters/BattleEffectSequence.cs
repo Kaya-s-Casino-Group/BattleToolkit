@@ -9,23 +9,29 @@ namespace PokerEngine
     {
         public StatusDefinitionId DefinitionId { get; }
         public int Stacks { get; }
+        public int StacksPerSubmittedCard { get; }
+        public int ResolveStacks(HandAttackInfo hand)
+        {
+            if (StacksPerSubmittedCard > 0 && hand == null) throw new ArgumentException("Status stacks require submitted hand facts.");
+            return checked(Stacks + StacksPerSubmittedCard * (hand?.SubmittedCards.Count ?? 0));
+        }
         public StatusDuration Duration { get; }
         /// <summary>Null Duration/Lifetime uses the registered definition's default lifetime.</summary>
         public StatusLifetimeSpec Lifetime { get; }
-        public StatusApplicationSpec(StatusDefinitionId definitionId, int stacks = 1)
+        public StatusApplicationSpec(StatusDefinitionId definitionId, int stacks = 1, int stacksPerSubmittedCard = 0)
         {
-            if (!definitionId.IsValid || stacks <= 0) throw new ArgumentException("Invalid status application specification.");
-            DefinitionId = definitionId; Stacks = stacks;
+            if (!definitionId.IsValid || stacks < 0 || stacksPerSubmittedCard < 0 || stacks == 0 && stacksPerSubmittedCard == 0) throw new ArgumentException("Invalid status application specification.");
+            DefinitionId = definitionId; Stacks = stacks; StacksPerSubmittedCard = stacksPerSubmittedCard;
         }
         public StatusApplicationSpec(StatusDefinitionId definitionId, int stacks, StatusDuration duration)
             : this(definitionId, stacks)
         {
             Duration = duration ?? throw new ArgumentNullException(nameof(duration));
         }
-        private StatusApplicationSpec(StatusDefinitionId definitionId, StatusLifetimeSpec lifetime, int stacks) : this(definitionId, stacks)
+        private StatusApplicationSpec(StatusDefinitionId definitionId, StatusLifetimeSpec lifetime, int stacks, int stacksPerSubmittedCard) : this(definitionId, stacks, stacksPerSubmittedCard)
         { Lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime)); }
-        public static StatusApplicationSpec WithLifetime(StatusDefinitionId definitionId, StatusLifetimeSpec lifetime, int stacks = 1) =>
-            new StatusApplicationSpec(definitionId, lifetime, stacks);
+        public static StatusApplicationSpec WithLifetime(StatusDefinitionId definitionId, StatusLifetimeSpec lifetime, int stacks = 1, int stacksPerSubmittedCard = 0) =>
+            new StatusApplicationSpec(definitionId, lifetime, stacks, stacksPerSubmittedCard);
     }
 
     /// <summary>What an effect does, independent of source, target count, targeting and attack reports.</summary>
@@ -34,12 +40,13 @@ namespace PokerEngine
         public CombatEffectKind Kind { get; }
         public long Amount { get; }
         public StatusApplicationSpec Status { get; }
-        private BattleEffectSpec(CombatEffectKind kind, long amount = 0, StatusApplicationSpec status = null)
+        public StatusApplicationSpec OnHitStatus { get; }
+        private BattleEffectSpec(CombatEffectKind kind, long amount = 0, StatusApplicationSpec status = null, StatusApplicationSpec onHitStatus = null)
         {
             if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
-            Kind = kind; Amount = amount; Status = status;
+            Kind = kind; Amount = amount; Status = status; OnHitStatus = onHitStatus;
         }
-        public static BattleEffectSpec Damage(long amount) => new BattleEffectSpec(CombatEffectKind.Damage, amount);
+        public static BattleEffectSpec Damage(long amount, StatusApplicationSpec onHitStatus = null) => new BattleEffectSpec(CombatEffectKind.Damage, amount, onHitStatus: onHitStatus);
         public static BattleEffectSpec Heal(long amount) => new BattleEffectSpec(CombatEffectKind.Heal, amount);
         public static BattleEffectSpec GainBlock(long amount) => new BattleEffectSpec(CombatEffectKind.GainBlock, amount);
         public static BattleEffectSpec ApplyStatus(StatusApplicationSpec status) =>

@@ -131,6 +131,21 @@ const base=process.env.EDITOR_URL||'http://127.0.0.1:18765';
   await position.selectOption('Default');await clean();
   await load(example);await clean();
  });
+ await test('标准顺子逐张攻击、命中状态及同花治疗可配置并导出',async()=>{
+  const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
+  await load(standard);await clean();await nav('牌型效果');await page.locator('.definition-button[title="document-hands"]').click();
+  assert.equal(await page.locator('#editor > .field-grid [data-key="flushUsesRankEffects"]').inputValue(),'true');
+  assert.equal(await page.locator('[data-key="perSubmittedCard"] option[value="true"]:checked').count(),1);
+  assert.equal(await page.locator('[data-key="amountKind"] option[value="CardScoreScale"]:checked').count(),1);
+  assert.equal(await page.locator('[data-key="amountKind"] option[value="FlushBaseTotalScale"]:checked').count(),1);
+  assert.equal(await page.locator('[data-key="stacksPerSubmittedCard"]').count(),3);
+  assert.equal(await page.locator('.unknown').count(),0);
+  const event=page.waitForEvent('download');await page.locator('#export').click();
+  const saved=await fs.readFile(await (await event).path(),'utf8');
+  assert.match(saved,/<OnHitStatus[^>]*statusRef="bleed"[^>]*stacks="1"/);
+  assert.match(saved,/<FlushBonus>/);assert.match(saved,/amountKind="FlushBaseTotalScale" amount="0.2"/);
+  await load(example);await clean();
+ });
  await open('牌型效果','example-hands');await page.screenshot({path:process.env.EDITOR_SCREENSHOT||path.join(os.tmpdir(),'battle-content-editor-form.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log(`Browser: ${passes} passed, 0 failed.`);
  }finally{await context.close();await browser.close();}

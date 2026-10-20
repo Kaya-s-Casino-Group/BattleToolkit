@@ -92,7 +92,7 @@ Effect.kind 允许 Damage、Heal、GainBlock、DrawCards、ApplyStatus、Cleanse
 
 自动触发使用 CombatTargetSpec，可配置 Self、Opponents、Allies、EventSource、EventTarget、EventActor；后面三者仅在相应事实存在的入口使用。EventActor 仅供行动完成触发；边界没有事件来源/目标，不允许借用。自动触发不接收 Requested/requestSlot。遗物触发目标默认 Self；盾反默认 EventSource、吸血默认 Self、溢出治疗转伤默认 Opponents、周期伤害默认 Self。
 
-Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 支持 ActionCompleted、PhaseEnding、TurnStarted。stackDecay 默认 0；大于 0 时每次触发后扣除对应层数，层数归零移除。标准流血使用 TurnStarted/amount=1/stackDecay=1。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances 和 AddStacks。AddStacks 对同目标同定义合并层数，保留原期限；stackDecay 与 TriggerCount 不能同时使用。控制免疫是 PreventStatusApplication 的提前状态；事后移除使用 Cleanse。Status.tags 支持 None、Control、Negative 及逗号组合；未标记 Negative/Control 的状态不会被净化。
+Status 可包含 BlockActionWindow、PreventStatusApplication、ReflectBlockedDamage、LifeSteal、OverhealDamage、PeriodicDamage。三种比例行为显式填写 ratio；周期行为显式填写 timing/amount，timing 支持 ActionCompleted、PhaseEnding、TurnStarted。stackDecay 默认 0；大于 0 时每次触发后扣除对应层数，层数归零移除。标准中毒（ID 保留 bleed）使用 TurnStarted/amount=1/stackDecay=1。默认 lifetime=UntilRemoved；也可 TriggerCount + count（默认 1）、ThroughNextPhase + phase（player/enemy）、ThroughCurrentRound。效果未覆盖期限时继承定义；多种行为不能共用 TriggerCount 消耗预算。reapply 默认 KeepLonger，也支持 IndependentInstances 和 AddStacks。AddStacks 对同目标同定义合并层数，保留原期限；stackDecay 与 TriggerCount 不能同时使用。控制免疫是 PreventStatusApplication 的提前状态；事后移除使用 Cleanse。Status.tags 支持 None、Control、Negative 及逗号组合；未标记 Negative/Control 的状态不会被净化。
 
 ## 遗物四类能力
 
@@ -122,8 +122,23 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 
 需要新增机制时，先扩展规则类型、编译白名单、校验和测试，再更新内容契约；不能靠配置一个未实现名称获得新行为。旧 SO 继续保留，Unity 宿主通过显式来源选择配置入口。外部 HTML 配置工具已在 [Tools/BattleContentEditor](../../../../Tools/BattleContentEditor/README.md) 独立提供，通过宿主调用本编译器，规则包不依赖 HTML 或 HTTP。XSD/表单元数据生成、批量文件交换、固定场景命令脚本/断言和快照迁移仍未实现。
 
-当前规则契约为 battle-content.3、Combat 为 combat.10（XML schemaVersion 仍为 1），包含手动摸牌/分阶段弃牌、计分遗物、葫芦分项、叠层流血和逐段转火。旧绑定/规则快照不自动迁移。
+当前规则契约为 battle-content.5、Combat 为 combat.12（XML schemaVersion 仍为 1），包含手动摸牌/分阶段弃牌、计分遗物、葫芦分项、叠层流血和逐段转火。旧绑定/规则快照不自动迁移。
 
 ## 可配置怪物（battle-content.4）
 
 行为阶段、条件、锁定意图、召唤、生成卡牌和护甲见 [EnemyBehavior.md](EnemyBehavior.md)。旧固定敌人定义保留支持，新模板在 `Engine/Content/Templates/07—09`。
+
+
+## revision 1582 / battle-content.5
+
+标准 XML 和新增字段、遗物边界、召唤归属、狂暴及意图预告约定见 [标准局内规则](../../../Content/README.md#revision-1582-扩展)。Combat 契约升级为 `combat.12`，新增卡牌边界事实；核心默认牌型仍保持传统扑克五张同花，标准对局通过配置启用短同花。
+
+### 逐张攻击、命中附加状态与同花叠加
+
+- `Effect.perSubmittedCard="true"`：按实际提交顺序展开（规则层使用手牌顺序），每张执行一次；未设置时只执行一次。展开后的首段沿用原 id，后续为 `id/card/2` 等，AddHits 仍按精确 stepId 匹配。总展开上限 64，超限回滚。
+- `amountKind="CardScoreScale"`：限逐张牌型效果，读取本牌计分筹码乘权威伤害牌型倍率，再乘 amount；全局筹码加成只加入首段一次。各段向下取整。
+- Damage 可包含一个 `<OnHitStatus statusRef="bleed" stacks="1"/>`。命中后立即施加给受击者，死亡目标跳过；与 retargetChain、AOE、AddHits 配合。将伤害整体 ReplaceEffect 替换时，是否附带状态由替换效果决定。
+- ApplyStatus / OnHitStatus 的层数为 `stacks + stacksPerSubmittedCard × 实际出牌张数`。默认 stacks=1、stacksPerSubmittedCard=0；两者非负且不能同时为零。按出牌张数加层仅供牌型效果、持有手牌事实的 FactTrigger 使用；无手牌事实的触发不执行、不扣预算。敌人自动行为不接受此依赖。
+- `HandRule.flushUsesRankEffects="true"`：除皇家同花顺外，伤害独立忽略花色判型、计分和选技能。`FlushBonus` 的 Effect 在符合 `minFlushCards` 的同花出牌后追加；不改变核心传统扑克默认判型。基础伤害牌型与 Flush 条件均可匹配遗物，计分遗物按伤害牌型匹配。
+- `FlushBonus` 专用 `amountKind="FlushBaseTotalScale"`：全部有效出牌筹码 × 同花一级基础倍率 × amount，标准 amount=0.2。与牌型等级及计分遗物解耦，仍接受最终治疗数值修正。
+- `CardDuelEngine.PreviewHandFacts` 与实际出牌共用权威手牌事实，供预览、选敌和同花条件展示使用；查询不改变状态。
