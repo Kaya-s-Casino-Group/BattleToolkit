@@ -5,6 +5,35 @@ namespace PokerEngine
 {
     public sealed partial class TeamBattleEngine
     {
+        /// <summary>Pure intent schedule under the current battlefield conditions. Health thresholds refresh it; previews never spend uses or random state.</summary>
+        public IReadOnlyList<EnemyBehaviorAction> PreviewEnemyIntents(TeamBattleState state, ParticipantId actor)
+        {
+            if (state == null || !ReferenceEquals(state.Rules, Definition)) throw new ArgumentException("Invalid battle.");
+            var owner = state.Enemies.Single(e => e.Id == actor);
+            var result = new List<EnemyBehaviorAction>();
+            if (owner.Behavior == null || state.IsFinished || !state.Combat.Get(actor).IsAlive) return result.AsReadOnly();
+            var runtime = owner.BehaviorState;
+            for (int offset = 0; offset < owner.Behavior.IntentPreviewTurns; offset++)
+            {
+                var future = new TeamBattleState(state.Rules, state.Combat, state.Players, state.Enemies, state.Phase, state.PendingEnemies, state.Revision, state.CompletedRounds + offset, state.Scores, state.Actions);
+                if (offset > 0) runtime = runtime.Plan(future, owner);
+                result.Add(runtime.Intent);
+                bool blocked = runtime.Intent?.WorldEffects.Any(effect => effect.EnemyRef != null && state.Enemies.Count(e => state.Combat.Get(e.Id).IsAlive && (effect.LimitScope == SummonLimitScope.Battlefield || e.Id == actor || e.SummonerId == actor)) >= effect.LivingLimit) == true;
+                if (!blocked || owner.Behavior.ConsumeFailedSummon) runtime = runtime.Complete(state.CompletedRounds + offset);
+            }
+            return result.AsReadOnly();
+        }
+        private static TeamBattleState RefreshEnemyThresholds(TeamBattleState before, TeamBattleState state)
+        {
+            if (state.IsFinished || state.Phase != ScoredDuelPhase.AwaitingPlayerHand) return state;
+            var enemies = state.Enemies.Select(e => {
+                if (e.Behavior == null || !e.Behavior.RefreshOnHealthThreshold || !state.Combat.Get(e.Id).IsAlive) return e;
+                var conditions = e.Behavior.Stages.SelectMany(s => new[] { s.Condition }.Concat(s.Actions.Select(a => a.Condition)));
+                bool changed = conditions.Any(c => !c.HealthThresholds(before, e.Id).SequenceEqual(c.HealthThresholds(state, e.Id)));
+                return changed ? e.WithBehaviorState(e.BehaviorState.Plan(state, e)) : e;
+            }).ToArray();
+            return new TeamBattleState(state.Rules, state.Combat, state.Players, enemies, state.Phase, state.PendingEnemies, state.Revision, state.CompletedRounds, state.Scores, state.Actions);
+        }
         private static TeamBattleState PlanEnemyIntents(TeamBattleState state)
         {
             if (state.IsFinished || state.Players.All(p => !state.Combat.Get(p.Id).IsAlive) || !state.Enemies.Any(e => e.Behavior != null)) return state;
@@ -14,6 +43,7 @@ namespace PokerEngine
         }
         private TeamBattleState CompleteEnemyBehavior(TeamBattleState state, ParticipantId actor, List<EnemyWorldEffect> cards, BattleTimelineRecorder timeline, Action<EnemyWorldEffect, TeamBattleState> worldObserver)
         {
+            bool failedSummon = false;
             var owner = state.Enemies.Single(e => e.Id == actor); var enemies = state.Enemies.ToList(); var combat = state.Combat;
             foreach (var effect in owner.BehaviorState.Intent?.WorldEffects ?? Array.Empty<EnemyWorldEffect>())
             {
@@ -28,12 +58,12 @@ namespace PokerEngine
                 if (owner.SummonCatalog == null || !owner.SummonCatalog.TryGetValue(effect.EnemyRef, out var template)) throw new ArgumentException("Unknown summon template.");
                 for (int i = 0; i < effect.Count; i++)
                 {
-                    if (enemies.Count(e => combat.Get(e.Id).IsAlive) >= effect.LivingLimit || combat.Combatants.Count >= 64) break;
+                    if (enemies.Count(e => combat.Get(e.Id).IsAlive && (effect.LimitScope == SummonLimitScope.Battlefield || e.Id == actor || e.SummonerId == actor)) >= effect.LivingLimit || combat.Combatants.Count >= 64) { failedSummon = true; break; }
                     int serial = combat.Combatants.Count;
                     ParticipantId id;
                     do { id = new ParticipantId(state.Combat.Id + "/summon/" + serial++); } while (combat.Combatants.Any(u => u.Id == id));
                     var setup = new BattleEnemySetup(id, template.Definition, template.Damage, template.DamageRules, template.TargetRules,
-                        template.EffectRule, template.Behavior, owner.SummonCatalog);
+                        template.EffectRule, template.Behavior, owner.SummonCatalog, summonerId: actor);
                     enemies.Add(setup);
                     combat = new CombatState(combat.Id, checked(combat.Revision + 1), combat.Combatants.Concat(new[] { template.Definition.Create(id, "enemy") }), combat.Statuses);
                     var spawned = new TeamBattleState(state.Rules, combat, state.Players, enemies, state.Phase, state.PendingEnemies, state.Revision, state.CompletedRounds, state.Scores, state.Actions);
@@ -49,7 +79,7 @@ namespace PokerEngine
                     else { timeline?.SetTeam(spawned); timeline?.Add(BattleTimelineKind.EnemySummoned, reason: id.Value); }
                 }
             }
-            enemies[enemies.FindIndex(e => e.Id == actor)] = owner.WithBehaviorState(owner.BehaviorState.Complete(state.CompletedRounds));
+            enemies[enemies.FindIndex(e => e.Id == actor)] = owner.WithBehaviorState(failedSummon && !owner.Behavior.ConsumeFailedSummon ? owner.BehaviorState : owner.BehaviorState.Complete(state.CompletedRounds));
             // PendingEnemies is deliberately unchanged: new units act in the next enemy phase.
             return new TeamBattleState(state.Rules, combat, state.Players, enemies, state.Phase, state.PendingEnemies,
                 state.Revision, state.CompletedRounds, state.Scores, state.Actions);

@@ -54,6 +54,7 @@ internal static partial class PlaytestBridge
                 var active = intent != null && intent.Accepted && !intent.IsSkipped;
                 var hits = active ? intent.Hits.Where(hit => hit.Effect.Source == enemy.Id &&
                     (hit.Provenance == null || hit.Provenance.Origin == CombatEffectOrigin.Primary)).ToArray() : Array.Empty<CombatEvent>();
+                unit["intentSchedule"] = entry.Session.Engine.Duel.PreviewEnemyIntents(duel, enemy.Id).Select((action, offset) => D("round", duel.CompletedRounds + offset + 1, "actionId", action?.Id, "name", action?.Name ?? "等待")).ToArray();
                 unit["intentMeta"] = D("actionId", planned?.Id, "name", planned?.Name ?? (active ? "行动" : "等待"),
                     "stageId", enemy.BehaviorState.StageId, "available", intent?.Accepted ?? false, "skipped", intent?.IsSkipped ?? false,
                     "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,

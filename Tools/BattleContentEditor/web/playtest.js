@@ -225,6 +225,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard}) {
    intent.append(main,node('span','intent-name',meta?.name||(unit.intent||[])[0]||'等待'));intent.tabIndex=0;
    const description=(unit.intent||[]).join('；');intent.title=description;intent.setAttribute('aria-label','行动意图：'+description);
    intent.append(node('span','battle-tooltip',description));box.append(intent);
+   if((unit.intentSchedule||[]).length>1){const strip=node('div','intent-schedule');strip.setAttribute('aria-label','未来八回合意图');for(const item of unit.intentSchedule){const step=node('span','intent-step',item.round+' · '+item.name);step.title='第 '+item.round+' 回合：'+item.name;strip.append(step);}box.append(strip);}
   }else box.append(node('div','hero-caption',isPlayer?'YOUR HAND. YOUR FATE.':''));
   const figure=node('div','unit-figure');figure.append(node('span','unit-shadow'));
   const image=node('img','unit-art');image.src='/assets/'+kind+'.png';image.alt=isPlayer?'玩家占位形象':unitName(unit)+'占位形象';image.draggable=false;image.addEventListener('error',()=>{image.hidden=true;figure.classList.add('art-missing');});figure.append(image,icon(isPlayer?'crown':'skull','unit-fallback'));

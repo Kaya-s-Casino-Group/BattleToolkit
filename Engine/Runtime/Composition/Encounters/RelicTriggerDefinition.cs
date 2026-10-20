@@ -89,8 +89,12 @@ namespace PokerEngine
     {
         public BattleEffectSpec Effect { get; }
         public CombatTargetSpec Target { get; }
-        public RelicTriggeredEffectSpec(BattleEffectSpec effect, CombatTargetSpec target)
+        public long AmountPerHandCard { get; }
+        public RelicTriggeredEffectSpec(BattleEffectSpec effect, CombatTargetSpec target, long amountPerHandCard = 0)
         {
+            if (effect == null) throw new ArgumentNullException(nameof(effect));
+            if (amountPerHandCard < 0 || amountPerHandCard > 0 && effect.Kind != CombatEffectKind.GainBlock && effect.Kind != CombatEffectKind.Heal && effect.Kind != CombatEffectKind.Damage) throw new ArgumentException("Invalid per-hand-card amount.");
+            AmountPerHandCard = amountPerHandCard;
             Effect = effect ?? throw new ArgumentNullException(nameof(effect)); Target = target ?? throw new ArgumentNullException(nameof(target));
             var status = effect.Status;
             if (status?.Duration != null && status.Duration.Kind != DurationKind.UntilRemoved && status.Duration.Kind != DurationKind.TriggerCount ||
@@ -99,7 +103,7 @@ namespace PokerEngine
                 throw new ArgumentException("Relic status effects require a relative lifetime.");
         }
         internal void Write(BinaryWriter writer)
-        { RelicHandEffectModifierSpec.WriteEffect(writer, Effect); writer.Write((int)Target.Group); writer.Write((int)Target.Selection); }
+        { writer.Write(AmountPerHandCard); RelicHandEffectModifierSpec.WriteEffect(writer, Effect); writer.Write((int)Target.Group); writer.Write((int)Target.Selection); }
     }
 
     public sealed class RelicTriggerSpec

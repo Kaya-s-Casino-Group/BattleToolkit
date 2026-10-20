@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·三种怪物" version="standard-single-battle.2.1563">
-  <!--策划 revision 1563。开局空手，主动摸牌一次至多5张，3次行动，弃牌防御后结束；踢脚牌仅加筹码。三个默认怪物共用标准玩家和卡组；生命、敌伤、未定义牌型及段数为显式测试值。-->
+<BattleContent schemaVersion="1" id="standard-single-battle-content" name="标准单对局·三种怪物" version="standard-single-battle.3.1582">
+  <!--策划 revision 1582：开局8张，主动摸牌一次至多5张，3次行动；短同花3至5张，踢脚牌不计分。主动防御后结束，不追加结束防御；超限弃牌触发防御。第20回合结束进入狂暴，每回合追加20伤害为待数值确认的测试值。三个默认怪物共用标准玩家和卡组。-->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -31,7 +31,7 @@
     </Scoring>
   </ScoringProfiles>
   <BattleRules>
-    <Rules id="single-battle-rules" name="标准单局规则·20回合上限为占位" scoringRef="single-battle-score" roundLimit="20" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" />
+    <Rules id="single-battle-rules" name="标准单局规则·20回合后狂暴" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Enrage" enrageDamagePerRound="20" clearEnemyBlock="true" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" />
   </BattleRules>
   <Statuses>
     <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
@@ -125,11 +125,11 @@
     </Relic>
   </Relics>
   <Players>
-    <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" manualDraw="true" openingDeal="false" drawCount="5" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="true" overflowTriggersDefense="false" kickerScoring="ChipsOnly" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" />
+    <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="52" playRefill="NextPlayerTurn" discardRefill="NextPlayerTurn" manualDraw="true" openingDeal="true" drawCount="5" drawUses="1" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="true" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="3" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" />
   </Players>
   <Enemies>
     <Enemy id="rotator" name="轮换小怪" maxHealth="600">
-      <Behavior>
+      <Behavior consumeFailedSummon="false">
         <Stage id="normal" mode="Sequence">
           <Action id="jab" name="试探攻击">
             <Effects>
@@ -150,14 +150,14 @@
       </Behavior>
     </Enemy>
     <Enemy id="summoner" name="护甲召唤精英" maxHealth="1800">
-      <Behavior>
+      <Behavior consumeFailedSummon="false">
         <OpeningEffects>
           <Effect id="armor" kind="ApplyStatus" statusRef="layer-armor" stacks="3" target="Self" />
         </OpeningEffects>
         <Stage id="normal" mode="Priority">
           <Action id="summon" name="召唤护卫" cooldownRounds="1">
             <When kind="AlliesBelow" value="2" />
-            <Summon enemyRef="rotator" count="2" livingLimit="3" />
+            <Summon enemyRef="rotator" count="2" livingLimit="3" limitScope="Summoner" />
           </Action>
           <Action id="strike" name="震击">
             <Effects>
@@ -168,7 +168,7 @@
       </Behavior>
     </Enemy>
     <Enemy id="gluttony" name="暴食Boss" maxHealth="2400">
-      <Behavior seed="17">
+      <Behavior seed="17" intentPreviewTurns="8" refreshOnHealthThreshold="true" consumeFailedSummon="false">
         <Stage id="hungry" mode="Sequence">
           <When kind="HealthAtMost" value="0.5" />
           <Action id="devour" name="暴食：重击并塞入三张废牌">

@@ -32,6 +32,7 @@ namespace PokerEngine
                 steps.Any(step => step.Target.Group == CombatTargetGroup.EventSource || step.Target.Group == CombatTargetGroup.EventTarget) ||
                 predicates.Any(item => !Supports(timing, item.Kind)))
                 throw new ArgumentException("Invalid relic action trigger or unavailable completion facts.");
+            if (discardKind.HasValue && !Enum.IsDefined(typeof(BattleDiscardKind), discardKind.Value)) throw new ArgumentException("Unknown discard kind.");
             DiscardKind = discardKind; Timing = timing; Relation = relation; Effects = Guard.View(steps); Conditions = Guard.View(predicates);
             Priority = priority; CanTriggerReactions = canTriggerReactions; SourcePolicy = sourcePolicy;
         }

@@ -24,7 +24,7 @@ namespace PokerEngine
         }
         private EnemyBehaviorDefinition ReadEnemyBehavior(BattleContentNode node)
         {
-            Check(node, new[] { "seed" }, new[] { "Stage", "OpeningEffects" });
+            Check(node, new[] { "seed", "intentPreviewTurns", "refreshOnHealthThreshold", "consumeFailedSummon" }, new[] { "Stage", "OpeningEffects" });
             var opening = node.Children.Where(c => c.Name == "OpeningEffects").ToArray();
             if (opening.Length > 1) throw new ArgumentException("Only one OpeningEffects is allowed.");
             var initial = opening.Length == 0 ? null : ReadEnemySequence(opening[0]);
@@ -39,8 +39,8 @@ namespace PokerEngine
                         throw new ArgumentException("One combat Effects batch must precede world effects.");
                     var world = action.Children.Where(c => c.Name == "Summon" || c.Name == "AddCards").Select(effect => {
                         if (effect.Name == "Summon") {
-                            Check(effect, new[] { "enemyRef", "count", "livingLimit" }, new string[0]);
-                            return EnemyWorldEffect.Summon(Text(effect, "enemyRef"), Int(effect, "count", 1), Int(effect, "livingLimit", 4));
+                            Check(effect, new[] { "enemyRef", "count", "livingLimit", "limitScope" }, new string[0]);
+                            return EnemyWorldEffect.Summon(Text(effect, "enemyRef"), Int(effect, "count", 1), Int(effect, "livingLimit", 4), Enum(effect, "limitScope", SummonLimitScope.Battlefield));
                         }
                         Check(effect, new[] { "face", "count", "zone", "position", "disabled", "effects" }, new string[0]);
                         return EnemyWorldEffect.AddCards(Text(effect, "face"), Int(effect, "count", 1), Text(effect, "zone", CardZoneKinds.Discard), Bool(effect, "disabled", false), Enum(effect, "effects", CardEffects.Ineffective | CardEffects.Unplayable), Enum(effect, "position", CardInsertionPosition.Default));
@@ -50,7 +50,7 @@ namespace PokerEngine
                 });
                 return new EnemyBehaviorStage(Text(stage, "id"), Enum(stage, "mode", EnemySelectionMode.Sequence), actions, EnemyWhen(stage));
             });
-            return new EnemyBehaviorDefinition(stages, initial, Int(node, "seed", 1));
+            return new EnemyBehaviorDefinition(stages, initial, Int(node, "seed", 1), Int(node, "intentPreviewTurns", 1), Bool(node, "refreshOnHealthThreshold", false), Bool(node, "consumeFailedSummon", true));
         }
     }
 }

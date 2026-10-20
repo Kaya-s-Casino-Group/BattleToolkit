@@ -1,10 +1,10 @@
 // Standalone H5 scene regression against an already running native editor.
-// EDITOR_URL=http://127.0.0.1:18765 PLAYWRIGHT_CHANNEL=chrome node tests/h5-scene-browser.cjs
+// EDITOR_URL=http://127.0.0.1:18767 PLAYWRIGHT_CHANNEL=chrome node tests/h5-scene-browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {chromium} = require('playwright');
-const base = process.env.EDITOR_URL || 'http://127.0.0.1:18765';
+const base = process.env.EDITOR_URL || 'http://127.0.0.1:18767';
 const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gluttony-boss'];
 
 (async () => {
@@ -60,6 +60,7 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
     return result;
   };
   const draw = async (page,count=5) => {
+    if(await page.locator('#playtest-draw').isDisabled())return clickRequest(page,'#playtest-skip-draw','command','SkipDraw');
     await page.locator('#playtest-draw-count').fill(String(count));
     return clickRequest(page,'#playtest-draw','command','Draw');
   };
@@ -194,11 +195,13 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       await start(page,ids[2]);
       const result=await round(page);
       assert.equal(result.battle.players[0].discardCount,1);
+      assert.equal(result.battle.enemies[0].intentSchedule.length,8);
+      assert.equal(await page.locator('.intent-step').count(),8);
       assert.equal(result.battle.players[0].health,'740');
       assert.equal(await page.locator('#playtest-discard-pile strong').textContent(),'1');
       assert.equal(result.battle.players[0].piles.discard.count,1);
       assert.equal(result.battle.players[0].piles.discard.unplayableCount,1);
-      assert.equal(result.battle.players[0].hand.length,0,'Boss 废牌仍按规则进入弃牌堆，不能立即出现在手牌');
+      assert.equal(result.battle.players[0].hand.length,8,'开局八张保留；Boss 废牌仍进入弃牌堆');
       assert.equal(result.steps.flatMap(step=>step.cardCreations||[]).filter(fact=>fact.zone==='discard').reduce((total,fact)=>total+fact.count,0),1);
       assert.equal(await page.locator('#playtest-discard-pile .pile-junk-count').textContent(),'废牌 1');
       assert.equal(await page.locator('#playtest-creation-notice').isVisible(),true);
@@ -216,7 +219,7 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       await noHorizontalOverflow(page);
       await page.screenshot({path:'/private/tmp/h5-junk-discard.png',fullPage:true,animations:'disabled'});
       await page.locator('#playtest-deck-pile').click();
-      assert.match(await page.locator('#playtest-pile-title').textContent(),/牌库.*52/);
+      assert.match(await page.locator('#playtest-pile-title').textContent(),/牌库.*44/);
       assert.match(await page.locator('#playtest-pile-hint').textContent(),/不代表摸牌顺序/);
       await page.locator('#playtest-pile-view').getByRole('button',{name:'收起'}).click();
       assert.equal(await page.locator('#playtest-pile-view').isVisible(),false);
@@ -234,8 +237,8 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       await start(mobile.page,ids[1]);
       await round(mobile.page);
       const drawn=await draw(mobile.page,5);
-      assert.equal(drawn.battle.players[0].hand.length,5);
-      assert.equal(await mobile.page.locator('#playtest-hand [data-card-id]').count(),5);
+      assert.equal(drawn.battle.players[0].hand.length,8);
+      assert.equal(await mobile.page.locator('#playtest-hand [data-card-id]').count(),8);
       await noHorizontalOverflow(mobile.page);
       await idleArtReady(mobile.page);
       await mobile.page.screenshot({path:'/private/tmp/h5-scene-mobile.png',fullPage:true,animations:'disabled'});
@@ -263,7 +266,7 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
     await test('可配置牌顶、牌底、随机洗入和直接入手，卡面与真实结算一致',async()=>{
       const standard=await fs.readFile(path.resolve(__dirname,'../../../Engine/Content/StandardSingleBattle.xml'),'utf8');
       for(const [zone,position,label] of [['deck','Top','牌顶'],['deck','Bottom','牌底'],['deck','Shuffle','随机洗入'],['hand','Default','手牌']]){
-        const configured=standard.replace(/(<AddCards\b[^>]*?)zone="discard"/g,'$1zone="'+zone+'" position="'+position+'"');
+        const configured=standard.replace('openingDeal="true"','openingDeal="false"').replace(/(<AddCards\b[^>]*?)zone="discard"/g,'$1zone="'+zone+'" position="'+position+'"');
         await load(page,configured);await start(page,ids[2]);
         let result=await round(page);
         assert.match(await page.locator('#playtest-creation-notice').textContent(),new RegExp(label));

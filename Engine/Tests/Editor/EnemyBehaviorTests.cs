@@ -52,7 +52,7 @@ namespace PokerEngine.Tests
                 Assert.AreSame(before, session.State);
                 Round(session);
             }
-            Assert.AreEqual(90, session.State.Duel.Combat.Get(Enemy).Block);
+            Assert.AreEqual(standard ? 0 : 90, session.State.Duel.Combat.Get(Enemy).Block);
             Assert.AreEqual(650, session.State.Duel.Combat.Get(Player).Health);
         }
         [TestCase(false)]
@@ -100,11 +100,11 @@ namespace PokerEngine.Tests
                 effect.SetAttribute("amount", "1300"); effect.SetAttribute("amountKind", "Constant");
                 return doc.OuterXml;
             }, standard: standard);
-            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.Draw, drawCount: 1).Accepted);
-            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.Play, session.State.Zone(CardZoneKinds.Hand, Player).Cards).Accepted);
-            Assert.AreEqual("normal", session.State.Duel.Enemies[0].BehaviorState.StageId);
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, standard ? CardDuelAction.SkipDraw : CardDuelAction.Draw, drawCount: standard ? 0 : 1).Accepted);
+            Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.Play, session.State.Zone(CardZoneKinds.Hand, Player).Cards.Take(1)).Accepted);
+            Assert.AreEqual(standard ? "hungry" : "normal", session.State.Duel.Enemies[0].BehaviorState.StageId);
             Round(session);
-            Assert.AreEqual(1, session.State.Table.Cards.Count - 52);
+            Assert.AreEqual(standard ? 3 : 1, session.State.Table.Cards.Count - 52);
             Assert.AreEqual("hungry", session.State.Duel.Enemies[0].BehaviorState.StageId);
             Assert.AreEqual(3, session.State.Duel.Enemies[0].BehaviorState.Intent.WorldEffects.Single().Count);
         }

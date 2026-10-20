@@ -187,6 +187,7 @@ namespace PokerEngine
                 var discards = state.Duel.Players.ToDictionary(player => player.Id, player => state.DiscardsFor(player.Id));
                 return new CardDuelTransition(new CardDuelState(table, result.State, state.Random, discards, state.HasStarted, state.CopyFlows()));
             }
+            catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
         /// <summary>Runs the exact command pipeline against immutable input. The caller must not commit the returned state.
@@ -214,9 +215,11 @@ namespace PokerEngine
             try
             {
                 var ordered = hand.Cards.Where(ids.Contains).Select(state.Table.GetCard).ToArray();
-                var pattern = PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)));
-                var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
                 var player = state.Duel.Player(actor); var flow = player.Rules.Flow;
+                var pattern = PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
+                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
+                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value);
+                var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
                 var relics = player.Relics.Relics.Select(r => new ScoringRelic(r.InstanceId, r.Level, r.Growth, player.Relics.Definition(r.InstanceId).ScoreEffects));
                 var kicker = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.AllCardsScore).Value > 0 ? KickerScoring.AllCards : flow.KickerScoring;
                 var score = ScoreEngine.EvaluateBattle(Duel.NextScoreId(state.Duel), Scoring, pattern, level,
@@ -224,6 +227,7 @@ namespace PokerEngine
                     flow.ManualDraw || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor);
                 return new CardDuelTransition(state, score: score, pattern: pattern);
             }
+            catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
 
@@ -233,8 +237,27 @@ namespace PokerEngine
             Execute(state, expectedRevision, action == CardDuelAction.EnemyAction ? state.Duel.NextEnemy : state.Duel.PlayerId,
                 action, selected, targetBindings: targetBindings);
         public CardDuelTransition Execute(CardDuelState state, long expectedRevision, ParticipantId actor, CardDuelAction action,
-            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, int drawCount = 0) =>
-            ExecuteFlow(state, expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
+            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, int drawCount = 0)
+        {
+            var result = ExecuteFlow(state, expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
+            return CompleteCardCommand(state, result, actor, action, selected, targets);
+        }
+        private CardDuelTransition CompleteCardCommand(CardDuelState state, CardDuelTransition result, ParticipantId actor, CardDuelAction action,
+            IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null)
+        {
+            if (!result.Accepted || state.Duel.IsFinished || !result.State.Duel.IsFinished || result.RuleEvents.OfType<CombatTimingEvent>().Any(ev => ev.Signal.Kind == CombatTimingKind.BattleEnded)) return result;
+            var next = result.State;
+            var ended = Duel.ResolveBoundary(next.Duel, CombatTimingSignal.BattleEnded(next.Table.MatchId + "/end", next.Duel.Players.Select(p => p.Id).Concat(next.Duel.Enemies.Select(en => en.Id))));
+            if (!ended.Accepted) return new CardDuelTransition(state, ended.Error);
+            if (ended.RuleEvents.Count == 0) return result;
+            next = new CardDuelState(next.Table, ended.State, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, next.CopyFlows());
+            var timeline = new BattleTimelineRecorder(result.State, action, actor, selected, targets);
+            timeline.ObserveCombat(ended.RuleEvents, ended.RelicActivations); timeline.SetState(next);
+            timeline.Add(BattleTimelineKind.BattleEnded, reason: Duel.ReadProgress(next.Duel).Result.Reason.ToString());
+            return new CardDuelTransition(next, score: result.Score, events: result.RuleEvents.Concat(ended.RuleEvents), pattern: result.Pattern, damage: result.Damage,
+                discardReward: result.DiscardReward, effectPlan: result.EffectPlan, actionCost: result.ActionCost, draws: result.Draws,
+                relicActivations: result.RelicActivations.Concat(ended.RelicActivations), actionCompletion: result.ActionCompletion, timeline: result.Timeline.Where(entry => entry.Kind != BattleTimelineKind.BattleEnded).Concat(timeline.Entries));
+        }
 
         private CardDuelTransition ExecuteCore(CardDuelState state, long expectedRevision, ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, bool freeDiscard = false)
@@ -286,6 +309,11 @@ namespace PokerEngine
                 IReadOnlyList<RelicTriggerActivation> relicActivations = Array.Empty<RelicTriggerActivation>();
                 var workingTable = state.Table; var zones = workingTable.Zones.ToArray(); var random = state.Random; var duel = state.Duel;
                 var discards = state.Duel.Players.ToDictionary(x => x.Id, x => state.DiscardsFor(x.Id)); ScoreResult score = null; PokerHandClassification pattern = null; DamagePlan damage = null; DiscardRewardResolution discardReward = null; BattleEffectPlan effectPlan = null; IReadOnlyList<CombatRuleEvent> events = Array.Empty<CombatRuleEvent>();
+                var hookEvents = new List<CombatRuleEvent>(); var hookActivations = new List<RelicTriggerActivation>();
+                Func<CombatTimingKind, ParticipantId, IReadOnlyList<CardInstanceId>, string, bool> hook = null;
+                    int hookCount = 0;
+                    hook = (kind, owner, cards, trigger) => ResolveCardBoundary(state.Revision, workingTable, zones, draws, timeline,
+                        kind, owner, cards, trigger, ref duel, ref random, hookEvents, hookActivations, ref hookCount, hook);
                 if (action == CardDuelAction.Start)
                 {
                     timeline.SetCards(state.Table, state.Random, started: true);
@@ -295,7 +323,7 @@ namespace PokerEngine
                     timeline.SetTeam(duel);
                     foreach (var player in duel.Players.Where(player => !duel.IsFinished && duel.Combat.Get(player.Id).IsAlive))
                     {
-                        var error = Deal(workingTable, zones, player, CardDuelDealTrigger.OpeningTurn, ref random, draws, timeline);
+                        var error = Deal(workingTable, zones, player, CardDuelDealTrigger.OpeningTurn, ref random, draws, timeline, hook);
                         if (error != CardDuelError.None) return new CardDuelTransition(state, error);
                     }
                 }
@@ -319,7 +347,7 @@ namespace PokerEngine
                     Move(zones, actor, CardZoneKinds.Hand, CardZoneKinds.Played, ordered.Select(card => card.Id), timeline);
                     if (!duel.IsFinished)
                     {
-                        var error = Deal(workingTable, zones, duel.Player(actor), CardDuelDealTrigger.AfterPlay, ref random, draws, timeline);
+                        var error = Deal(workingTable, zones, duel.Player(actor), CardDuelDealTrigger.AfterPlay, ref random, draws, timeline, hook);
                         if (error != CardDuelError.None) return new CardDuelTransition(state, error);
                     }
                 }
@@ -344,7 +372,7 @@ namespace PokerEngine
                     // Completion/boundary victories stop dealing; preserve legacy discard settlement otherwise.
                     if (!duel.IsFinished || !relicActivations.Any(activation => activation.BoundaryTiming.HasValue || activation.ActionTiming.HasValue))
                     {
-                        var error = Deal(workingTable, zones, duel.Player(actor), CardDuelDealTrigger.AfterDiscard, ref random, draws, timeline);
+                        var error = Deal(workingTable, zones, duel.Player(actor), CardDuelDealTrigger.AfterDiscard, ref random, draws, timeline, hook);
                         if (error != CardDuelError.None) return new CardDuelTransition(state, error);
                     }
                 }
@@ -383,7 +411,7 @@ namespace PokerEngine
                         Move(zones, player.Id, CardZoneKinds.Played, CardZoneKinds.Discard, state.Zone(CardZoneKinds.Played, player.Id).Cards, timeline);
                         if (!duel.IsFinished && duel.Phase == ScoredDuelPhase.AwaitingPlayerHand && duel.Combat.Get(player.Id).IsAlive)
                         {
-                            var error = Deal(workingTable, zones, player, CardDuelDealTrigger.PlayerTurnStart, ref random, draws, timeline);
+                            var error = Deal(workingTable, zones, player, CardDuelDealTrigger.PlayerTurnStart, ref random, draws, timeline, hook);
                             if (error != CardDuelError.None) return new CardDuelTransition(state, error);
                         }
                     }
@@ -396,8 +424,9 @@ namespace PokerEngine
                         int held = zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == recipient.Id).Cards.Count;
                         int capacity = recipient.Rules.Flow.EffectDrawOverflow ? 512 : recipient.Limits.HandLimit.Value;
                         DealExplicit(workingTable, zones, recipient, (int)Math.Min(drawn.Effect.Amount, Math.Max(0, capacity - held)),
-                            CardDuelDealTrigger.EffectDraw, ref random, draws, timeline);
+                            CardDuelDealTrigger.EffectDraw, ref random, draws, timeline, hook);
                     }
+                events = events.Concat(hookEvents).ToArray(); relicActivations = relicActivations.Concat(hookActivations).ToArray();
                 var table = new CardTableState(workingTable.MatchId, workingTable.Cards, zones, checked(state.Revision + 1));
                 var final = new CardDuelState(table, duel, random, discards, true, state.CopyFlows());
                 timeline.SetState(final);
@@ -407,6 +436,7 @@ namespace PokerEngine
                 return new CardDuelTransition(final, score: score, events: events, pattern: pattern, damage: damage, discardReward: discardReward, effectPlan: effectPlan, actionCost: actionCost, draws: draws,
                     relicActivations: relicActivations, actionCompletion: actionCompletion, timeline: timeline.Entries);
             }
+            catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
         private CardTableState GenerateEnemyCards(CardTableState table, CardZone[] zones, ref RandomState random,
@@ -461,7 +491,7 @@ namespace PokerEngine
             }
         }
         private CardDuelError Deal(CardTableState before, CardZone[] zones, BattlePlayerTurn playerTurn, CardDuelDealTrigger trigger,
-            ref RandomState random, List<BattleDrawRecord> draws, BattleTimelineRecorder timeline)
+            ref RandomState random, List<BattleDrawRecord> draws, BattleTimelineRecorder timeline, Func<CombatTimingKind, ParticipantId, IReadOnlyList<CardInstanceId>, string, bool> hook = null)
         {
             var player = playerTurn.Id;
             var context = new CardDuelDealContext(trigger, new CardTableState(before.MatchId, before.Cards, zones, before.Revision), playerTurn.Limits.HandLimit.Value, player);
@@ -473,6 +503,8 @@ namespace PokerEngine
             int requestedCount = remaining;
             int d = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Deck && zone.ControllerId == player), h = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Hand && zone.ControllerId == player),
                 x = Array.FindIndex(zones, zone => zone.Kind == CardZoneKinds.Discard && zone.ControllerId == player);
+            if (remaining > 0 && hook?.Invoke(CombatTimingKind.BeforeDraw, player, Array.Empty<CardInstanceId>(), trigger.ToString()) == false) remaining = 0;
+            var dealt = new List<CardInstanceId>();
             while (remaining > 0)
             {
                 if (zones[d].Cards.Count == 0)
@@ -484,15 +516,18 @@ namespace PokerEngine
                     timeline.SetCards(new CardTableState(before.MatchId, before.Cards, zones, before.Revision), random);
                     timeline.Add(BattleTimelineKind.DeckRecycled, cards: shuffled.Cards, from: CardZoneKinds.Discard,
                         to: CardZoneKinds.Deck, cardOwner: player, trigger: trigger);
+                    if (hook?.Invoke(CombatTimingKind.Reshuffle, player, shuffled.Cards, trigger.ToString()) == false) break;
                 }
                 int count = Math.Min(remaining, zones[d].Cards.Count);
                 var transfer = zones[d].DrawTo(zones[h], count, zones[h].Cards.Count); zones[d] = transfer.Source; zones[h] = transfer.Target;
                 timeline.SetCards(new CardTableState(before.MatchId, before.Cards, zones, before.Revision), random);
                 timeline.Add(BattleTimelineKind.CardsDealt, cards: transfer.Cards, from: CardZoneKinds.Deck,
                     to: CardZoneKinds.Hand, cardOwner: player, trigger: trigger);
+                dealt.AddRange(transfer.Cards);
                 remaining -= count;
             }
-            draws.Add(new BattleDrawRecord(plan, requestedCount - remaining));
+            if (dealt.Count > 0) hook?.Invoke(CombatTimingKind.Draw, player, dealt.AsReadOnly(), trigger.ToString());
+            draws.Add(new BattleDrawRecord(plan, dealt.Count));
             return CardDuelError.None;
         }
     }

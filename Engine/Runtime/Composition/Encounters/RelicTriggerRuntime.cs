@@ -189,7 +189,8 @@ namespace PokerEngine
             for (int index = 0; index < steps.Count; index++)
             {
                 var step = steps[index]; var effect = step.Effect;
-                if ((effect.Kind == CombatEffectKind.Damage || effect.Kind == CombatEffectKind.Heal || effect.Kind == CombatEffectKind.GainBlock) && effect.Amount == 0) continue;
+                long amount = checked(effect.Amount + step.AmountPerHandCard * (boundary?.HandCount ?? 0));
+                if ((effect.Kind == CombatEffectKind.Damage || effect.Kind == CombatEffectKind.Heal || effect.Kind == CombatEffectKind.GainBlock) && amount == 0) continue;
                 var targets = CombatTargetResolver.Resolve(combat, relic.OwnerId, step.Target, fact);
                 if (effects.Count + targets.Count > 64) throw new ArgumentException("Relic activation exceeds 64 bound effects.");
                 for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
@@ -204,7 +205,7 @@ namespace PokerEngine
                         bound = CombatEffect.ApplyStatus(new StatusInstance(id, status.DefinitionId, EntityRef.Participant(relic.OwnerId),
                             EntityRef.Participant(target), status.Stacks, duration));
                     }
-                    else bound = new CombatEffect(effect.Kind, relic.OwnerId, target, effect.Amount);
+                    else bound = new CombatEffect(effect.Kind, relic.OwnerId, target, amount);
                     effects.Add(new CombatReaction(bound, loadout.RulesFor(relic.InstanceId).Version + "/" + triggerId, relic.OwnerId,
                         CombatEffectOrigin.Triggered, canTriggerReactions, sourcePolicy, relic.InstanceId));
                 }
@@ -317,7 +318,7 @@ namespace PokerEngine
             var entries = actionStart.Players.Select(player => loadouts[player.Id]).SelectMany(loadout => loadout.Relics.SelectMany(relic =>
                 loadout.RulesFor(relic.InstanceId).BoundaryTriggers.OrderBy(spec => spec.Priority)
                 .Select(spec => new { Owner = loadout.OwnerId, Source = relic.InstanceId, Spec = spec })));
-            if (!finished) foreach (var entry in entries)
+            if (!finished || boundary.Kind == CombatTimingKind.BattleEnded) foreach (var entry in entries)
             {
                 var loadout = nextLoadouts[entry.Owner]; var relic = loadout.Relics.Single(item => item.InstanceId == entry.Source);
                 var spec = entry.Spec; var budget = loadout.RulesFor(entry.Source).TriggerBudget;

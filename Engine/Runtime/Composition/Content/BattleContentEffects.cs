@@ -90,9 +90,9 @@ namespace PokerEngine
                 IsNumeric(kind) ? ReadAmount(node, allowScore) : null, kind == CombatEffectKind.ApplyStatus ? ReadStatusApplication(node) : null);
         }
 
-        private BattleEffectSpec ReadConstantEffect(BattleContentNode node, bool allowTarget = true, bool allowId = true)
+        private BattleEffectSpec ReadConstantEffect(BattleContentNode node, bool allowTarget = true, bool allowId = true, bool allowHandCount = false)
         {
-            Check(node, EffectAttributes.Where(item => (allowTarget || !TargetAttributes.Contains(item)) && (allowId || item != "id")).ToArray(), new string[0]);
+            Check(node, EffectAttributes.Where(item => (allowTarget || !TargetAttributes.Contains(item)) && (allowId || item != "id")).Concat(allowHandCount ? new[] { "amountPerHandCard" } : Array.Empty<string>()).ToArray(), new string[0]);
             var kind = ReadEffectKind(node);
             long amount = IsNumeric(kind) ? ReadAmount(node, false).Resolve() : 0;
             switch (kind)

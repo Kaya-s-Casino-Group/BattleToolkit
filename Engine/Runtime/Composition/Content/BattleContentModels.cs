@@ -72,7 +72,7 @@ namespace PokerEngine
     /// <summary>Validated immutable definitions. Every assembly creates new battle-owned state.</summary>
     public sealed class CompiledBattleContent
     {
-        public const string CurrentRulesContractVersion = "battle-content.4";
+        public const string CurrentRulesContractVersion = "battle-content.5";
         public string Id { get; }
         public string Version { get; }
         public int SchemaVersion => 1;

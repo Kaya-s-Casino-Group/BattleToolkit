@@ -1,12 +1,12 @@
 # 单对局配置
 
-`StandardSingleBattle.xml` 对齐[《德州+肉鸽》](https://moonton.feishu.cn/wiki/KZGawy0ypiSMPtkmqwDcAKLFnle) revision 1563（2026-10-19）的玩家流程，并内置三个可选怪物对局。三种对局共用一名玩家、标准 52 张牌、计分与牌型规则，初始无遗物、无牌型升级。生命、攻击和怪物行为数值是机制验证用的测试占位。
+`StandardSingleBattle.xml` 对齐[《德州+肉鸽》](https://moonton.feishu.cn/wiki/KZGawy0ypiSMPtkmqwDcAKLFnle) revision 1582（2026-10-20）的玩家流程，并内置三个可选怪物对局。三种对局共用一名玩家、标准 52 张牌、计分与牌型规则，初始无遗物、无牌型升级。生命、攻击和怪物行为数值是机制验证用的测试占位。
 
 | 编成 ID | 怪物 | 行为 |
 | --- | --- | --- |
 | `standard-single-battle`（默认） | 轮换小怪，600 生命 | 40 伤害 → 70 伤害 → 90 护盾，循环执行 |
-| `standard-armored-summoner` | 护甲召唤精英，1800 生命 | 开局三层护甲，前 3 次主动命中各减伤 75% 并消耗一层；缺护卫时召唤两只轮换小怪，否则造成 90 群体伤害；同屏存活上限 3 |
-| `standard-gluttony-boss` | 暴食Boss，2400 生命 | 常态 60 伤害并塞入 1 张废牌；生命不高于 50% 后，下次规划意图改为 120 伤害和 3 张废牌 |
+| `standard-armored-summoner` | 护甲召唤精英，1800 生命 | 开局三层护甲，前 3 次主动命中各减伤 75% 并消耗一层；缺护卫时召唤两只轮换小怪，否则造成 90 群体伤害；本体加直属召唤物存活上限 3 |
+| `standard-gluttony-boss` | 暴食Boss，2400 生命 | 常态 60 伤害并塞入 1 张废牌；生命不高于 50% 后，立即刷新未来 8 回合意图，改为 120 伤害和 3 张废牌 |
 
 在 H5 配置工具载入标准 XML 后，可在对局模拟的编成选择中切换以上三种对局并重新开局，无需换 XML。敌人意图在玩家回合开始时锁定；召唤出的怪物从下轮开始行动。暴食产生的废牌进入弃牌堆，可弃置、不可出牌与计分，在牌库耗尽回收弃牌堆后才能抽到。独立的 [07—09 怪物模板](Templates/README.md) 继续保留，便于单独修改实验。
 
@@ -14,17 +14,17 @@
 
 ## 标准回合
 
-1. 开局洗牌，手牌为空。回合开始结算持有者的流血，然后进入摸牌窗口。
+1. 开局洗牌并发满 8 张，不消耗手动摸牌次数。回合开始结算持有者的流血，然后进入摸牌窗口。
 2. 免费摸牌一次，可选 1–5 张或跳过。手牌上限 8；满手时拒绝摸牌且不扣次数。已有手牌超过 3 张时提示少摸，或先选择手牌弃置，再提交摸牌。选牌和取消不改变规则状态。
 3. 每回合最多行动 3 次，出牌 1–5 张。效果摸牌独立于手动摸牌，可以超过手牌上限。出牌后不自动补牌。
-4. 主动结束或行动用尽后，先强制弃掉超出 8 张的部分，提交张数必须精确，不能跳过。再可弃牌防御一次或确认结束；未弃的手牌保留至下回合。
-5. 行动中弃牌防御默认消耗一次行动，获得“弃牌筹码总和 × 1”的护盾，并立即结束回合。摸牌前弃牌不消耗行动、不获得基础护盾；强制弃牌默认也不触发防御收益。
+4. 主动结束或行动用尽后，先结算 PlayPhaseEnd 遗物事件，再强制弃掉超出 8 张的部分，提交张数必须精确，不能跳过。不追加第二次防御弃牌；未弃的手牌保留至下回合。
+5. 行动中弃牌防御默认消耗一次行动，获得“弃牌筹码总和 × 1”的护盾，并立即结束回合。摸牌前弃牌不消耗行动、不获得基础护盾；强制弃牌触发防御收益。
 
 多玩家各自拥有窗口与次数，全部结束后敌方才行动。眩晕阻止出牌/防御行动，但保留摸牌窗口。牌库不足时洗回弃牌区；两区都空时停止摸牌，不报错。
 
 ## 计分与牌型
 
-默认 `总分 = floor(计分牌筹码 × 倍率) + 未成牌部分的筹码`。未成牌部分不吃倍率；`kickerScoring="AllCards"` 或遗物 `RuleValue key="AllCardsScore" delta="1"` 可让全部打出牌进入计分。计分遗物依次处理加筹码、加倍率、乘倍率，同层按获得顺序。
+默认 `总分 = floor(计分牌筹码 × 倍率)`。踢脚牌不贡献筹码或倍率；`kickerScoring="AllCards"` 或遗物 `RuleValue key="AllCardsScore" delta="1"` 可让全部打出牌进入计分。计分遗物依次处理加筹码、加倍率、乘倍率，同层按获得顺序。
 
 | 牌型 | 标准效果 |
 | --- | --- |
@@ -44,10 +44,22 @@
 
 手牌上限、出牌最小/最大张数、行动次数、摸牌张数/次数/提示阈值、开局发牌、效果摸牌溢出、弃牌是否消耗行动/结束回合、结束时防御和强制弃牌收益都在 Player 中配置。牌型步骤、目标、筹码表、倍率、流血伤害/减层和遗物计分也可独立配置。完整字段见[内容配置说明](../Runtime/Composition/Content/README.md)。
 
-单体连续攻击用重复 Effect 步骤配置段数，遗物也可 AddHits。标准暂配顺子 3 段、每段总分 × 1；策划未明确段数，可直接调整。玩家生命 800、三种怪物的生命/攻击/召唤参数、20 回合上限、同花基础倍率 4 及升级增量仍是测试配置，未做平衡验证。
+单体连续攻击用重复 Effect 步骤配置段数，遗物也可 AddHits。标准暂配顺子 3 段、每段总分 × 1；策划未明确段数，可直接调整。玩家生命 800、三种怪物的生命/攻击/召唤参数、第 20 回合后每轮叠加 20 伤害的狂暴值、同花基础倍率 4 及升级增量仍是测试配置，未做平衡验证。
 
 - 配置工具：导入标准 XML，进入对局模拟，先选择轮换小怪、护甲召唤精英或暴食Boss，再开局；选择摸牌张数或跳过，之后按窗口出牌/弃牌。H5 展示独立于 Unity 工程。
 - Unity：包路径 `Packages/com.kaya.battle-engine/Content/StandardSingleBattle.xml`，Host 编成 ID 为 `standard-single-battle`。Scene3D 适配器新增 `DrawCards`、`SkipDraw`、`DiscardBeforeDraw`、`ConfirmOverflow`，HUD 提供对应入口。
 - 规则层：`BattleContentCompiler.CompileXml` → `BattleContentFactory.Create` → `BattleSession.Execute(Start)`；新增命令 `Draw`（drawCount）、`SkipDraw`、`DiscardForDraw`、`ConfirmOverflow`、`FinishTurn`。`EndTurn` 请求结束出牌阶段，最后用 `FinishTurn` 确认结束。非法提交不改变状态。
 
 规则契约 `battle-content.4`、战斗规则 `combat.11`，加载新配置或切换编成后重新开局。怪物轮换、条件选招、护甲、召唤和废牌使用[可配置行为契约](../Runtime/Composition/Content/EnemyBehavior.md)。绝杀、局外流程和自由脚本公式未改；本次 H5 占位图与动画不接入 Unity 表现层。
+
+## revision 1582 扩展
+
+同花支持 3—5 张，顺子和同花顺默认仍需 5 张。`minFlushCards` / `minStraightCards` 可配置，遗物也可通过同名 RuleValue 调整。弃牌结束回合由 `DiscardEndsTurn` 遗物规则覆盖；`RetainBlock=1` 可保留玩家护盾。RuleValue 支持 `(基础值 + 全部 delta) × 全部 multiplier` 后向下取整并按参数限界处理。
+
+标准配置清空敌方阶段结束时的敌方护盾、以及玩家下回合开始前的玩家护盾。`roundLimitBehavior="Enrage"` 在第 20 回合结束后进入狂暴，第 21 回合伤害 +20，第 22 回合 +40，以此类推；`enrageDamagePerRound` 为暂定测试值。`Lose` 仍可用于其他主题模板。
+
+边界遗物支持 `BeforeDraw`、`Draw`、`Reshuffle`、`PlayPhaseEnd`、`TurnStarted`、`BattleEnded`，原有 PhaseStarted/PhaseEnding 对应团队回合开始/结束，敌人的 TurnStarted 对应行动前。卡牌边界携带实际卡牌 ID、当前手牌数、摸牌来源；`amountPerHandCard` 可配置每张留手牌追加护盾/治疗/伤害。效果摸牌继续派发边界，限制递归次数，整条失败回滚。`DiscardByEffect` 为规则调用方提供效果弃牌入口，携带 `Effect` 类型，不消耗玩家行动。
+
+Boss 预告条通过纯查询 `PreviewEnemyIntents` 提供，在当前战场条件下推算未来八轮；未来玩家操作、状态和新增召唤可能改变之后的预测。当前意图仅在配置的血量阈值变化时即时重选。召唤 `limitScope="Summoner"` 按本体及直属召唤物统计；`consumeFailedSummon="false"` 保留失败召唤的使用次数和轮换游标。Boss 若新增召唤技能可配 `livingLimit="6"`，暴食默认仍为塞废牌。
+
+绝杀及局外奖励/回收流程仍不在本次修改范围内。

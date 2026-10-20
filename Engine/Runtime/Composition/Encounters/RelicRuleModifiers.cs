@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum BattleRuleValueKey { MaxEnergy = 1, InitialEnergy, PlayEnergyCost, DiscardEnergyCost, HandLimit, MinPlayCards, MaxPlayCards, DrawCount, DrawUses, DrawWarningThreshold, AllCardsScore, ActionsPerTurn }
+    public enum BattleRuleValueKey { MaxEnergy = 1, InitialEnergy, PlayEnergyCost, DiscardEnergyCost, HandLimit, MinPlayCards, MaxPlayCards, DrawCount, DrawUses, DrawWarningThreshold, AllCardsScore, ActionsPerTurn, DiscardEndsTurn, MinFlushCards, MinStraightCards, RetainBlock }
     public enum BattleRefillMode { Skip = 1, FillToLimit, FixedCount }
 
     /// <summary>Passive integer adjustment, independent of effect amounts and relic runtime counters.</summary>
@@ -14,13 +14,15 @@ namespace PokerEngine
         public string Id { get; }
         public BattleRuleValueKey Key { get; }
         public int Delta { get; }
-        public RelicRuleValueSpec(string id, BattleRuleValueKey key, int delta)
+        public decimal Multiplier { get; }
+        public RelicRuleValueSpec(string id, BattleRuleValueKey key, int delta = 0, decimal multiplier = 1)
         {
             Id = Guard.Text(id, nameof(id));
             if (!Enum.IsDefined(typeof(BattleRuleValueKey), key)) throw new ArgumentException("Unknown battle rule value.");
-            Key = key; Delta = delta;
+            if (multiplier < 0) throw new ArgumentOutOfRangeException(nameof(multiplier));
+            Key = key; Delta = delta; Multiplier = multiplier;
         }
-        internal void Write(BinaryWriter writer) { writer.Write(Id); writer.Write((int)Key); writer.Write(Delta); }
+        internal void Write(BinaryWriter writer) { writer.Write(Id); writer.Write((int)Key); writer.Write(Delta); writer.Write(Multiplier); }
     }
 
     /// <summary>Optional exclusive mode plus additive count for one explicit deal boundary. Null mode inherits the base policy.</summary>
@@ -51,26 +53,29 @@ namespace PokerEngine
         public string SourceInstanceId { get; }
         public string RuleId { get; }
         public int Delta { get; }
-        internal BattleRuleContribution(string source, string rule, int delta) { SourceInstanceId = source; RuleId = rule; Delta = delta; }
+        public decimal Multiplier { get; }
+        internal BattleRuleContribution(string source, string rule, int delta, decimal multiplier = 1) { SourceInstanceId = source; RuleId = rule; Delta = delta; Multiplier = multiplier; }
     }
     public sealed class BattleRuleValueResolution
     {
         public BattleRuleValueKey Key { get; }
         public int BaseValue { get; }
         public long Delta { get; }
-        public long UnboundedValue => BaseValue + Delta;
+        public decimal Multiplier { get; }
+        public decimal UnboundedValue => (BaseValue + Delta) * Multiplier;
         public int Value { get; }
         public IReadOnlyList<BattleRuleContribution> Contributions { get; }
         internal BattleRuleValueResolution(BattleRuleValueKey key, int baseValue, IEnumerable<BattleRuleContribution> contributions)
         {
             var items = contributions.ToArray();
             long delta = 0; foreach (var item in items) delta = checked(delta + item.Delta);
-            long value = checked(baseValue + delta);
+            decimal multiplier = 1; foreach (var item in items) multiplier = checked(multiplier * item.Multiplier);
+            Multiplier = multiplier; long value = checked((long)decimal.Floor(checked((baseValue + delta) * multiplier)));
             if (key >= BattleRuleValueKey.MinPlayCards)
             {
-                int minimum = key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards || key == BattleRuleValueKey.ActionsPerTurn ? 1 : 0;
-                int maximum = key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards ? 10 :
-                    key == BattleRuleValueKey.DrawUses || key == BattleRuleValueKey.ActionsPerTurn ? 64 : key == BattleRuleValueKey.AllCardsScore ? 1 : 512;
+                int minimum = key == BattleRuleValueKey.MinFlushCards || key == BattleRuleValueKey.MinStraightCards ? 3 : key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards || key == BattleRuleValueKey.ActionsPerTurn ? 1 : 0;
+                int maximum = key == BattleRuleValueKey.MinFlushCards || key == BattleRuleValueKey.MinStraightCards ? 5 : key == BattleRuleValueKey.MinPlayCards || key == BattleRuleValueKey.MaxPlayCards ? 10 :
+                    key == BattleRuleValueKey.DrawUses || key == BattleRuleValueKey.ActionsPerTurn ? 64 : key == BattleRuleValueKey.AllCardsScore || key == BattleRuleValueKey.DiscardEndsTurn || key == BattleRuleValueKey.RetainBlock ? 1 : 512;
                 Value = (int)Math.Min(maximum, Math.Max(minimum, value)); Key = key; BaseValue = baseValue; Delta = delta; Contributions = Guard.View(items); return;
             }
             if (key == BattleRuleValueKey.PlayEnergyCost || key == BattleRuleValueKey.DiscardEnergyCost) value = Math.Max(0, value);
@@ -215,6 +220,10 @@ namespace PokerEngine
             int value;
             switch (key)
             {
+                case BattleRuleValueKey.RetainBlock: value = 0; break;
+                case BattleRuleValueKey.DiscardEndsTurn: value = rules.Flow.DiscardEndsTurn ? 1 : 0; break;
+                case BattleRuleValueKey.MinFlushCards: value = rules.Flow.MinFlushCards; break;
+                case BattleRuleValueKey.MinStraightCards: value = rules.Flow.MinStraightCards; break;
                 case BattleRuleValueKey.MaxEnergy: value = rules.MaxEnergy; break;
                 case BattleRuleValueKey.InitialEnergy: value = rules.InitialEnergy; break;
                 case BattleRuleValueKey.PlayEnergyCost: value = rules.PlayEnergyCost; break;
@@ -230,7 +239,7 @@ namespace PokerEngine
                 default: throw new ArgumentException("Unknown battle rule value.");
             }
             return new BattleRuleValueResolution(key, value, loadout.Relics.SelectMany(relic => loadout.RulesFor(relic.InstanceId).RuleValues
-                .Where(spec => spec.Key == key).Select(spec => new BattleRuleContribution(relic.InstanceId, spec.Id, spec.Delta))));
+                .Where(spec => spec.Key == key).Select(spec => new BattleRuleContribution(relic.InstanceId, spec.Id, spec.Delta, spec.Multiplier))));
         }
     }
     internal static class RelicRuleValidation

@@ -86,9 +86,8 @@ namespace PokerEngine
         }
         private RelicRuleValueSpec ReadRuleValue(BattleContentNode node)
         {
-            Check(node, new[] { "id", "key", "delta" }, new string[0]);
-            Text(node, "delta");
-            return new RelicRuleValueSpec(Text(node, "id"), ReadRequiredEnum<BattleRuleValueKey>(node, "key"), Int(node, "delta", 0));
+            Check(node, new[] { "id", "key", "delta", "multiplier" }, new string[0]);
+            return new RelicRuleValueSpec(Text(node, "id"), ReadRequiredEnum<BattleRuleValueKey>(node, "key"), Int(node, "delta", 0), Decimal(node, "multiplier", 1));
         }
         private RelicRefillRuleSpec ReadRefill(BattleContentNode node)
         {
@@ -144,7 +143,7 @@ namespace PokerEngine
         }
         private RelicTriggeredEffectSpec[] ReadTriggeredEffects(BattleContentNode node) =>
             node.Children.Where(item => item.Name == "Effect").Select(item => Capture(item, () =>
-                new RelicTriggeredEffectSpec(ReadConstantEffect(item, true, false), ReadCombatTarget(item)))).Where(item => item != null).ToArray();
+                new RelicTriggeredEffectSpec(ReadConstantEffect(item, true, false, node.Name == "BoundaryTrigger"), ReadCombatTarget(item), Long(item, "amountPerHandCard", 0)))).Where(item => item != null).ToArray();
 
         private RelicTriggerConditionSpec[] ReadConditions(BattleContentNode node)
         {

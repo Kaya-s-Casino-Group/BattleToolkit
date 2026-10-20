@@ -127,3 +127,8 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 ## 可配置怪物（battle-content.4）
 
 行为阶段、条件、锁定意图、召唤、生成卡牌和护甲见 [EnemyBehavior.md](EnemyBehavior.md)。旧固定敌人定义保留支持，新模板在 `Engine/Content/Templates/07—09`。
+
+
+## revision 1582 / battle-content.5
+
+标准 XML 和新增字段、遗物边界、召唤归属、狂暴及意图预告约定见 [标准局内规则](../../../Content/README.md#revision-1582-扩展)。Combat 契约升级为 `combat.12`，新增卡牌边界事实；核心默认牌型仍保持传统扑克五张同花，标准对局通过配置启用短同花。
