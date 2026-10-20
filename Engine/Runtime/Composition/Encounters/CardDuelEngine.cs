@@ -138,6 +138,8 @@ namespace PokerEngine
         private readonly Dictionary<CardDefinitionId, CardDefinition> faces = StandardDeck.Cards().ToDictionary(card => card.Id);
         private readonly HmacDeckShuffler shuffler = new HmacDeckShuffler();
         private readonly Dictionary<string, BattleRelicContentDefinition> itemCatalog;
+        /// <summary>Catalog bound to this engine's session, for authority-side administrator tools.</summary>
+        public IReadOnlyList<BattleRelicContentDefinition> AdminRelicCatalog => Array.AsReadOnly(itemCatalog.Values.ToArray());
         public TeamBattleEngine Duel { get; }
         public ScoreProfile Scoring { get; }
         private readonly CombatantDefinition defaultPlayer = new CombatantDefinition("hero", 40), defaultEnemy = new CombatantDefinition("enemy", 75);
