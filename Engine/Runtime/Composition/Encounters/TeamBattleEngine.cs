@@ -877,7 +877,7 @@ namespace PokerEngine
 
         private bool IsFinished(CombatState combat, IEnumerable<BattlePlayerTurn> players, IEnumerable<BattleEnemySetup> enemies) =>
             EnemiesDefeated(combat, enemies) || players.All(unit => !combat.Get(unit.Id).IsAlive);
-        private bool EnemiesDefeated(CombatState combat, IEnumerable<BattleEnemySetup> enemies) => Definition.VictoryEnemyRef == null
+        internal bool EnemiesDefeated(CombatState combat, IEnumerable<BattleEnemySetup> enemies) => Definition.VictoryEnemyRef == null
             ? enemies.All(e => !combat.Get(e.Id).IsAlive)
             : enemies.Any(e => e.Definition.Id == Definition.VictoryEnemyRef) && enemies.Where(e => e.Definition.Id == Definition.VictoryEnemyRef).All(e => !combat.Get(e.Id).IsAlive);
 

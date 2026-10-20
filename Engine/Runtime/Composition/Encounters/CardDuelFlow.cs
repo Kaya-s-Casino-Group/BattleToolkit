@@ -63,7 +63,7 @@ namespace PokerEngine
                     DealExplicit(state.Table, zones, recipient, (int)Math.Min(draw.Effect.Amount, Math.Max(0, cap - held)), CardDuelDealTrigger.EffectDraw, ref random, draws, timeline, hook);
                 }
                 var next = new CardDuelState(new CardTableState(state.Table.MatchId, state.Table.Cards, zones, checked(state.Revision + 1)), team, random,
-                    team.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows());
+                    team.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows(), state.CopyGold());
                 timeline.SetState(next); timeline.Add(BattleTimelineKind.ActionResolved);
                 return CompleteCardCommand(state, new CardDuelTransition(next, events: discarded.RuleEvents.Concat(hookEvents), draws: draws, relicActivations: discarded.RelicActivations.Concat(hookActivations), actionCompletion: discarded.ActionCompletion, timeline: timeline.Entries), actor, CardDuelAction.Discard, ids);
             }
@@ -181,7 +181,7 @@ namespace PokerEngine
                     else if (action == CardDuelAction.ConfirmOverflow) flows[actor] = flow.With(
                         zones.Single(z => z.Kind == CardZoneKinds.Hand && z.ControllerId == actor).Cards.Count > player.Limits.HandLimit.Value ? BattlePlayerWindow.ForcedDiscard : BattlePlayerWindow.Ending);
                     var table = new CardTableState(state.Table.MatchId, state.Table.Cards, zones, checked(state.Revision + 1));
-                    var result = new CardDuelState(table, team, random, state.Duel.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, flows);
+                    var result = new CardDuelState(table, team, random, state.Duel.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, flows, state.CopyGold());
                     timeline.SetState(result); timeline.Add(BattleTimelineKind.ActionResolved);
                     return new CardDuelTransition(result, events: (discarded?.RuleEvents ?? Array.Empty<CombatRuleEvent>()).Concat(hookEvents), draws: draws, relicActivations: (discarded?.RelicActivations ?? Array.Empty<RelicTriggerActivation>()).Concat(hookActivations), actionCompletion: discarded?.ActionCompletion, timeline: timeline.Entries);
                 }
@@ -219,7 +219,7 @@ namespace PokerEngine
             }
             if (manual && player.Rules.Flow.ForceDiscardOverflow && flows[actor].Window == BattlePlayerWindow.Ending && RequiredDiscards(next, actor) > 0)
                 flows[actor] = flows[actor].With(BattlePlayerWindow.ForcedDiscard);
-            next = new CardDuelState(next.Table, next.Duel, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, flows);
+            next = new CardDuelState(next.Table, next.Duel, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, flows, next.CopyGold());
             return CopyTransition(resolved, next);
         }
         private CardDuelTransition ClosePlayPhase(CardDuelState state, ParticipantId actor)
@@ -234,7 +234,7 @@ namespace PokerEngine
                         kind, owner, cards, trigger, ref team, ref random, hookEvents, hookActivations, ref hookCount, hook);
                 hook(CombatTimingKind.PlayPhaseEnd, actor, Array.Empty<CardInstanceId>(), null);
                 var next = new CardDuelState(new CardTableState(state.Table.MatchId, state.Table.Cards, zones, state.Revision), team, random,
-                    team.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows());
+                    team.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows(), state.CopyGold());
                 return new CardDuelTransition(next, events: hookEvents, draws: draws, relicActivations: hookActivations, timeline: timeline.Entries);
             }
             catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }

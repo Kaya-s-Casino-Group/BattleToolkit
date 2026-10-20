@@ -88,6 +88,7 @@ internal static partial class AdventureBridge
                 Sessions.Remove(sessionId);
                 return D("success", true, "closed", true);
             }
+            if (op == "admin-state" || op == "admin-preview" || op == "admin") return Admin(request, previous, revision, op);
             if (op == "command")
             {
                 var next = Copy(previous, previous.Session.Fork());
@@ -104,6 +105,27 @@ internal static partial class AdventureBridge
             Console.Error.WriteLine("Adventure host: " + error.GetType().Name);
             return Failure("InvalidRequest", "配置、存档或操作参数无效：" + error.Message, previous);
         }
+    }
+
+    private static object Admin(Dictionary<string, object> request, Entry entry, long revision, string op)
+    {
+        if (op == "admin-state")
+        { var current = Response(entry, includeSave: false); current["admin"] = AdminBridge.Adventure(entry.Session, entry.Source); return current; }
+        if (entry.Session.Phase == AdventurePhase.Battle && Revision(request, "battleRevision") != entry.Session.Battle.State.Revision)
+            return Failure("StaleRevision", "战斗已经更新，请重新读取管理员状态。", entry);
+        var next = Copy(entry, entry.Session.Fork());
+        var result = next.Session.ApplyAdmin(revision, AdminBridge.Read(request));
+        if (op == "admin-preview")
+        {
+            var response = Response(entry, includeSave: false);
+            response["admin"] = AdminBridge.Adventure(result.Accepted ? next.Session : entry.Session, entry.Source);
+            response["preview"] = D("legal", result.Accepted, "error", result.Error, "message", result.Accepted ? "可以应用管理员修改" : result.Error);
+            return response;
+        }
+        if (!result.Accepted) return Failure("InvalidAdminPatch", result.Error, entry);
+        var committed = Response(next, result.BattleResult);
+        committed["admin"] = AdminBridge.Adventure(next.Session, next.Source);
+        Json.Serialize(committed); Sessions[next.SessionId] = next; return committed;
     }
 
     private static object Battle(Dictionary<string, object> request, Entry entry, long revision, bool preview)

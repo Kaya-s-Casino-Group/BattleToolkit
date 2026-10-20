@@ -139,7 +139,8 @@ namespace PokerEngine
             var next = Copy();
             try
             {
-                if (entry.IsBattle) next.ApplyBattle(entry);
+                if (entry.AdminPatch != null) next.ApplyAdministrator(entry.AdminPatch);
+                else if (entry.IsBattle) next.ApplyBattle(entry);
                 else next.ApplyCommand(new AdventureCommand(entry.Kind, entry.Id, entry.Suit));
                 next.Revision = checked(Revision + 1);
                 next.history.Add(entry);
@@ -226,6 +227,7 @@ namespace PokerEngine
                     entry.Cards?.Select(c => new CardInstanceId(c)), entry.Targets?.Select(t => new ParticipantId(t)), entry.CreateBindings(), entry.DrawCount);
             Need(result.Accepted, result.Error.ToString());
             LastBattleResult = result; Health = result.State.Duel.Combat.Get(PlayerId).Health;
+            MaxHealth = result.State.Duel.Combat.Get(PlayerId).MaxHealth; Gold = result.State.GoldFor(PlayerId);
             relics = result.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
             if (!result.State.Duel.IsFinished) return;
             // Dynamic ownership, finite charges and completed-battle cooldowns survive location changes.
@@ -263,7 +265,7 @@ namespace PokerEngine
             byte[] seedBytes;
             using (var hash = SHA256.Create()) seedBytes = hash.ComputeHash(Encoding.UTF8.GetBytes(
                 Seed.ToString(CultureInfo.InvariantCulture) + "/" + CurrentNode.Id));
-            battle = new BattleSession(engine, engine.Create(RunId + "/battle/" + CurrentNode.Id, HmacDeckShuffler.FromSeed(seedBytes), new[] { player }, enemies));
+            battle = new BattleSession(engine, engine.Create(RunId + "/battle/" + CurrentNode.Id, HmacDeckShuffler.FromSeed(seedBytes), new[] { player }, enemies).WithGold(new[] { new BattleAdminGold(PlayerId, Gold) }));
             LastBattleResult = battle.Execute(battle.State.Revision, PlayerId, CardDuelAction.Start);
             Need(LastBattleResult.Accepted, "Cannot start battle: " + LastBattleResult.Error);
             Health = battle.State.Duel.Combat.Get(PlayerId).Health;

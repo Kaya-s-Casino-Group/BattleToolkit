@@ -38,7 +38,38 @@ Windows 双击仓库根目录 `start.cmd`；macOS 双击 `start.command`。缺�
 
 界面与占位美术是独立 H5 实现，不接入 Unity 场景、图集、动画或资源导入。四张角色 PNG 均为 192×192，合计约 187 KiB；加上遗物和状态共用的 SVG 图标表，全部图像资源共 194,071 字节（约 189.5 KiB），背景与受伤、治疗、加盾、行动和召唤动效由 CSS 绘制。默认遵循系统“减少动态效果”设置，也可用“动效”按钮关闭。原始大图不入库，生成来源及完整提示词见 [占位资源说明](web/assets/README.md)。
 
-试玩会话保存在本机 C# 进程内存中，可点击“结束试玩”释放。最多同时保留 16 场，闲置 2 小时到期，每场最多提交 4096 次行动。重启服务后需要重新开局；网页草稿仍按原方式保存。多个浏览器标签页的对局相互独立。第一版不提供指定起手牌、撤回操作、批量模拟或完整对局存档。
+试玩会话保存在本机 C# 进程内存中，可点击“结束试玩”释放。最多同时保留 16 场，闲置 2 小时到期，每场最多提交 4096 次行动。重启服务后需要重新开局；网页草稿仍按原方式保存。多个浏览器标签页的对局相互独立。现在可用下方管理员面板修改当前手牌和牌堆；独立试玩仍不提供撤回操作、批量模拟或完整对局存档。
+
+## 对局管理员
+
+展开战斗下方的「管理员修改」，读取当前状态后，可修改双方生命/生命上限/护盾、玩家金币和持有遗物，并编辑手牌、牌库、弃牌堆。遗物按列表顺序结算；卡牌可改牌面/标记、复制、移除、移动或排序，编辑器中牌库第一张是下一张摸到的牌。预览不会提交；应用时整批校验并原子替换，失败不会留下部分修改。直接修正不消耗行动点、不抽随机数，也不执行普通攻击/复活触发；把生命设为零只改变胜负结果，不发放节点金币。
+
+单局与冒险战斗使用同一面板和 C# `BattleSession.ApplyAdmin` / `PreviewAdmin`。冒险经 `BattleAdventureSession.ApplyAdmin(..., preview: true/false)` 同步持久状态：生命、生命上限、金币、遗物保留到后续节点；改手牌/牌库/弃牌堆只影响当前战斗，不改变永久构筑。地图、商店和休息点仅开放生命/生命上限、金币、遗物，Reward 和终局不再接受修改。普通 XML 表单仍只影响下一次开局。
+
+HTTP 沿用 `/api/playtest`、`/api/adventure` 及本机 `X-Editor-Token` / 同源检查，使用显式管理员操作：
+
+- `admin-state`：以 `sessionId/runId/revision` 读取管理员快照；仅此投影返回真实牌序与实例 ID、卡牌/遗物目录，普通试玩快照只返回牌堆汇总。
+- `admin-preview`：额外提交 `patch`，返回原 `battle` / `adventure` 与候选 `admin`、`preview.legal`；不返回或覆盖存档。
+- `admin`：提交同一 `patch`，成功推进版本一次并返回新快照；冒险同时返回包含该管理员命令的可恢复存档。冒险战斗须同时提交 `battleRevision`，防止覆盖已经变化的战斗。
+
+```json
+{
+  "op": "admin",
+  "sessionId": "窗口 UUID",
+  "runId": "当前 runId",
+  "revision": "当前 revision",
+  "patch": {
+    "vitals": [{"unit": "hero", "health": "800", "maxHealth": "1200", "block": "50"}],
+    "gold": [{"owner": "hero", "amount": "9007199254740993"}],
+    "zones": [{"owner": "hero", "kind": "hand", "cards": [{"definitionId": "standard:1:14"}]}],
+    "relics": [{"owner": "hero", "items": [{"definitionId": "11004", "charges": 3}]}]
+  }
+}
+```
+
+补丁中未提供的部分保持原状；提供的区域/道具列表是完整替换，空列表表示清空。已存在卡牌/遗物填写 `instanceId` 保留其身份和未填写状态；省略实例 ID 表示新建，使用配置目录里的 `definitionId`。跨牌区移动需同批提交来源和目标区域；协议的牌库顺序是底→顶，最后一张先摸。生命/护盾/金币/成长值均使用十进制字符串，避免浏览器损失 64 位精度。条目数量、重复唯一道具、生命范围和实例归属仍由规则验证。
+
+该接口独立于普通玩家动作；联网宿主应只向已授权的管理员暴露它。现有本地工坊的 token 表示本机工具访问权，尚不包含远程账号角色系统。
 
 ## 局外冒险
 
@@ -97,8 +128,8 @@ ASP.NET Core 本机服务 → 常驻 .NET PlaytestBridge 子进程（逐行 JSON
 
 ```bash
 cd Tools/BattleContentEditor/tests
-EDITOR_URL=http://127.0.0.1:18767 python3 -m unittest test_design2951 -v
-EDITOR_URL=http://127.0.0.1:18767 node design2951-browser.cjs
+EDITOR_URL=http://127.0.0.1:18767 python3 -m unittest test_admin -v
+EDITOR_URL=http://127.0.0.1:18767 node admin-browser.cjs
 ```
 
 完整后端集成（仅开发测试需要 Python 3；按需执行）：

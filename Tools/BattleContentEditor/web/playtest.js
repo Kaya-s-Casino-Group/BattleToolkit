@@ -1,4 +1,5 @@
 // The browser only presents authoritative C# results; it never settles combat.
+import {createBattleAdmin} from './admin.js';
 const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n;};
 const button=(text,fn,cls='')=>{const n=node('button',cls,text);n.type='button';n.addEventListener('click',fn);return n;};
 const phaseNames={AwaitingPlayerHand:'玩家行动',AwaitingEnemyAction:'敌人行动',Player:'玩家行动',Enemy:'敌人行动',PlayerTurn:'玩家行动',EnemyTurn:'敌人行动',PlayerPhase:'玩家行动',EnemyPhase:'敌人行动',Finished:'对局结束',NotStarted:'尚未开始',BattleEnded:'对局结束'};
@@ -55,6 +56,23 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  drawBar.append(icon('draw'),node('span','','本轮摸牌'),count,put('draw',button('摸牌',()=>command('Draw'),'primary')),put('skip-draw',button('跳过',()=>command('SkipDraw'))),put('replace-draw',button('先弃掉所选手牌',()=>command('DiscardForDraw'))),put('overflow',button('确认强制弃牌',()=>command('ConfirmOverflow'))));
  handPanel.append(put('items',node('section','playtest-items')),drawBar,actionBar,put('preview',node('div','playtest-preview')));
  const logSection=node('details','playtest-log-section');logSection.append(node('summary','','战斗记录 · 展开查看每一步结算'),put('log',node('div','playtest-log')));live.append(logSection);
+ const adminRoot=node('section','playtest-admin');live.append(adminRoot);
+ const admin=createBattleAdmin(adminRoot,{
+  getContext:()=>battle?{runId:battle.runId,revision:battle.revision}:null,
+  isBusy:()=>busy||uncertain,
+  request:async(op,payload)=>{
+   busy=true;invalidatePreviews();render();
+   try{return await request(op,payload);}
+   catch(error){await recover();throw error;}
+   finally{busy=false;render();queuePreview();}
+  },
+  onResponse:(data,op)=>{
+   adopt(data.battle);
+   if(op==='admin'&&data.success){addSteps(data.steps);message='管理员修改已应用。';}
+   else if(!data.success)setResponseError(data);
+   render();
+  }
+ });
  refs.encounter.addEventListener('change',()=>{encounterValue=refs.encounter.value;updateConfig();});
  refs.actor.addEventListener('change',()=>{actor=refs.actor.value;selected.clear();bindings={};queuePreview();render();});
  window.addEventListener('pagehide',event=>{
@@ -67,7 +85,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  async function request(op,payload={}) {
   if(external){
    const data=await external.request(op,payload);
-   if(op!=='preview')external.onResponse?.(data);
+   if(!['preview','admin-preview'].includes(op))external.onResponse?.(data);
    return data;
   }
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),40000);
@@ -378,10 +396,11 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   refs.log.scrollTop=refs.log.scrollHeight;
  }
  function render(){
+  admin.update();
   updateConfig();refs.message.textContent=message;refs.message.hidden=!message;refs.diagnostics.replaceChildren();
   for(const diagnostic of diagnostics){const row=node('div','issue'+(diagnostic.severity==='Warning'?' warning':''));row.append(node('strong','',(diagnostic.severity==='Warning'?'警告':'错误')+(diagnostic.definitionId?' · '+diagnostic.definitionId:'')),node('span','',diagnostic.message),node('small','',[diagnostic.path,diagnostic.line?'第 '+diagnostic.line+' 行':''].filter(Boolean).join(' · ')));refs.diagnostics.append(row);}
   refs.sync.disabled=busy;refs.sync.hidden=!battle&&!uncertain;refs.close.disabled=busy||uncertain;refs.close.hidden=!!external||!battle;refs.live.hidden=!battle;refs.empty.hidden=!!battle;refs.status.textContent=battle?'第 '+battle.round+' 回合 · '+(battle.finished?(outcomeNames[battle.outcome]||battle.outcome):(phaseNames[battle.phase]||battle.phase)):'尚未开局';
-  refs['battle-tag'].textContent=battle?'种子 '+battle.seed:'';
+  refs['battle-tag'].textContent=battle?'种子 '+battle.seed+' · 金币 '+(currentPlayer()?.gold??'0'):'';
   if(!battle)return;
   refs.status.dataset.revision=battle.revision;refs.status.dataset.runId=battle.runId;
   const unitsKey=battle.runId+':'+battle.revision+':'+actor;

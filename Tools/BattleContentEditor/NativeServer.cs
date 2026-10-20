@@ -42,6 +42,7 @@ internal static class NativeServer
         ["/"] = ("index.html", "text/html"), ["/app.js"] = ("app.js", "text/javascript"),
         ["/schema.js"] = ("schema.js", "text/javascript"), ["/model.js"] = ("model.js", "text/javascript"),
         ["/playtest.js"] = ("playtest.js", "text/javascript"), ["/playtest.css"] = ("playtest.css", "text/css"),
+        ["/admin.js"] = ("admin.js", "text/javascript"),
         ["/style.css"] = ("style.css", "text/css"),
         ["/adventure"] = ("adventure.html", "text/html"), ["/adventure.html"] = ("adventure.html", "text/html"),
         ["/adventure.js"] = ("adventure.js", "text/javascript"), ["/adventure.css"] = ("adventure.css", "text/css")

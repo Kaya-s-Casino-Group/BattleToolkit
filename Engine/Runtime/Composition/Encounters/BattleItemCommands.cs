@@ -47,7 +47,7 @@ namespace PokerEngine
                 if (!resolved.Accepted) return new CardDuelTransition(state, resolved.Error);
                 var table = new CardTableState(state.Table.MatchId, state.Table.Cards, state.Table.Zones, checked(state.Revision + 1));
                 var next = new CardDuelState(table, resolved.State, resolved.ItemRandom ?? random.Random,
-                    state.Duel.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows());
+                    state.Duel.Players.ToDictionary(p => p.Id, p => state.DiscardsFor(p.Id)), true, state.CopyFlows(), state.CopyGold());
                 var timeline = new BattleTimelineRecorder(state, CardDuelAction.UseItem, actor, Array.Empty<CardInstanceId>(), null);
                 timeline.Add(BattleTimelineKind.ActionStarted, reason: instanceId); timeline.ObserveCombat(resolved.RuleEvents); timeline.SetState(next);
                 timeline.Add(BattleTimelineKind.ActionResolved, reason: instanceId);

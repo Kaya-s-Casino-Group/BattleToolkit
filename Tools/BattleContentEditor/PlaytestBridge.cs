@@ -16,6 +16,7 @@ internal static partial class PlaytestBridge
         internal BattleSession Session;
         // Authoring labels are presentation metadata and are intentionally not part of combat state.
         internal BattleContentSource ContentSource;
+        internal CompiledBattleContent Content;
         internal DateTime Touched;
         internal int Commands;
     }
@@ -72,6 +73,7 @@ internal static partial class PlaytestBridge
             return Fail("InvalidRevision", "对局版本无效，请重新读取当前对局。", entry);
         if (revision != entry.Session.State.Revision) return Fail("StaleRevision", "对局已经变化，请重新选择卡牌。", entry);
         if (op == "close") { Sessions.Remove(sessionId); return D("success", true); }
+        if (op == "admin-state" || op == "admin-preview" || op == "admin") return Admin(request, entry, op);
         if (op != "preview" && op != "command") return Fail("InvalidOperation", "未知试玩操作。", entry);
         if (op == "command" && entry.Commands >= 4096) return Fail("CommandLimit", "本次试玩已达到 4096 次操作，请重新开局。", entry);
 
@@ -124,6 +126,27 @@ internal static partial class PlaytestBridge
         return response;
     }
 
+    private static object Admin(Dictionary<string, object> request, Entry entry, string op)
+    {
+        if (op == "admin-state") return D("success", true, "battle", Snapshot(entry), "admin", AdminBridge.Battle(entry.Session, entry.Content, entry.ContentSource));
+        if (entry.Commands >= 4096) return Fail("CommandLimit", "本次试玩已达到操作上限，请重新开局。", entry);
+        try
+        {
+            var candidate = new BattleSession(entry.Session.Engine, entry.Session.State);
+            var result = candidate.ApplyAdmin(entry.Session.State.Revision, AdminBridge.Read(request));
+            if (op == "admin-preview") return D("success", true, "battle", Snapshot(entry),
+                "admin", AdminBridge.Battle(result.Accepted ? candidate : entry.Session, entry.Content, entry.ContentSource),
+                "preview", D("legal", result.Accepted, "error", result.Error.ToString(), "message", result.Accepted ? "可以应用管理员修改" : Error(result.Error)));
+            if (!result.Accepted) return Fail(result.Error.ToString(), Error(result.Error), entry);
+            var next = Copy(entry, candidate); next.Commands++;
+            var response = D("success", true, "battle", Snapshot(next), "admin", AdminBridge.Battle(candidate, next.Content, next.ContentSource),
+                "steps", Steps(result, candidate.Engine.Duel.Definition.StatusCatalog, next));
+            Json.Serialize(response); Sessions[entry.SessionId] = next; return response;
+        }
+        catch (Exception error) when (error is ArgumentException || error is OverflowException || error is InvalidOperationException)
+        { return Fail("InvalidAdminPatch", "管理员修改未生效：" + error.Message, entry); }
+    }
+
     private static object Start(Dictionary<string, object> request, string sessionId, Entry previous)
     {
         string runId = OptionalText(request, "runId", 64);
@@ -145,7 +168,7 @@ internal static partial class PlaytestBridge
         var opening = session.Execute(session.State.Revision, session.State.Duel.PlayerId, CardDuelAction.Start);
         if (!opening.Accepted) return Fail(opening.Error.ToString(), "开局失败：" + Error(opening.Error), previous);
         var next = new Entry { SessionId = sessionId, RunId = Guid.NewGuid().ToString("D"), Seed = seed, EncounterId = encounter,
-            Fingerprint = compiled.Content.Fingerprint, XmlHash = Hash(xml), Session = session, ContentSource = read.Source, Touched = DateTime.UtcNow };
+            Fingerprint = compiled.Content.Fingerprint, XmlHash = Hash(xml), Session = session, Content = compiled.Content, ContentSource = read.Source, Touched = DateTime.UtcNow };
         var response = D("success", true, "battle", Snapshot(next), "steps", Steps(opening, session.Engine.Duel.Definition.StatusCatalog, next));
         Json.Serialize(response);
         Sessions[sessionId] = next;
@@ -154,7 +177,7 @@ internal static partial class PlaytestBridge
 
     private static Entry Copy(Entry entry, BattleSession session) => new Entry { SessionId = entry.SessionId, RunId = entry.RunId,
         Seed = entry.Seed, EncounterId = entry.EncounterId, Fingerprint = entry.Fingerprint, XmlHash = entry.XmlHash,
-        Session = session, ContentSource = entry.ContentSource, Commands = entry.Commands, Touched = DateTime.UtcNow };
+        Session = session, Content = entry.Content, ContentSource = entry.ContentSource, Commands = entry.Commands, Touched = DateTime.UtcNow };
 
     private static object TargetSlots(Entry entry, ParticipantId actor, CardInstanceId[] selected, CardDuelTransition preview)
     {

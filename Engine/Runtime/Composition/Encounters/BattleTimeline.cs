@@ -10,7 +10,7 @@ namespace PokerEngine
         BattleStarted, PhaseStarted, ActionStarted, ActionSkipped, HandEvaluated,
         ActionCostSettled, ResourcesChanged, EffectSettled, StatusChanged, RelicActivated,
         RuleTiming, CardsMoved, DeckRecycled, CardsDealt, ActionResolved,
-        PhaseEnding, PhaseEnded, PhaseClosed, BattleEnded, EnemySummoned, CardsCreated
+        PhaseEnding, PhaseEnded, PhaseClosed, BattleEnded, EnemySummoned, CardsCreated, AdminEdited
     }
 
     /// <summary>
@@ -97,10 +97,10 @@ namespace PokerEngine
         }
         internal void SetState(CardDuelState state) { State = state; }
         internal void SetTeam(TeamBattleState team) => State = new CardDuelState(State.Table, team, State.Random,
-            State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), State.HasStarted, State.CopyFlows());
+            State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), State.HasStarted, State.CopyFlows(), State.CopyGold());
         internal void SetCards(CardTableState table, RandomState random, IDictionary<ParticipantId, int> discards = null,
             bool? started = null) => State = new CardDuelState(table, State.Duel, random,
-                discards ?? State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), started ?? State.HasStarted, State.CopyFlows());
+                discards ?? State.Duel.Players.ToDictionary(p => p.Id, p => State.DiscardsFor(p.Id)), started ?? State.HasStarted, State.CopyFlows(), State.CopyGold());
         internal void Add(BattleTimelineKind kind, string phase = null, string reason = null,
             CombatRuleEvent ruleEvent = null, RelicTriggerActivation activation = null,
             BattleActionCostResolution cost = null, ScoreResult score = null, PokerHandClassification pattern = null,

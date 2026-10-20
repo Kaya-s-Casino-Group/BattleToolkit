@@ -4,8 +4,8 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum CardDuelAction { Play = 1, Discard, EnemyAction, EndTurn, CollectPlayed, Start, SkipPlayerTurn, Draw, SkipDraw, DiscardForDraw, ConfirmOverflow, FinishTurn, UseItem }
-    public enum CardDuelError { None, StaleRevision, InvalidPhase, InvalidSelection, NoDiscards, InsufficientEnergy, Overflow, InvalidTarget, InvalidState, InvalidDamagePlan, InvalidDamageModifier, InvalidDiscardReward, InvalidEffectPlan, ActionBlocked, InvalidReaction, ReactionLimitExceeded, InvalidRelicState, InvalidAmountModifier, InvalidHandEffectModifier, InvalidRuleModifier, InvalidDealPlan }
+    public enum CardDuelAction { Play = 1, Discard, EnemyAction, EndTurn, CollectPlayed, Start, SkipPlayerTurn, Draw, SkipDraw, DiscardForDraw, ConfirmOverflow, FinishTurn, UseItem, AdminEdit }
+    public enum CardDuelError { None, StaleRevision, InvalidPhase, InvalidSelection, NoDiscards, InsufficientEnergy, Overflow, InvalidTarget, InvalidState, InvalidDamagePlan, InvalidDamageModifier, InvalidDiscardReward, InvalidEffectPlan, ActionBlocked, InvalidReaction, ReactionLimitExceeded, InvalidRelicState, InvalidAmountModifier, InvalidHandEffectModifier, InvalidRuleModifier, InvalidDealPlan, InvalidAdminPatch }
     public enum CardDuelRefillTiming { NextPlayerTurn = 0, AfterAction = 1, DiscardedCount = 2 }
     public enum CardDuelDealTrigger { OpeningTurn, AfterPlay, AfterDiscard, PlayerTurnStart, ManualDraw, EffectDraw }
 
@@ -63,14 +63,33 @@ namespace PokerEngine
         private readonly Dictionary<ParticipantId, BattlePlayerFlow> flows;
         public BattlePlayerFlow FlowFor(ParticipantId player) => flows[player];
         internal Dictionary<ParticipantId, BattlePlayerFlow> CopyFlows() => new Dictionary<ParticipantId, BattlePlayerFlow>(flows);
+        private readonly Dictionary<ParticipantId, long> gold;
+        public long GoldFor(ParticipantId player) => gold[player];
+        internal Dictionary<ParticipantId, long> CopyGold() => new Dictionary<ParticipantId, long>(gold);
+        /// <summary>Sets the initial encounter wallet before Start. In-progress corrections use ApplyAdmin.</summary>
+        public CardDuelState WithGold(IEnumerable<BattleAdminGold> values)
+        {
+            if (HasStarted) throw new InvalidOperationException("Initial gold can only be supplied before Start.");
+            var next = CopyGold(); var seen = new HashSet<ParticipantId>();
+            foreach (var value in values ?? throw new ArgumentNullException(nameof(values)))
+            {
+                if (value == null || !next.ContainsKey(value.Owner) || !seen.Add(value.Owner) || value.Amount < 0)
+                    throw new ArgumentException("Invalid initial gold.");
+                next[value.Owner] = value.Amount;
+            }
+            return new CardDuelState(Table, Duel, Random, discards, HasStarted, flows, next);
+        }
         public bool HasStarted { get; }
         public long Revision => Table.Revision;
         public CardZone Zone(string kind) => Zone(kind, Duel.PlayerId);
         public CardZone Zone(string kind, ParticipantId player) => Table.Zones.Single(zone => zone.Kind == kind && zone.ControllerId == player);
-        internal CardDuelState(CardTableState table, TeamBattleState duel, RandomState random, IDictionary<ParticipantId, int> discards, bool hasStarted, IDictionary<ParticipantId, BattlePlayerFlow> flows = null)
+        internal CardDuelState(CardTableState table, TeamBattleState duel, RandomState random, IDictionary<ParticipantId, int> discards, bool hasStarted, IDictionary<ParticipantId, BattlePlayerFlow> flows = null, IDictionary<ParticipantId, long> gold = null)
         {
             Table = table; Duel = duel; Random = random; this.discards = new Dictionary<ParticipantId, int>(discards); HasStarted = hasStarted;
             this.flows = flows == null ? duel.Players.ToDictionary(p => p.Id, p => NewFlow(p)) : new Dictionary<ParticipantId, BattlePlayerFlow>(flows);
+            this.gold = gold == null ? duel.Players.ToDictionary(p => p.Id, p => 0L) : new Dictionary<ParticipantId, long>(gold);
+            if (this.gold.Count != duel.Players.Count || duel.Players.Any(p => !this.gold.ContainsKey(p.Id)) || this.gold.Values.Any(v => v < 0))
+                throw new ArgumentException("Gold must contain one nonnegative balance per player.");
         }
         internal static BattlePlayerFlow NewFlow(BattlePlayerTurn player) => new BattlePlayerFlow(
             player.Rules.Flow.ManualDraw && BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DrawUses).Value > 0 ? BattlePlayerWindow.Draw : BattlePlayerWindow.Action,
@@ -190,7 +209,7 @@ namespace PokerEngine
             {
                 var table = new CardTableState(state.Table.MatchId, state.Table.Cards, state.Table.Zones, checked(state.Revision + 1));
                 var discards = state.Duel.Players.ToDictionary(player => player.Id, player => state.DiscardsFor(player.Id));
-                return new CardDuelTransition(new CardDuelState(table, result.State, state.Random, discards, state.HasStarted, state.CopyFlows()));
+                return new CardDuelTransition(new CardDuelState(table, result.State, state.Random, discards, state.HasStarted, state.CopyFlows(), state.CopyGold()));
             }
             catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
@@ -311,7 +330,7 @@ namespace PokerEngine
             var ended = Duel.ResolveBoundary(next.Duel, CombatTimingSignal.BattleEnded(next.Table.MatchId + "/end", next.Duel.Players.Select(p => p.Id).Concat(next.Duel.Enemies.Select(en => en.Id))));
             if (!ended.Accepted) return new CardDuelTransition(state, ended.Error);
             if (ended.RuleEvents.Count == 0) return result;
-            next = new CardDuelState(next.Table, ended.State, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, next.CopyFlows());
+            next = new CardDuelState(next.Table, ended.State, next.Random, next.Duel.Players.ToDictionary(p => p.Id, p => next.DiscardsFor(p.Id)), next.HasStarted, next.CopyFlows(), next.CopyGold());
             var timeline = new BattleTimelineRecorder(result.State, action, actor, selected, targets);
             timeline.ObserveCombat(ended.RuleEvents, ended.RelicActivations); timeline.SetState(next);
             timeline.Add(BattleTimelineKind.BattleEnded, reason: Duel.ReadProgress(next.Duel).Result.Reason.ToString());
@@ -488,7 +507,7 @@ namespace PokerEngine
                     }
                 events = events.Concat(hookEvents).ToArray(); relicActivations = relicActivations.Concat(hookActivations).ToArray();
                 var table = new CardTableState(workingTable.MatchId, workingTable.Cards, zones, checked(state.Revision + 1));
-                var final = new CardDuelState(table, duel, random, discards, true, state.CopyFlows());
+                var final = new CardDuelState(table, duel, random, discards, true, state.CopyFlows(), state.CopyGold());
                 timeline.SetState(final);
                 timeline.Add(BattleTimelineKind.ActionResolved);
                 if (duel.IsFinished)

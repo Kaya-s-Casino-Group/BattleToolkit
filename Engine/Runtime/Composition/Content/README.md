@@ -172,3 +172,37 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 - 替死鬼按获取顺序每次只消费一件；恢复 floor(最大生命×比例)，清空所有状态和护盾。极端配置最大生命为 1 且比例 0.6 时恢复 0，仍判失败。超回合判负不触发复活。
 - 反甲对主攻击实际挡伤反伤，不产生反射递归；13002 只判定出牌造成的实际生命伤害，每段/每目标一次，毒伤、道具和反射不触发。
 - 生命、最大生命、护盾、固定战斗效果与弃牌护盾参数为 `long`，上层不要窄化为 int。内容契约升级会拒绝旧规则指纹，不提供自动存档迁移。
+
+## 对局管理员接口
+
+`BattleSession.ApplyAdmin(expectedRevision, BattleAdminPatch)` 是独立的权威状态编辑入口；
+宿主应单独授权，普通 `Execute` 不接受 `AdminEdit`。`PreviewAdmin` 返回同一批改动的候选结果而不提交；
+Unity 可调用 `BattleSessionPlayback.ApplyAdmin`，沿用现有表现同步接口，播放期间拒绝编辑。
+
+```csharp
+var patch = new BattleAdminPatch(
+    vitals: new[] { new BattleAdminVitals(player, health: 3000000000L, maxHealth: 4000000000L) },
+    gold: new[] { new BattleAdminGold(player, 1000) },
+    zones: new[] {
+        new BattleAdminZone(player, CardZoneKinds.Hand, new[] {
+            new BattleAdminCard(instanceId: existingCardId), // 保留实例和未指定字段
+            new BattleAdminCard(definitionId: "standard:1:14") // 创建新牌
+        })
+    },
+    relics: new[] {
+        new BattleAdminRelics(player, new[] {
+            new BattleAdminRelic("11004", instanceId: grenadeInstanceId, charges: 3),
+            new BattleAdminRelic("10002")
+        })
+    },
+    reason: "测试局面");
+var preview = session.PreviewAdmin(session.State.Revision, patch);
+var result = session.ApplyAdmin(session.State.Revision, patch);
+```
+
+- 可按参与者修改生命、最大生命、护盾；金币由 `CardDuelState.GoldFor(player)` 持有，未开局通过 `WithGold` 注入。数值均为 `long`，生命必须在 `[0, MaxHealth]`，最大生命大于 0，护盾和金币非负。
+- `Hand / Deck / Discard` 以完整列表替换，空列表清空，未指定牌区不变。既有实例移动到新牌区时自动从未编辑的来源区移出；同一牌不能出现在两份列表。替换区中被省略的牌被删除。手牌允许超过正常手牌上限，每个玩家合计至多 512 张。牌库列表为 **牌底到牌顶，最后一张先摸**。
+- 遗物列表顺序就是持有/结算顺序，空列表移除全部。既有 ID 保留未指定次数、等级、成长、回合冷却和记忆；新实例使用已编译目录与初始次数。等级、次数、唯一性及最多 32 件仍需满足定义约束，新增或删除会立即重绑被动规则。不会触发获得、使用或移除效果。
+- 新牌和新遗物 ID 根据本次 revision 确定，预览与提交一致，不消耗随机游标。所有字段原子验证，任一项无效整批失败，旧状态不变。
+- 接入冒险时使用 `BattleAdventureSession.ApplyAdmin` 记录同一 DTO 到重放日志；生命、最大生命、金币和持有遗物同步回冒险，手牌、牌库、弃牌堆只修改当前战斗，不改永久构筑。
+- 仅接受已开局、未终局的玩家决策边界。不会扣行动点、补牌、推进回合、触发牌型/攻击/复活/结束反应；仅输出 `AdminEdited` 时间线。生命改为 0 后直接重算输赢，双方同时清零判玩家失败。多人局若编辑使非终局失去最后一个玩家决策窗口，则整批拒绝。终局不能重新编辑。

@@ -142,6 +142,24 @@ namespace PokerEngine
             return new BattleSessionResult(before, State, CardDuelError.None, new[] { new BattleSessionStep(CardDuelAction.UseItem, actor, before, result) });
         }
 
+        /// <summary>Explicit authority-only state editor. Hosts must authorize it separately;
+        /// does not pass through player action or automatic turn resolution.</summary>
+        public BattleSessionResult ApplyAdmin(long expectedRevision, BattleAdminPatch patch)
+        {
+            var result = PreviewAdmin(expectedRevision, patch);
+            if (result.Accepted) State = result.State;
+            return result;
+        }
+
+        public BattleSessionResult PreviewAdmin(long expectedRevision, BattleAdminPatch patch)
+        {
+            var before = State;
+            var result = Engine.ApplyAdmin(before, expectedRevision, patch);
+            return !result.Accepted ? Reject(before, result.Error) :
+                new BattleSessionResult(before, result.State, CardDuelError.None,
+                    new[] { new BattleSessionStep(CardDuelAction.AdminEdit, before.Duel.PlayerId, before, result) });
+        }
+
         private static BattleSessionResult Reject(CardDuelState before, CardDuelError error) =>
             new BattleSessionResult(before, before, error, Array.Empty<BattleSessionStep>());
     }

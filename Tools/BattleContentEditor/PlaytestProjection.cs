@@ -19,6 +19,7 @@ internal static partial class PlaytestBridge
             "actors", duel.Players.Where(player => duel.HasPlayerWindow(player.Id)).Select(player => player.Id.Value).ToArray(),
             "players", duel.Players.Select(player => {
                 var unit = Unit(entry, duel, player.Id, catalog, "Players");
+                unit["gold"] = Number(state.GoldFor(player.Id));
                 unit["energy"] = player.Energy.Energy; unit["maxEnergy"] = player.Energy.MaxEnergy;
                 unit["handLimit"] = player.Limits.HandLimit.Value; unit["discardsRemaining"] = state.RemainingDiscardBudgetFor(player.Id);
                 unit["manualDraw"] = player.Rules.Flow.ManualDraw;
@@ -367,6 +368,7 @@ internal static partial class PlaytestBridge
             case CardDuelAction.ConfirmOverflow: return "强制弃牌";
             case CardDuelAction.FinishTurn: return "确认结束回合";
             case CardDuelAction.UseItem: return "使用道具";
+            case CardDuelAction.AdminEdit: return "管理员修改";
             case CardDuelAction.Play: return "出牌";
             case CardDuelAction.Discard: return "弃牌";
             case CardDuelAction.EndTurn: return "结束回合";
@@ -422,6 +424,7 @@ internal static partial class PlaytestBridge
         {
             case CardDuelError.None: return "可以执行";
             case CardDuelError.StaleRevision: return "对局已经变化，请重新选择卡牌";
+            case CardDuelError.InvalidAdminPatch: return "管理员修改无效，请检查生命范围、牌区实例和道具配置。";
             case CardDuelError.InvalidPhase: return "当前阶段或该玩家不可行动";
             case CardDuelError.InvalidSelection: return "选牌数量、卡牌归属或卡牌状态不符合要求";
             case CardDuelError.NoDiscards: return "整场弃牌次数已用尽";

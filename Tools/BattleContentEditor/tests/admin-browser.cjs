@@ -1,0 +1,92 @@
+// Only runtime administrator changes; reuse the single editor on EDITOR_URL.
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+const base=process.env.EDITOR_URL||'http://127.0.0.1:18767';
+(async()=>{
+ const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'chrome'});
+ try{
+  const page=await browser.newPage({viewport:{width:1440,height:1080}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  const responseFor=(path,op)=>page.waitForResponse(r=>r.url().endsWith(path)&&r.request().postDataJSON().op===op);
+  const click=async(selector,path,op)=>{const pending=responseFor(path,op);await page.locator(selector).click();return(await pending).json();};
+  const openAdmin=async path=>{
+   const data=await click('[data-admin=panel] > summary',path,'admin-state');
+   assert.equal(data.success,true,JSON.stringify(data));await page.waitForSelector('.admin-vitals');return data;
+  };
+  await page.goto(base);
+  await page.waitForFunction(()=>document.querySelector('#validation-state')?.textContent.includes('0 错误'));
+  await page.locator('#playtest-tab').click();
+  await page.locator('#playtest-encounter').selectOption('standard-single-battle');
+  const first=await click('#playtest-start','/api/playtest','start');assert.equal(first.success,true);
+  const read=await openAdmin('/api/playtest'),unit=read.admin.players[0],before=read.battle.players[0];
+  await page.getByLabel(unit.name+' · 最大生命',{exact:true}).fill('9007199254740993');
+  await page.getByLabel(unit.name+' · 生命',{exact:true}).fill('6000000000');
+  await page.getByLabel(unit.name+' · 金币',{exact:true}).fill('9007199254740993');
+  await page.getByLabel(unit.name+' · 护盾',{exact:true}).fill('3000000000');
+  const hand=page.locator('[data-zone=hand]'),deck=page.locator('[data-zone=deck]');
+  await hand.locator('summary').first().click();
+  await hand.getByRole('button',{name:'清空手牌',exact:true}).click();
+  await hand.getByRole('button',{name:'添加卡牌',exact:true}).click();
+  const addedFace=read.admin.catalog.cards.find(c=>c.rank==='King'&&c.suit==='Hearts');
+  await hand.getByRole('combobox',{name:'手牌第 1 张牌面',exact:true}).selectOption(addedFace.definitionId);
+  await hand.locator('.admin-card-flags > summary').click();
+  await hand.getByLabel('废牌（不能打出）',{exact:true}).check();
+  await deck.locator('summary').first().click();
+  const top=unit.zones.find(z=>z.kind==='deck').cards.at(-1);
+  assert.equal(await deck.getByRole('combobox',{name:'牌库第 1 张牌面',exact:true}).inputValue(),top.definitionId);
+  // Move a real deck instance into the hand without changing its identity.
+  await deck.getByRole('combobox',{name:'牌库第 1 张移动到',exact:true}).selectOption('hand');
+  const relics=page.locator('[data-admin=relics]');
+  await relics.locator('summary').click();await relics.getByRole('button',{name:'添加遗物',exact:true}).click();
+  await relics.getByRole('combobox',{name:'遗物 1',exact:true}).selectOption('10002');
+  const preview=await click('[data-admin=preview]','/api/playtest','admin-preview');
+  assert.equal(preview.preview.legal,true,JSON.stringify(preview));
+  assert.equal(preview.battle.revision,read.battle.revision);
+  assert.equal(preview.battle.players[0].health,before.health);
+  assert.equal(await page.locator('#playtest-hand [data-card-id]').count(),before.hand.length);
+  const applied=await click('[data-admin=apply]','/api/playtest','admin');assert.equal(applied.success,true,JSON.stringify(applied));
+  const p=applied.battle.players[0];assert.equal(p.maxHealth,'9007199254740993');assert.equal(p.health,'6000000000');assert.equal(p.gold,'9007199254740993');assert.equal(p.block,'3000000000');assert.equal(p.energy,before.energy);
+  assert.equal(p.hand.length,2);assert.ok(p.hand.some(c=>c.id===top.instanceId));assert.equal(p.relics[0].definitionId,'10002');
+  await page.waitForFunction(()=>document.querySelectorAll('#playtest-hand [data-card-id]').length===2);
+  assert.match(await page.locator('#playtest-hand').innerText(),/废牌/);
+  console.log('PASS 单局管理员：long 精度、卡牌标记/跨区移动、遗物、预览隔离及不消耗行动点');
+  // Fresh player command invalidates an unapplied administrator draft.
+  await page.getByLabel(unit.name+' · 金币',{exact:true}).fill('77');
+  await page.locator('#playtest-end-turn').click();
+  await page.waitForFunction(()=>document.querySelector('.admin-message')?.textContent.includes('对局已经变化'));
+  assert.equal(await page.locator('[data-admin=apply]').isDisabled(),true);
+  assert.equal(await page.locator('[data-admin=preview]').isDisabled(),true);
+  await click('[data-admin=refresh]','/api/playtest','admin-state');
+  assert.equal(await page.getByLabel(unit.name+' · 金币',{exact:true}).inputValue(),'9007199254740993');
+  const size=await page.evaluate(()=>({width:innerWidth,content:document.documentElement.scrollWidth}));assert.ok(size.content<=size.width+1,JSON.stringify(size));
+  await page.screenshot({path:'/private/tmp/battle-admin-h5.png',fullPage:true});
+  console.log('PASS 过期草稿阻止覆盖新对局状态，读取恢复及桌面布局');
+
+  await page.goto(base+'/adventure.html');
+  await page.waitForSelector('#adventure-new');
+  await click('#adventure-new','/api/adventure','catalog');
+  await page.locator('.character-card').first().click();await page.locator('#adventure-character-next').click();
+  await page.locator('[data-tarot-id=fool]').click();
+  const journey=await click('#adventure-start','/api/adventure','start');assert.equal(journey.success,true);
+  const map=await openAdmin('/api/adventure'),hero=map.admin.players[0],saveKey='battle-adventure.save.v1';
+  const savedBefore=await page.evaluate(k=>localStorage.getItem(k),saveKey);
+  await page.getByLabel(hero.name+' · 金币',{exact:true}).fill('123456789012345');
+  const mapPreview=await click('[data-admin=preview]','/api/adventure','admin-preview');
+  assert.equal(mapPreview.preview.legal,true);assert.equal(await page.evaluate(k=>localStorage.getItem(k),saveKey),savedBefore);
+  const mapApply=await click('[data-admin=apply]','/api/adventure','admin');
+  assert.equal(mapApply.success,true,JSON.stringify(mapApply));assert.equal(mapApply.adventure.player.gold,'123456789012345');
+  await page.waitForFunction(()=>document.querySelector('#adventure-resources')?.textContent.includes('123456789012345'));
+  assert.notEqual(await page.evaluate(k=>localStorage.getItem(k),saveKey),savedBefore);
+  const entered=await click('.map-node:enabled','/api/adventure','command');
+  assert.equal(entered.adventure.status,'Battle');assert.equal(entered.battle.players[0].gold,'123456789012345');
+  const embedded=await openAdmin('/api/adventure'),embeddedHero=embedded.admin.players[0];
+  await page.getByLabel(embeddedHero.name+' · 金币',{exact:true}).fill('123456789012346');
+  const embPreview=await click('[data-admin=preview]','/api/adventure','admin-preview');
+  assert.equal(embPreview.preview.legal,true,JSON.stringify(embPreview));
+  const embApply=await click('[data-admin=apply]','/api/adventure','admin');
+  assert.equal(embApply.success,true,JSON.stringify(embApply));assert.equal(embApply.adventure.player.gold,'123456789012346');
+  assert.equal(embApply.battle.players[0].gold,'123456789012346');
+  console.log('PASS 冒险地图与嵌入战斗管理员入口、金币继承和存档保存');
+  assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e.stack);process.exitCode=1;});

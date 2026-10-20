@@ -1,4 +1,5 @@
 import {createPlaytest} from './playtest.js';
+import {createBattleAdmin} from './admin.js';
 
 // All adventure and battle outcomes come from the C# host. This page only
 // presents snapshots and stores the opaque replay save returned by the host.
@@ -116,6 +117,7 @@ function render(){
  else if(phase()==='Reward')renderReward();
  else if(terminal.has(phase()))renderEnding();
  else renderMap();
+ if(screen==='journey'&&['Map','Shop','Rest'].includes(phase())&&!uncertain)renderAdmin();
  if(uncertain&&adventure){const box=make('div','adventure-empty');box.id='adventure-recovery';box.append(make('p','',sessionMissing?'本机服务中已没有当前旅途，可以从最近一次成功保存处恢复。':'上次操作的结果尚未确认。请先同步旅途状态。'),sessionMissing?button('恢复已保存旅途',()=>operation('restore',{save:saved.save,runId:adventure.runId},()=>{screen='journey';}),'primary','adventure-restore-local'):button('同步旅途',()=>operation('state',{},()=>{screen='journey';}),'primary','adventure-sync'));view.prepend(box);}
  if(busy)lockControls(true);
 }
@@ -291,7 +293,7 @@ function renderBattle(){
    request:async(op,payload={})=>{
     if(sessionMissing&&op!=='state')throw new Error('请先恢复已保存的旅途，再继续战斗。');
     battleRequests++;
-    try{return await request(op==='preview'?'preview':op==='state'?'state':'battle',{...payload,runId:adventure.runId,revision:adventure.revision,battleRevision:payload.revision,battleOp:op});}
+    try{return await request(op.startsWith('admin')?op:op==='preview'?'preview':op==='state'?'state':'battle',{...payload,runId:adventure.runId,revision:adventure.revision,battleRevision:payload.revision,battleOp:op});}
     finally{battleRequests--;}
    },
    onResponse:result=>{
@@ -303,6 +305,23 @@ function renderBattle(){
  });
  if(adventure.battle){battleView.setExternalBattle?.(adventure.battle);battleIdentity=adventure.battle.runId+':'+adventure.battle.revision;}
  else battleRoot.append(make('p','adventure-empty','正在恢复战斗…'));
+}
+function renderAdmin(){
+ const host=make('section','adventure-admin');view.append(host);
+ createBattleAdmin(host,{
+  getContext:()=>adventure?{runId:adventure.runId,revision:adventure.revision}:null,
+  isBusy:()=>busy||uncertain,
+  request:async(op,payload)=>{
+   busy=true;renderHeader();lockControls(true);
+   try{return await request(op,payload);}
+   catch(error){uncertain=true;notify(error.message+' 请先同步旅途。',true);queueMicrotask(render);throw error;}
+   finally{busy=false;lockControls(false);renderHeader();}
+  },
+  onResponse:(data,op)=>{
+   if(op!=='admin-preview')accept(data,{renderNow:false});
+   if(op==='admin'&&data.success)queueMicrotask(render);
+  }
+ });
 }
 function showDialog(title,build){$('adventure-dialog-title').textContent=title;const body=$('adventure-dialog-body');body.replaceChildren();build(body);if(!$('adventure-dialog').open)$('adventure-dialog').showModal();}
 function faceOf(card){

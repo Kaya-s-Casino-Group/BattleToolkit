@@ -44,3 +44,36 @@ button.battle-pile{padding:5px!important;width:calc(100% - 10px);cursor:pointer}
 .playtest-item-preview p{margin:5px 0}
 .battle-relic.item-button{cursor:pointer;border-color:#bda777;background:#233a3d;padding:0}
 .battle-relic.item-button:focus-visible{outline:2px solid #dfbd76;outline-offset:3px}
+/* Explicit runtime editing, shared by standalone combat and the adventure UI. */
+.battle-admin{margin-top:18px;padding:16px;border:1px solid #50635e;border-radius:8px;background:#172326;color:#d8dfd8}
+.battle-admin>summary{font-weight:600;color:#dfc186;cursor:pointer}
+.battle-admin p{line-height:1.6}.admin-intro{font-size:13px;color:#a7b6af}
+.admin-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.admin-message{min-height:1.6em;margin:8px 0;color:#b8d6c0}
+.admin-message.admin-stale{color:#e9c27e}
+.admin-body{border:0;padding:0;margin:0;min-width:0}
+.admin-body:disabled{opacity:.62}
+.admin-section{padding:14px 0;border-top:1px solid #354846;min-width:0}
+.admin-section h3{margin:0 0 12px;font-size:15px}
+.admin-section>summary,.admin-zone>summary{cursor:pointer;padding:7px 0;color:#cfb98b}
+.admin-vitals{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:10px 0}
+.admin-vitals>strong{width:130px;align-self:center;overflow-wrap:anywhere}
+.admin-field{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#9fafa7}
+.admin-field input{width:180px;max-width:100%;box-sizing:border-box}
+.admin-field input[type=checkbox]{width:auto}
+.admin-changes{background:#22332f;border-left:3px solid #8ba68a;padding:12px 16px;margin:12px 0;font-size:13px;line-height:1.8;overflow-wrap:anywhere}
+.admin-relics{display:flex;flex-direction:column;gap:10px;margin:10px 0}
+.admin-relic{display:flex;align-items:end;gap:8px;flex-wrap:wrap;padding:10px;background:#1e2c2c;border-radius:5px}
+.admin-relic>select{max-width:240px}.admin-relic .admin-field input{width:105px}
+.admin-relic .admin-field:has(input[aria-label$="成长值"]) input{width:180px}
+.admin-zones>p{font-size:12px}
+.admin-zone{margin:8px 0;padding:6px 12px;border:1px solid #3c4c47;border-radius:5px;min-width:0}
+.admin-card-list{max-height:400px;overflow:auto;margin:8px 0}
+.admin-card{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:7px 4px;border-bottom:1px solid #2d403b}
+.admin-card-index{width:28px;color:#83978c;font-size:12px}
+.admin-card>select{min-width:72px;max-width:170px}
+.admin-card button{padding:6px 9px}.admin-card-flags{font-size:12px;min-width:65px;color:#d0b28a}
+.admin-card-flags>summary{cursor:pointer}.admin-card-flags .admin-field{flex-direction:row-reverse;justify-content:end;align-items:center;padding:3px 0}
+.admin-zone>button{margin:0 6px 5px 0}
+.adventure-admin{margin:22px auto;max-width:1200px}
+@media(max-width:680px){.battle-admin{padding:12px}.admin-vitals>strong{width:100%}.admin-field input{width:160px}.admin-card-index{width:20px}}

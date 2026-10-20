@@ -150,7 +150,7 @@ def make_server(compiler, port=18767):
     metadata = compiler.call()
     files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
              '/schema.js': ('schema.js', 'text/javascript'), '/model.js': ('model.js', 'text/javascript'),
-             '/playtest.js': ('playtest.js', 'text/javascript'), '/playtest.css': ('playtest.css', 'text/css'),
+             '/admin.js': ('admin.js', 'text/javascript'), '/playtest.js': ('playtest.js', 'text/javascript'), '/playtest.css': ('playtest.css', 'text/css'),
              '/style.css': ('style.css', 'text/css')}
 
     class Handler(BaseHTTPRequestHandler):

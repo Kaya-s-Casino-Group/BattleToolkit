@@ -106,6 +106,19 @@ namespace PokerEngine
             return result;
         }
 
+        /// <summary>Administrative correction uses the same committed-state presentation contract
+        /// as normal inputs. Playback in progress must finish before the correction can commit.</summary>
+        public BattleSessionResult ApplyAdmin(long expectedRevision, BattleAdminPatch patch, bool animate = false)
+        {
+            if (Presentation.IsPresenting)
+                return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
+            var result = Session.ApplyAdmin(expectedRevision, patch);
+            if (!result.Accepted) return result;
+            try { Presentation.Present(result, animate); }
+            catch { Presentation.Synchronize(Session.State); throw; }
+            return result;
+        }
+
         public void Synchronize() => Presentation.Synchronize(Session.State);
     }
 }

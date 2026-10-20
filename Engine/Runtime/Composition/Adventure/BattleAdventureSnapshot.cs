@@ -30,6 +30,9 @@ namespace PokerEngine
         [DataMember(Order = 10, IsRequired = true)] public int DrawCount;
         [DataMember(Order = 11)] public string ItemInstanceId;
         [DataMember(Order = 12)] public string TargetItemInstanceId;
+        [DataMember(Order = 13)] public BattleAdminPatch AdminPatch;
+        internal static AdventureLogEntry ForAdmin(long revision, BattleAdminPatch patch)
+        { var entry = new AdventureLogEntry { Revision = revision, AdminPatch = patch }; entry.Validate(); return entry; }
         internal static AdventureLogEntry ForCommand(long revision, AdventureCommand command) =>
             new AdventureLogEntry { Revision = revision, Kind = command.Kind, Id = command.Id, Suit = command.Suit };
         internal static AdventureLogEntry ForItem(long revision, string instanceId, string targetInstanceId)
@@ -50,6 +53,14 @@ namespace PokerEngine
             new KeyValuePair<string, IEnumerable<ParticipantId>>(b.Id, b.Targets.Select(t => new ParticipantId(t)))));
         internal void Validate()
         {
+            if (AdminPatch != null)
+            {
+                if (Revision < 0 || IsBattle || Kind != 0 || Id != null || Suit.HasValue || Action != 0 || Cards != null || Targets != null ||
+                    Bindings != null || DrawCount != 0 || ItemInstanceId != null || TargetItemInstanceId != null)
+                    throw new ArgumentException("Administrator patch cannot masquerade as an ordinary command.");
+                AdminPatch.Validate();
+                return; // The same authority validation runs during application and restore replay.
+            }
             if (Revision < 0 || Id != null && (string.IsNullOrWhiteSpace(Id) || Id.Length > 512) ||
                 Suit.HasValue && !Enum.IsDefined(typeof(Suit), Suit.Value) || DrawCount < 0 || DrawCount > 512 ||
                 IsBattle && Action != CardDuelAction.Play && Action != CardDuelAction.Discard && Action != CardDuelAction.EndTurn &&
@@ -85,7 +96,7 @@ namespace PokerEngine
     }
     public sealed partial class BattleAdventureSession
     {
-        public const int SnapshotSchemaVersion = 2;
+        public const int SnapshotSchemaVersion = 3;
         public const int MaxCommands = 8192;
         public const int MaxSnapshotBytes = 8 * 1024 * 1024;
         private static readonly UTF8Encoding SnapshotUtf8 = new UTF8Encoding(false, true);
@@ -224,6 +235,8 @@ namespace PokerEngine
                         writer.Write(state.Revision); writer.Write((int)state.Duel.Phase); writer.Write(state.Duel.CompletedRounds);
                         foreach (var unit in state.Duel.Combat.Combatants)
                         { writer.Write(unit.Id.Value); writer.Write(unit.Health); writer.Write(unit.MaxHealth); writer.Write(unit.Block); }
+                        foreach (var card in state.Table.Cards)
+                        { writer.Write(card.Id.Value); writer.Write(card.DefinitionId.Value); writer.Write((int)card.Effects); writer.Write(card.IsDisabled); }
                         foreach (var zone in state.Table.Zones)
                         { writer.Write(zone.Id.Value); writer.Write(zone.Cards.Count); foreach (var card in zone.Cards) writer.Write(card.Value); }
                         foreach (byte value in state.Random.StateBytes) writer.Write(value);
@@ -231,7 +244,7 @@ namespace PokerEngine
                         writer.Write(state.Duel.Players.Count);
                         foreach (var player in state.Duel.Players)
                         {
-                            writer.Write(player.Id.Value); writer.Write(player.Relics.Fingerprint);
+                            writer.Write(player.Id.Value); writer.Write(state.GoldFor(player.Id)); writer.Write(player.Relics.Fingerprint);
                             writer.Write(player.Relics.Relics.Count);
                             foreach (var relic in player.Relics.Relics) WriteDigestContract(writer, relic);
                             writer.Write(player.Energy.Energy);
