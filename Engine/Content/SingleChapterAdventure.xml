@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AdventureContent schemaVersion="1" id="single-chapter-adventure" name="单章七站·体验版" version="single-chapter-adventure.3873.1" startNode="battle-1" startingEncounter="single-chapter-battle-1" defaultTarot="fool" startingGold="30" relicCapacity="5" minimumDeckSize="5" maximumDeckSize="128" economyVersion="2" shopOfferCount="4" restHeal="20">
+  <!-- 主案 revision 3869 / 3873：固定七站，两处补给各自选择商店或休息，共四条七站路线。
+       宝箱进场立即发放100金币与一件本局未获得道具；商店/休息的随机结果进入规则存档。
+       品质由 SingleChapterBattle.xml 的 Relic quality 显式定义，与实例升级等级 Level 无关。
+       初始金币沿用30、遗物容量沿用5；用户确认基础休息回血20，均可配置。
+       推币机不在本期范围。 -->
+  <Tarots>
+    <Tarot id="fool" name="愚者" description="最大生命提高20%，开局生命同步提高。" initiallyUnlocked="true" maxHealthMultiplier="1.2" />
+  </Tarots>
+  <Nodes>
+    <Node id="battle-1" name="小怪一" kind="Battle" chapter="1" row="0" column="1" encounter="single-chapter-battle-1" gold="50" next="chest" />
+    <Node id="chest" name="宝箱" kind="Chest" chapter="1" row="1" column="1" gold="100" next="battle-2" />
+    <Node id="battle-2" name="小怪二" kind="Battle" chapter="1" row="2" column="1" encounter="single-chapter-battle-2" enemyHealthMultiplier="1.25" gold="60" next="shop-1,rest-1" />
+    <Node id="shop-1" name="第一处补给·商店" kind="Shop" chapter="1" row="3" column="0" next="elite" />
+    <Node id="rest-1" name="第一处补给·休息" kind="Rest" chapter="1" row="3" column="2" next="elite" />
+    <Node id="elite" name="守门人" kind="Elite" chapter="1" row="4" column="1" encounter="single-chapter-gatekeeper" gold="800" next="shop-2,rest-2" />
+    <Node id="shop-2" name="第二处补给·商店" kind="Shop" chapter="1" row="5" column="0" next="boss" />
+    <Node id="rest-2" name="第二处补给·休息" kind="Rest" chapter="1" row="5" column="2" next="boss" />
+    <Node id="boss" name="暴怒" kind="Boss" chapter="1" row="6" column="1" encounter="single-chapter-wrath" gold="0" />
+  </Nodes>
+  <!-- 空商品定义表示使用战斗配置的全部12件体验道具作为随机候选池。 -->
+  <Shop />
+  <Services>
+    <Service kind="DeleteCard" price="45" />
+    <Service kind="DuplicateCard" price="20" />
+    <Service kind="ChangeSuit" price="30" />
+  </Services>
+  <!-- 新经济模式：进场固定回血，可免费抽奖一次，也可直接离开。 -->
+  <Rest />
+</AdventureContent>

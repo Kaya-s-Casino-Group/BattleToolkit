@@ -30,7 +30,7 @@ namespace PokerEngine
                 var unit = result.State.Duel.Combat.Get(PlayerId);
                 Health = unit.Health; MaxHealth = unit.MaxHealth; Gold = result.State.GoldFor(PlayerId);
                 relics = result.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
-                ValidateRelics();
+                ValidateRelics(); RecordObtainedRelics();
                 if (result.State.Duel.IsFinished)
                     relics = relics.Select(r => new RunRelic(r.Id, r.DefinitionId, r.Level, r.Growth, r.Charges,
                         r.CooldownRounds, BattleItemRuntime.ClearRoulette(r.Memory).ResetRound())).ToList();
@@ -71,7 +71,7 @@ namespace PokerEngine
                     next.Add(new RunRelic(id, item.DefinitionId, item.Level ?? old?.Level ?? 1, item.Growth ?? old?.Growth ?? 0,
                         item.Charges ?? old?.Charges ?? definition.Charges, item.CooldownRounds ?? old?.CooldownRounds ?? 0, old?.Memory ?? AbilityMemory.Empty));
                 }
-                relics = next; ValidateRelics();
+                relics = next; ValidateRelics(); RecordObtainedRelics();
             }
             if (Health == 0) { Phase = AdventurePhase.Failed; Settle(RunOutcome.Lost); }
         }

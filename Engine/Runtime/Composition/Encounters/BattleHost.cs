@@ -7,7 +7,8 @@ namespace PokerEngine
     {
         private readonly Func<BattleSession> createSession;
         private bool changingSession;
-        public BattleSession Session { get; private set; }
+        public IBattleSessionCommands Commands { get; private set; }
+        public BattleSession Session => Commands?.Session;
         public BattleSessionPlayback Playback { get; private set; }
         public CardDuelState AuthorityState => Session?.State;
         /// <summary>Raised after Initialize completes and the new command port is available, before opening Start.</summary>
@@ -27,7 +28,7 @@ namespace PokerEngine
             {
                 var next = createSession() ?? throw new InvalidOperationException("The battle factory returned no session.");
                 if (next.State.HasStarted) throw new InvalidOperationException("The battle factory must return an unstarted session.");
-                Install(next, presentation);
+                Install(new BattleSessionCommands(next), presentation);
                 return Playback.Start(animate);
             }
             finally { changingSession = false; }
@@ -43,20 +44,37 @@ namespace PokerEngine
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (presentation == null) throw new ArgumentNullException(nameof(presentation));
             BeginChange();
-            try { Install(session, presentation); }
+            try { Install(new BattleSessionCommands(session), presentation); }
             finally { changingSession = false; }
         }
 
-        private void Install(BattleSession session, IBattleSessionPresentation presentation)
+        /// <summary>Attaches an outer authority, optionally presenting its already-committed opening batch.</summary>
+        public void AttachCommands(IBattleSessionCommands commands, IBattleSessionPresentation presentation,
+            BattleSessionResult opening = null, bool animate = true)
+        {
+            if (commands == null || commands.Session == null) throw new ArgumentNullException(nameof(commands));
+            if (presentation == null) throw new ArgumentNullException(nameof(presentation));
+            if (opening != null && (!opening.Accepted || !ReferenceEquals(opening.State, commands.Session.State)))
+                throw new ArgumentException("Opening must belong to the attached battle.", nameof(opening));
+            BeginChange();
+            try
+            {
+                Install(commands, presentation, opening?.Before);
+                if (opening != null) Playback.PresentCommitted(opening, animate);
+            }
+            finally { changingSession = false; }
+        }
+
+        private void Install(IBattleSessionCommands commands, IBattleSessionPresentation presentation, CardDuelState initialState = null)
         {
             // A different frontend must release its old animation while it still observes its old session.
             // Reusing a frontend resets its playback in Initialize, preserving existing scene rebind behavior.
             if (Playback != null && !ReferenceEquals(Playback.Presentation, presentation)) Playback.Synchronize();
             Playback = null;
-            Session = session;
+            Commands = commands;
             // Initialize may synchronously read Host.Session and refresh UI. Never expose the old command port.
             // If it throws, retain the session for recovery, but keep commands unavailable until reattachment.
-            Playback = new BattleSessionPlayback(session, presentation);
+            Playback = new BattleSessionPlayback(commands, presentation, initialState);
             SessionAttached?.Invoke();
         }
 

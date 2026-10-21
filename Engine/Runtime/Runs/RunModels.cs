@@ -14,6 +14,8 @@ namespace PokerEngine
         public int Slots { get; }
         public int MaxCopies { get; }
         public int MaxLevel { get; }
+        /// <summary>Economic item quality (0–5), independent of the instance upgrade level.</summary>
+        public int Quality { get; }
         public long SellPrice { get; }
         public long UpgradeCost { get; }
         public long GrowthPerScoredRound { get; }
@@ -21,12 +23,12 @@ namespace PokerEngine
         public int? Charges { get; }
         public IReadOnlyList<ScoreEffect> ScoreEffects { get; }
         public RelicDefinition(string id, IEnumerable<ScoreEffect> effects, long sellPrice = 1, long upgradeCost = 5,
-            int slots = 1, int maxCopies = 1, int maxLevel = 3, long growthPerScoredRound = 0, AbilityDefinitionId? abilityId = null, int? charges = null)
+            int slots = 1, int maxCopies = 1, int maxLevel = 3, long growthPerScoredRound = 0, AbilityDefinitionId? abilityId = null, int? charges = null, int quality = 0)
         {
             Id = Guard.Text(id, nameof(id)); ScoreEffects = Guard.View(Guard.Copy(effects, nameof(effects)));
-            if (sellPrice < 0 || upgradeCost < 0 || slots < 1 || slots > 32 || maxCopies < 1 || maxLevel < 1 || maxLevel > 100 || growthPerScoredRound < 0 || charges < 0 ||
+            if (quality < 0 || quality > 5 || sellPrice < 0 || upgradeCost < 0 || slots < 1 || slots > 32 || maxCopies < 1 || maxLevel < 1 || maxLevel > 100 || growthPerScoredRound < 0 || charges < 0 ||
                 abilityId.HasValue && !abilityId.Value.IsValid) throw new ArgumentException("Invalid relic definition.");
-            SellPrice = sellPrice; UpgradeCost = upgradeCost; Slots = slots; MaxCopies = maxCopies; MaxLevel = maxLevel;
+            Quality = quality; SellPrice = sellPrice; UpgradeCost = upgradeCost; Slots = slots; MaxCopies = maxCopies; MaxLevel = maxLevel;
             GrowthPerScoredRound = growthPerScoredRound; AbilityId = abilityId; Charges = charges;
         }
     }

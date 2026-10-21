@@ -4,9 +4,9 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum AdventurePhase { Map, Battle, Reward, Shop, Rest, Completed, Failed }
-    public enum AdventureNodeKind { Battle, Elite, Boss, Shop, Rest }
-    public enum AdventureCommandKind { EnterNode, Continue, BuyRelic, SellRelic, DeleteCard, DuplicateCard, ChangeSuit, ChooseRest, Abandon }
+    public enum AdventurePhase { Map, Battle, Reward, Shop, Rest, Completed, Failed, Chest }
+    public enum AdventureNodeKind { Battle, Elite, Boss, Shop, Rest, Chest }
+    public enum AdventureCommandKind { EnterNode, Continue, BuyRelic, SellRelic, DeleteCard, DuplicateCard, ChangeSuit, ChooseRest, Abandon, DrawRestReward, ClaimRelicReward, SkipRelicReward }
     public enum AdventureRestKind { Heal, Gold, Relic }
 
     public sealed class AdventureCommand
@@ -95,6 +95,9 @@ namespace PokerEngine
         public int RelicCapacity { get; }
         public int MinimumDeckSize { get; }
         public int MaximumDeckSize { get; }
+        public int EconomyVersion { get; }
+        public int ShopOfferCount { get; }
+        public long RestHeal { get; }
         public int TotalChapters => Nodes.Max(n => n.Chapter);
         public IReadOnlyList<AdventureNodeDefinition> Nodes { get; }
         public IReadOnlyList<AdventureTarotDefinition> Tarots { get; }
@@ -105,11 +108,13 @@ namespace PokerEngine
         internal BattleAdventureDefinition(string id, string name, string version, string fingerprint, string battleFingerprint, string xml,
             string startNode, string encounter, string defaultTarot, long gold, int capacity, int minimumDeckSize, int maximumDeckSize,
             IEnumerable<AdventureNodeDefinition> nodes, IEnumerable<AdventureTarotDefinition> tarots,
-            IEnumerable<AdventureShopItem> shop, IEnumerable<AdventureServicePrice> services, IEnumerable<AdventureRestChoice> rest)
+            IEnumerable<AdventureShopItem> shop, IEnumerable<AdventureServicePrice> services, IEnumerable<AdventureRestChoice> rest,
+            int economyVersion = 1, int shopOfferCount = 4, long restHeal = 20)
         {
             Id = id; Name = name; Version = version; Fingerprint = fingerprint; BattleFingerprint = battleFingerprint; SourceXml = xml;
             StartNodeId = startNode; StartingEncounterId = encounter; DefaultTarotId = defaultTarot; StartingGold = gold;
             RelicCapacity = capacity; MinimumDeckSize = minimumDeckSize; MaximumDeckSize = maximumDeckSize;
+            EconomyVersion = economyVersion; ShopOfferCount = shopOfferCount; RestHeal = restHeal;
             Nodes = Array.AsReadOnly(nodes.ToArray()); Tarots = Array.AsReadOnly(tarots.ToArray()); ShopItems = Array.AsReadOnly(shop.ToArray());
             ServicePrices = Array.AsReadOnly(services.ToArray()); RestChoices = Array.AsReadOnly(rest.ToArray());
             ProgressionDefinition = new ProgressionDefinition(version + "/progression", Array.Empty<string>(),

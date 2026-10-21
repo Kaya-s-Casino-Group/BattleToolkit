@@ -96,7 +96,7 @@ namespace PokerEngine
     }
     public sealed partial class BattleAdventureSession
     {
-        public const int SnapshotSchemaVersion = 3;
+        public const int SnapshotSchemaVersion = 4;
         public const int MaxCommands = 8192;
         public const int MaxSnapshotBytes = 8 * 1024 * 1024;
         private static readonly UTF8Encoding SnapshotUtf8 = new UTF8Encoding(false, true);
@@ -228,6 +228,19 @@ namespace PokerEngine
                     { writer.Write(values.Count); foreach (string value in values) writer.Write(value); }
                     writer.Write(serviceUses.Count);
                     foreach (var value in serviceUses.OrderBy(v => v.Key)) { writer.Write((int)value.Key); writer.Write(value.Value); }
+                    writer.Write(RestLotteryUsed);
+                    foreach (var values in new[] { obtainedRelicIds, pendingRelicRewards })
+                    { writer.Write(values.Count); foreach (string value in values) writer.Write(value); }
+                    writer.Write(shopItems.Count);
+                    foreach (var item in shopItems)
+                    { writer.Write(item.Id); writer.Write(item.RelicId); writer.Write(item.Price); writer.Write(item.SellPrice); }
+                    writer.Write(LastLocationReward != null);
+                    if (LastLocationReward != null)
+                    {
+                        writer.Write((int)LastLocationReward.Kind); writer.Write(LastLocationReward.HealthDelta); writer.Write(LastLocationReward.GoldDelta);
+                        foreach (var values in new[] { LastLocationReward.GrantedRelicIds, LastLocationReward.LostRelicIds })
+                        { writer.Write(values.Count); foreach (string value in values) writer.Write(value); }
+                    }
                     writer.Write(battle != null);
                     if (battle != null)
                     {

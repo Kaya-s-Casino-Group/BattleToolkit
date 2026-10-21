@@ -10,7 +10,7 @@ namespace PokerEngine
         {
             return ReadDefinitions(section, "Relic", node =>
             {
-                Check(node, new[] { "id", "name", "version", "charges", "maxCopies", "maxLevel", "slots", "sellPrice", "upgradeCost", "growthPerScoredRound" },
+                Check(node, new[] { "id", "name", "version", "charges", "maxCopies", "maxLevel", "slots", "sellPrice", "upgradeCost", "growthPerScoredRound", "quality" },
                     new[] { "Budget", "Numeric", "HandModifier", "RuleValue", "Refill", "FactTrigger", "BoundaryTrigger", "ActionTrigger", "Score", "Program", "Item" });
                 var definition = new RelicDefinition(Text(node, "id"), node.Children.Where(item => item.Name == "Score").Select(item => {
                     Check(item, new[] { "operation", "amount", "hand" }, new string[0]);
@@ -19,7 +19,7 @@ namespace PokerEngine
                         category: Optional(item, "hand") == null ? (HandCategory?)null : ReadRequiredEnum<HandCategory>(item, "hand"));
                 }),
                     Long(node, "sellPrice", 1), Long(node, "upgradeCost", 5), Int(node, "slots", 1), Int(node, "maxCopies", 1),
-                    Int(node, "maxLevel", 1), Long(node, "growthPerScoredRound", 0), charges: OptionalInt(node, "charges"));
+                    Int(node, "maxLevel", 1), Long(node, "growthPerScoredRound", 0), charges: OptionalInt(node, "charges"), quality: Int(node, "quality", 0));
                 var budgets = node.Children.Where(item => item.Name == "Budget").ToArray();
                 if (budgets.Length > 1) throw new ArgumentException("A relic has one shared trigger budget.");
                 var budget = budgets.Length == 0 ? null : Capture(budgets[0], () => ReadBudget(budgets[0]));

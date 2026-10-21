@@ -4,6 +4,8 @@
 
 ## 配置
 
+以下 `StandardAdventure.xml` 是保留的旧经济验证配置。体验版使用 `SingleChapterAdventure.xml` 和 `SingleChapterBattle.xml`，见下方“单章经济版本 2”。
+
 `Engine/Content/StandardAdventure.xml` 使用独立 `AdventureContent schemaVersion="1"` 契约，引用标准单场 XML 的 encounter/relic ID。通过 `BattleAdventureXml.Load(xml, compiledBattleContent)` 验证并绑定两份内容指纹。
 
 标准路线为三章，每章三个普通战斗、一个精英、一个商店、一个休息点、一个 Boss。`next` 可改为多个以空格或逗号分隔的后继节点，实现分支；路线必须无环、全部可达、按章推进，仅 Boss 能进入下一章，最终节点必须是最后一章的 Boss。节点行列仅用于画图，不参与通关判断。
@@ -16,6 +18,23 @@
 - 塔罗：每次开局只能选一个已解锁塔罗，支持最大血量倍率、开局金币、开局遗物；遗物可复用现有全部可配置效果。愚者已解锁，最大血量和初始血量为模板的 120%。通关解锁两个示例塔罗，其效果及数值均标明验证占位。只有全部章节完成后才授予通关解锁。
 
 金币、商店价格/涨价、休息收益、章节成长和两个新塔罗的效果都是验证占位值，需要策划继续定数值。此模块不包含绝杀转金币、推币机、休息博弈或资源养成 UI。
+
+## 单章经济版本 2
+
+根节点使用 `economyVersion="2" shopOfferCount="4" restHeal="20"`。省略 `economyVersion` 时保留旧固定商品、线性服务价格、休息三选一语义。`SingleChapterAdventure.xml` 提供固定七站、两处商店/休息二选一的四条路线。牌组、生命、金币与道具仍归整局会话所有。
+
+- `Relic quality="0..5"` 是道具品质，默认 0；`Definition.Quality` 与实例升级 `Level` 分开。当前随机池为战斗内容中的全部道具。
+- `kind="Chest" gold="100"`：进入即开箱，金币入账，并从本局从未获得的道具中等概率抽一件。初始道具、购买、实际领取的奖励、战斗替换和管理员新增均计入 `ObtainedRelicIds`；卖出/失去不会忘记。仅待领取或放弃的道具不计入获得历史，以后可再抽到。池耗尽只给金币。
+- 商店进入时生成 `Session.ShopItems`，按 `MaxCopies` 过滤持有上限；唯一道具不会占多个货位，非唯一道具可占多个货位。每个货位仅买一次，不补货；池全为不可重复且不足四种时允许少于四件。0–4 品质购买价格为 10/20/30/50/100，5 品质为 50–200 整数。新经济出售按道具定义 `SellPrice`。
+- `Services/Service price` 指定各类基础价（体验配置为撕牌45、加牌20、改牌30）。每类独立累计，前三次基础价，第4–10次连续乘1.1，第11次起连续乘1.07；先用decimal保留连乘精度，本次价格以 `AwayFromZero` 四舍五入到整数。`increase` 在此版本不参与计价，旧版本继续使用。
+- 休息进入时先加 `restHeal`，不超过最大生命；`Continue` 可直接离开。`DrawRestReward` 免费一次，三类结果各1/3：3–4品质随机增减一件（失去时无此品质则失去最高品质，无道具则无事发生）；获得两件0–2品质；金币随机增减0–500且不少于0。增减方向各1/2，范围内候选均匀。抽奖失败、预览、读档不会再次触发。
+- 自动奖励遇容量满则进入 `PendingRelicRewards`，顺序处理队首：`ClaimRelicReward` 可不传ID直接领取，或 `Id` 传当前持有实例以替换；`SkipRelicReward` 放弃。原子校验容量/唯一性；处理完才允许继续，不会被迫领取。此等待过程不再抽取。
+
+`LastLocationReward` 提供 `Kind / HealthDelta / GoldDelta / GrantedRelicIds / LostRelicIds`；GrantedRelicIds 表示实际获得和仍待决策的奖励；放弃时从列表移除那一份，可能尚在待替换队列中。界面同时读取 `PendingRelicRewards`。`RestLotteryUsed` 与 `CanDrawRestReward` 用于抽奖按钮。商品的名称描述由宿主用 `RelicId` 从原始战斗内容投影，规则的随机货位名称回退到定义ID。
+
+局外随机按整局seed、节点ID、用途和抽取序号通过SHA-256派生，不使用Unity随机数或战斗随机流。库存价格、获得历史、待领取队列、抽奖结果纳入摘要校验。`Export/Restore` 从命令重放同样结果；未提交预览不改变任何随机结果和资源。
+
+专项测试：`Tools/test-poker-engine.sh AdventureEconomyTests SingleChapterContentTests`。
 
 ## 状态边界与调用
 
@@ -39,7 +58,7 @@ var itemUsed = session.UseBattleItem(session.Revision, instanceId, targetInstanc
 
 ## 保存与恢复
 
-当前冒险快照 schema 为 3，包含主动道具命令与完整道具记忆/战斗状态摘要；schema 1/2 旧档明确拒绝且不自动迁移。生命与生命上限为 `long`。
+当前冒险快照 schema 为 4，包含主动道具命令、完整道具记忆/战斗状态及新局外经济摘要；schema 1/2/3 旧档明确拒绝且不自动迁移。旧 XML 可继续创建新的冒险。生命与生命上限为 `long`。
 
 `Export()` 返回 JSON；`Restore(definition, battleContent, json)` 从初始成长档和受限命令日志确定性重放。保存内容包含两份配置指纹、局外 XML、初始和最终成长数据、种子、最后 Revision 与结果摘要。当前上限为 8 MiB、8192 条命令。恢复拒绝内容不一致、非法动作、非连续 Revision、错误最终状态与不合法成长档。内部怪物/自动流程命令不能作为玩家日志重放。
 

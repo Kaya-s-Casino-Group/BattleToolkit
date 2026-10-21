@@ -22,8 +22,9 @@ namespace PokerEngine
             using (var reader = XmlReader.Create(text, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaxCharacters }))
                 root = XDocument.Load(reader).Root;
             Require(root != null && root.Name == "AdventureContent" && Attr(root, "schemaVersion") == "1", "Unsupported adventure XML.");
-            Check(root, new[] { "schemaVersion", "id", "name", "version", "startNode", "startingEncounter", "defaultTarot", "startingGold", "relicCapacity", "minimumDeckSize", "maximumDeckSize" },
+            Check(root, new[] { "schemaVersion", "id", "name", "version", "startNode", "startingEncounter", "defaultTarot", "startingGold", "relicCapacity", "minimumDeckSize", "maximumDeckSize", "economyVersion", "shopOfferCount", "restHeal" },
                 new[] { "Tarots", "Nodes", "Shop", "Services", "Rest" });
+            int economyVersion = Int(root, "economyVersion", 1, 2, 1);
             string id = Text(root, "id"), version = Text(root, "version"), encounter = Text(root, "startingEncounter");
             ValidateEncounter(battleContent, encounter);
             string start = Text(root, "startNode"), defaultTarot = Text(root, "defaultTarot");
@@ -88,7 +89,7 @@ namespace PokerEngine
                 Check(t, new[] { "kind", "price", "increase" });
                 var kind = EnumValue<AdventureCommandKind>(t, "kind");
                 Require(IsService(kind), "Unknown shop service.");
-                return new AdventureServicePrice(kind, Long(t, "price", 0, 1000000), Long(t, "increase", 0, 1000000));
+                return new AdventureServicePrice(kind, Long(t, "price", 0, 1000000), Long(t, "increase", 0, 1000000, 0));
             }).ToArray();
             Require(services.Select(s => s.Kind).Distinct().Count() == services.Length, "Duplicate service.");
             var rest = Section(root, "Rest", "Choice").Select(t =>
@@ -100,12 +101,13 @@ namespace PokerEngine
                     Decimal(t, "healRatio", 0, 1, 0), Long(t, "gold", 0, 1000000, 0), relic);
             }).ToArray();
             Unique(rest.Select(r => r.Id), 32);
-            Require(!nodes.Any(n => n.Kind == AdventureNodeKind.Rest) || rest.Length > 0, "Rest node requires choices.");
+            Require(economyVersion == 2 || !nodes.Any(n => n.Kind == AdventureNodeKind.Rest) || rest.Length > 0, "Rest node requires choices.");
             int minimum = Int(root, "minimumDeckSize", 1, 512, 5), maximum = Int(root, "maximumDeckSize", minimum, 512, 128);
             string normalized = root.ToString(SaveOptions.DisableFormatting);
             return new BattleAdventureDefinition(id, Name(root), version, Hash(normalized + "\n" + battleContent.Fingerprint), battleContent.Fingerprint,
                 xml, start, encounter, defaultTarot, Long(root, "startingGold", 0, 1000000, 0), Int(root, "relicCapacity", 0, 32, 5), minimum, maximum,
-                nodes, tarots, shop, services, rest);
+                nodes, tarots, shop, services, rest, economyVersion, Int(root, "shopOfferCount", 0, 32, 4),
+                Long(root, "restHeal", 0, 1000000, 20));
         }
         internal static bool IsService(AdventureCommandKind kind) => kind == AdventureCommandKind.DeleteCard || kind == AdventureCommandKind.DuplicateCard || kind == AdventureCommandKind.ChangeSuit;
         internal static string Hash(string text)

@@ -42,6 +42,65 @@ namespace PokerEngine.Tests
             }
         }
 
+        private sealed class OuterCommands : IBattleSessionCommands
+        {
+            private readonly BattleSession authority;
+            public BattleSession Session => new BattleSession(authority.Engine, authority.State);
+            public long Revision { get; private set; } = 100;
+            public int Executions, ItemCalls, AdminCalls;
+            public long LastExpectedRevision;
+            public OuterCommands(BattleSession session) { authority = session; }
+            public BattleSessionResult Execute(long expectedRevision, ParticipantId actor, CardDuelAction action,
+                IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null,
+                BattleTargetBindings targetBindings = null, int drawCount = 0)
+            {
+                LastExpectedRevision = expectedRevision; Executions++;
+                if (expectedRevision != Revision) return BattleSessionResult.Rejected(authority.State, CardDuelError.StaleRevision);
+                var result = authority.Execute(authority.State.Revision, actor, action, selected, targets, targetBindings, drawCount);
+                if (result.Accepted) Revision++;
+                return result;
+            }
+            public BattleSessionResult UseItem(long expectedRevision, ParticipantId actor, string instanceId, string targetInstanceId = null)
+            { ItemCalls++; LastExpectedRevision = expectedRevision; return BattleSessionResult.Rejected(authority.State, CardDuelError.InvalidPhase); }
+            public BattleSessionResult ApplyAdmin(long expectedRevision, BattleAdminPatch patch)
+            { AdminCalls++; LastExpectedRevision = expectedRevision; return BattleSessionResult.Rejected(authority.State, CardDuelError.InvalidPhase); }
+        }
+
+        [Test]
+        public void OuterAuthorityOpeningIsPresentedOnceAndSubsequentCommandsUseItsOwnRevision()
+        {
+            var session = Create(); var player = session.State.Duel.PlayerId;
+            var opening = session.Execute(session.State.Revision, player, CardDuelAction.Start);
+            var commands = new OuterCommands(session); var view = new Presentation();
+            var host = new BattleHost(() => throw new InvalidOperationException("Standalone factory must not run"));
+            host.AttachCommands(commands, view, opening, animate: false);
+            Assert.AreEqual(0, commands.Executions); Assert.AreEqual(1, view.Batches.Count);
+            Assert.AreSame(opening, view.Batches[0]); Assert.AreSame(session.State, view.State);
+            Assert.AreNotSame(commands.Session, commands.Session, "The port deliberately exposes isolated wrappers.");
+            var before = session.State;
+            var cards = before.Zone(CardZoneKinds.Hand, player).Cards.Take(1).ToArray();
+            var preview = host.Playback.PreviewPlay(player, cards);
+            Assert.IsTrue(preview.Accepted); Assert.AreSame(before, session.State); Assert.AreEqual(0, commands.Executions);
+            var result = host.Playback.Submit(player, CardDuelAction.Play, cards, animate: false);
+            Assert.IsTrue(result.Accepted); Assert.AreEqual(100, commands.LastExpectedRevision);
+            Assert.AreEqual(101, host.Playback.Revision); Assert.AreSame(session.State, host.AuthorityState);
+            Assert.AreSame(session.State, view.State); Assert.AreNotSame(before, host.AuthorityState);
+            host.Playback.UseItem(host.Playback.Revision, player, "missing");
+            Assert.AreEqual(1, commands.ItemCalls); Assert.AreEqual(101, commands.LastExpectedRevision);
+            host.Playback.ApplyAdmin(host.Playback.Revision, null);
+            Assert.AreEqual(1, commands.AdminCalls); Assert.AreEqual(101, commands.LastExpectedRevision);
+        }
+
+        [Test]
+        public void OuterAuthorityCanRestoreStartedBattleWithoutReplayingOpening()
+        {
+            var session = Create(); session.Execute(session.State.Revision, session.State.Duel.PlayerId, CardDuelAction.Start);
+            var commands = new OuterCommands(session); var view = new Presentation();
+            var host = new BattleHost(() => throw new InvalidOperationException("Standalone factory must not run"));
+            host.AttachCommands(commands, view);
+            Assert.AreEqual(0, commands.Executions); Assert.IsEmpty(view.Batches); Assert.AreSame(session.State, view.State);
+        }
+
         [TestCase(true)] [TestCase(false)]
         public void StartInstallsSessionBeforeInitializeAndCommandPortBeforeOpening(bool animate)
         {

@@ -225,7 +225,7 @@ namespace PokerEngine
             if (definition == null) throw new ArgumentNullException(nameof(definition));
             Guard.Text(definition.Id, nameof(definition));
             if (definition.Slots < 1 || definition.Slots > 32 || definition.MaxCopies < 1 || definition.MaxLevel < 1 ||
-                definition.MaxLevel > 100 || definition.SellPrice < 0 || definition.UpgradeCost < 0 ||
+                definition.MaxLevel > 100 || definition.Quality < 0 || definition.Quality > 5 || definition.SellPrice < 0 || definition.UpgradeCost < 0 ||
                 definition.GrowthPerScoredRound < 0 || definition.Charges < 0 ||
                 definition.AbilityId.HasValue && !definition.AbilityId.Value.IsValid)
                 throw new ArgumentException("Invalid battle relic definition.", nameof(definition));

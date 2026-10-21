@@ -40,7 +40,8 @@ namespace PokerEngine
             ? Array.Empty<AdventureNodeDefinition>() : available.Select(Definition.Node).ToArray());
         public IReadOnlyList<AdventureTarotDefinition> UnlockedTarots => Array.AsReadOnly(Definition.Tarots.Where(t =>
             Progression.IsUnlocked(new ProgressionUnlock(UnlockKind.Tarot, t.Id))).ToArray());
-        public bool CanContinue => Phase == AdventurePhase.Reward || Phase == AdventurePhase.Shop || Phase == AdventurePhase.Rest && RestChoiceId != null;
+        public bool CanContinue => pendingRelicRewards.Count == 0 && (Phase == AdventurePhase.Reward || Phase == AdventurePhase.Shop ||
+            Phase == AdventurePhase.Chest || Phase == AdventurePhase.Rest && (Definition.EconomyVersion == 2 || RestChoiceId != null));
         public PlayerProgressionState Progression { get; private set; }
         // Return an isolated wrapper: callers may inspect/preview without bypassing adventure history or rewards.
         public BattleSession Battle => battle == null ? null : new BattleSession(battle.Engine, battle.State);
@@ -90,7 +91,7 @@ namespace PokerEngine
                 new RunRelic(RunId + "/relic/start/" + i, r.Instance.DefinitionId, r.Instance.Level, r.Instance.Growth,
                     r.Instance.Charges, 0, AbilityMemory.Empty)).ToList();
             if (tarot.StartingRelicId != null) AddRelic(tarot.StartingRelicId);
-            ValidateRelics();
+            ValidateRelics(); RecordObtainedRelics();
             available.Add(definition.StartNodeId); Phase = AdventurePhase.Map;
         }
 
@@ -98,7 +99,7 @@ namespace PokerEngine
         {
             var price = Definition.ServicePrices.SingleOrDefault(s => s.Kind == kind);
             if (price == null) throw new ArgumentException("Service is not configured.");
-            return checked(price.BasePrice + price.Increase * ServiceUses(kind));
+            return Definition.EconomyVersion == 2 ? EconomicServicePrice(price) : checked(price.BasePrice + price.Increase * ServiceUses(kind));
         }
         public BattleAdventureSession Fork() => Copy();
         public int ServiceUses(AdventureCommandKind kind) => serviceUses.TryGetValue(kind, out var count) ? count : 0;
@@ -106,7 +107,8 @@ namespace PokerEngine
         {
             var relic = relics.SingleOrDefault(r => r.Id == relicInstanceId);
             if (relic == null) throw new ArgumentException("Unknown owned relic.");
-            return Definition.ShopItems.FirstOrDefault(i => i.RelicId == relic.DefinitionId)?.SellPrice ?? 0;
+            return Definition.EconomyVersion == 2 ? Content.Relics[relic.DefinitionId].Definition.SellPrice
+                : Definition.ShopItems.FirstOrDefault(i => i.RelicId == relic.DefinitionId)?.SellPrice ?? 0;
         }
         public AdventureResult Execute(long expectedRevision, AdventureCommand command, bool preview = false)
         {
@@ -160,9 +162,13 @@ namespace PokerEngine
             {
                 Need(Phase == AdventurePhase.Map && available.Contains(command.Id), "Node is not available.");
                 CurrentNode = Definition.Node(command.Id); available.Clear(); purchased.Clear(); RestChoiceId = null; LastRewardGold = 0;
-                ApplyLocationItems(entering: true);
-                if (CurrentNode.Kind == AdventureNodeKind.Shop) { battle = null; Phase = AdventurePhase.Shop; }
-                else if (CurrentNode.Kind == AdventureNodeKind.Rest) { battle = null; Phase = AdventurePhase.Rest; }
+                ResetLocationEconomy(); ApplyLocationItems(entering: true);
+                if (CurrentNode.Kind == AdventureNodeKind.Shop)
+                { battle = null; Phase = AdventurePhase.Shop; if (Definition.EconomyVersion == 2) GenerateShopStock(); }
+                else if (CurrentNode.Kind == AdventureNodeKind.Rest)
+                { battle = null; Phase = AdventurePhase.Rest; if (Definition.EconomyVersion == 2) EnterRest(); }
+                else if (CurrentNode.Kind == AdventureNodeKind.Chest)
+                { battle = null; Phase = AdventurePhase.Chest; OpenChest(); }
                 else { Phase = AdventurePhase.Battle; StartBattle(); }
                 return;
             }
@@ -175,9 +181,13 @@ namespace PokerEngine
                 else { Phase = AdventurePhase.Map; battle = null; }
                 return;
             }
+            if (command.Kind == AdventureCommandKind.ClaimRelicReward || command.Kind == AdventureCommandKind.SkipRelicReward)
+            { ResolveRelicReward(command); return; }
+            if (command.Kind == AdventureCommandKind.DrawRestReward)
+            { DrawRestReward(); return; }
             if (command.Kind == AdventureCommandKind.ChooseRest)
             {
-                Need(Phase == AdventurePhase.Rest && RestChoiceId == null, "A rest reward can only be chosen once.");
+                Need(Definition.EconomyVersion == 1 && Phase == AdventurePhase.Rest && RestChoiceId == null, "A rest reward can only be chosen once.");
                 var choice = Definition.RestChoices.SingleOrDefault(r => r.Id == command.Id);
                 Need(choice != null, "Unknown rest choice.");
                 if (choice.Kind == AdventureRestKind.Heal) Health = checked(Health + Math.Min(MaxHealth - Health, checked((long)decimal.Floor(MaxHealth * choice.HealRatio))));
@@ -188,7 +198,7 @@ namespace PokerEngine
             Need(Phase == AdventurePhase.Shop, "Shop services require a shop node.");
             if (command.Kind == AdventureCommandKind.BuyRelic)
             {
-                var item = Definition.ShopItems.SingleOrDefault(i => i.Id == command.Id);
+                var item = ShopItems.SingleOrDefault(i => i.Id == command.Id);
                 Need(item != null && !purchased.Contains(item.Id), "Shop item is unavailable.");
                 Spend(item.Price); AddRelic(item.RelicId); purchased.Add(item.Id); return;
             }
@@ -228,7 +238,7 @@ namespace PokerEngine
             Need(result.Accepted, result.Error.ToString());
             LastBattleResult = result; Health = result.State.Duel.Combat.Get(PlayerId).Health;
             MaxHealth = result.State.Duel.Combat.Get(PlayerId).MaxHealth; Gold = result.State.GoldFor(PlayerId);
-            relics = result.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
+            relics = result.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList(); RecordObtainedRelics();
             if (!result.State.Duel.IsFinished) return;
             // Dynamic ownership, finite charges and completed-battle cooldowns survive location changes.
             relics = relics.Select(BattleItemRuntime.CompleteBattle).ToList();
@@ -270,7 +280,7 @@ namespace PokerEngine
             Need(LastBattleResult.Accepted, "Cannot start battle: " + LastBattleResult.Error);
             Health = battle.State.Duel.Combat.Get(PlayerId).Health;
             // Opening boundaries may consume/revive/replace items before the first player input.
-            relics = battle.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList();
+            relics = battle.State.Duel.Player(PlayerId).Relics.ExportRunRelics().ToList(); RecordObtainedRelics();
             if (battle.State.Duel.IsFinished)
             {
                 relics = relics.Select(BattleItemRuntime.CompleteBattle).ToList();
@@ -300,7 +310,7 @@ namespace PokerEngine
             var d = Content.Relics[id].Definition;
             Need(relics.Count < Definition.RelicCapacity && relics.Count(r => r.DefinitionId == id) < d.MaxCopies, "Relic capacity or copy limit reached.");
             relics.Add(new RunRelic(RunId + "/relic/" + entitySequence++, id, charges: d.Charges));
-            ValidateRelics();
+            ValidateRelics(); RecordObtainedRelics();
         }
         private void ValidateRelics()
         {
@@ -321,6 +331,8 @@ namespace PokerEngine
             var copy = (BattleAdventureSession)MemberwiseClone();
             copy.battle = Battle; copy.deck = new List<DeckEntry>(deck); copy.relics = new List<RunRelic>(relics);
             copy.visited = new List<string>(visited); copy.available = new List<string>(available); copy.purchased = new List<string>(purchased);
+            copy.shopItems = new List<AdventureShopItem>(shopItems); copy.obtainedRelicIds = new List<string>(obtainedRelicIds);
+            copy.pendingRelicRewards = new List<string>(pendingRelicRewards);
             copy.serviceUses = new Dictionary<AdventureCommandKind, int>(serviceUses); copy.history = new List<AdventureLogEntry>(history);
             return copy;
         }
@@ -330,7 +342,8 @@ namespace PokerEngine
             CurrentNode = copy.CurrentNode; LastRewardGold = copy.LastRewardGold; RestChoiceId = copy.RestChoiceId; Progression = copy.Progression;
             battle = copy.battle; deck = copy.deck; relics = copy.relics; visited = copy.visited; available = copy.available;
             purchased = copy.purchased; serviceUses = copy.serviceUses; history = copy.history; entitySequence = copy.entitySequence;
-            LastBattleResult = copy.LastBattleResult;
+            LastBattleResult = copy.LastBattleResult; shopItems = copy.shopItems; obtainedRelicIds = copy.obtainedRelicIds;
+            pendingRelicRewards = copy.pendingRelicRewards; RestLotteryUsed = copy.RestLotteryUsed; LastLocationReward = copy.LastLocationReward;
         }
         private static void Need(bool condition, string error) { if (!condition) throw new InvalidOperationException(error); }
     }

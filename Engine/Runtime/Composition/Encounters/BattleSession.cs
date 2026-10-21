@@ -29,6 +29,12 @@ namespace PokerEngine
         public CardDuelState State { get; }
         public IReadOnlyList<BattleSessionStep> Steps { get; }
         public IReadOnlyList<BattleTimelineEntry> Timeline { get; }
+        public static BattleSessionResult Rejected(CardDuelState state, CardDuelError error)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            if (error == CardDuelError.None) throw new ArgumentException("A rejection requires an error.", nameof(error));
+            return new BattleSessionResult(state, state, error, Array.Empty<BattleSessionStep>());
+        }
         internal BattleSessionResult(CardDuelState before, CardDuelState state, CardDuelError error,
             IEnumerable<BattleSessionStep> steps)
         {

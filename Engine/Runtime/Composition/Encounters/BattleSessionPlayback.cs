@@ -9,14 +9,20 @@ namespace PokerEngine
     /// </summary>
     public sealed class BattleSessionPlayback
     {
-        public BattleSession Session { get; }
+        public IBattleSessionCommands Commands { get; }
+        public BattleSession Session => Commands.Session;
+        public long Revision => Commands.Revision;
         public IBattleSessionPresentation Presentation { get; }
 
         public BattleSessionPlayback(BattleSession session, IBattleSessionPresentation presentation)
+            : this(new BattleSessionCommands(session), presentation, null) { }
+
+        public BattleSessionPlayback(IBattleSessionCommands commands, IBattleSessionPresentation presentation, CardDuelState initialState)
         {
-            Session = session ?? throw new ArgumentNullException(nameof(session));
+            Commands = commands ?? throw new ArgumentNullException(nameof(commands));
+            if (Session == null) throw new ArgumentException("A command source must expose a current battle.", nameof(commands));
             Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
-            Presentation.Initialize(Session.State);
+            Presentation.Initialize(initialState ?? Session.State);
         }
 
         public BattleSessionResult Start(bool animate = true)
@@ -30,7 +36,7 @@ namespace PokerEngine
         public BattleSessionResult Submit(ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, bool animate = true,
             BattleTargetBindings targetBindings = null, int drawCount = 0) =>
-            Execute(Session.State.Revision, actor, action, selected, targets, animate, targetBindings, drawCount);
+            Execute(Revision, actor, action, selected, targets, animate, targetBindings, drawCount);
 
         public bool CanAct(ParticipantId actor)
         {
@@ -105,7 +111,7 @@ namespace PokerEngine
         {
             if (Presentation.IsPresenting)
                 return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
-            var result = Session.UseItem(expectedRevision, actor, instanceId, targetInstanceId);
+            var result = Commands.UseItem(expectedRevision, actor, instanceId, targetInstanceId);
             if (!result.Accepted) return result;
             try { Presentation.Present(result, animate); }
             catch { Presentation.Synchronize(Session.State); throw; }
@@ -119,7 +125,7 @@ namespace PokerEngine
             if (Presentation.IsPresenting)
                 return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
 
-            var result = Session.Execute(expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
+            var result = Commands.Execute(expectedRevision, actor, action, selected, targets, targetBindings, drawCount);
             if (!result.Accepted) return result;
             try { Presentation.Present(result, animate); }
             catch
@@ -137,7 +143,7 @@ namespace PokerEngine
         {
             if (Presentation.IsPresenting)
                 return new BattleSessionResult(Session.State, Session.State, CardDuelError.InvalidPhase, Array.Empty<BattleSessionStep>());
-            var result = Session.ApplyAdmin(expectedRevision, patch);
+            var result = Commands.ApplyAdmin(expectedRevision, patch);
             if (!result.Accepted) return result;
             try { Presentation.Present(result, animate); }
             catch { Presentation.Synchronize(Session.State); throw; }
@@ -145,5 +151,15 @@ namespace PokerEngine
         }
 
         public void Synchronize() => Presentation.Synchronize(Session.State);
+
+        /// <summary>Displays an opening already committed by an outer authority. Never executes Start a second time.</summary>
+        public void PresentCommitted(BattleSessionResult result, bool animate = true)
+        {
+            if (result == null || !result.Accepted || !ReferenceEquals(result.State, Session.State))
+                throw new ArgumentException("The committed batch must end at the current authority state.", nameof(result));
+            if (Presentation.IsPresenting) throw new InvalidOperationException("Finish the current presentation first.");
+            try { Presentation.Present(result, animate); }
+            catch { Presentation.Synchronize(Session.State); throw; }
+        }
     }
 }

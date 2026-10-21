@@ -280,7 +280,7 @@ namespace PokerEngine.Tests
         {
             var s = Session(); Command(s, AdventureCommandKind.EnterNode, "fight"); Battle(s, CardDuelAction.SkipDraw);
             string saved = s.Export();
-            Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"SchemaVersion\":2", "\"SchemaVersion\":1")));
+            Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"SchemaVersion\":" + BattleAdventureSession.SnapshotSchemaVersion, "\"SchemaVersion\":1")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"Revision\":2", "\"Revision\":999")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"Action\":9", "\"Action\":3")));
             Assert.Throws<SnapshotException>(() => BattleAdventureSession.Restore(s.Definition, s.Content, saved.Replace("\"ResultDigest\":\"", "\"ResultDigest\":\"x")));
