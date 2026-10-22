@@ -86,9 +86,13 @@ namespace PokerEngine
                         }
                         else
                         {
+                            if (spec.EnemyAttackScale.HasValue && !(state.Enemies.SingleOrDefault(enemy => enemy.Id == source)?.Behavior?.Attack > 0 || state.Enemies.SingleOrDefault(enemy => enemy.Id == source)?.Behavior?.Wrath != null))
+                                return new BattleEffectBinding(CardDuelError.InvalidEffectPlan);
+                            long amount = spec.EnemyAttackScale.HasValue ? checked((long)decimal.Floor(checked(
+                                state.EnemyAttack(source) * spec.EnemyAttackScale.Value))) : spec.Amount;
                             var attack = spec.Kind == CombatEffectKind.Damage ?
-                                new AttackContext(source, origin ?? (hand == null ? AttackOrigin.Other : AttackOrigin.ScoredHand), spec.Amount, hand) : null;
-                            var boundEffect = WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, spec.Amount, attack: attack));
+                                new AttackContext(source, origin ?? (hand == null ? AttackOrigin.Other : AttackOrigin.ScoredHand), amount, hand) : null;
+                            var boundEffect = WithChain(state, step, source, new CombatEffect(spec.Kind, source, target, amount, attack: attack));
                             if(spec.OnHitStatus != null && boundEffect.TargetChain == null && state.Combat.Get(source).TeamId != state.Combat.Get(target).TeamId)
                                 boundEffect = boundEffect.WithTargetChain(new CombatTargetChain("on-hit/"+stepIndex+"/"+targetIndex,new[]{target},state.DamageRulesFor(source).AttackDamage));
                             effects.Add(boundEffect);

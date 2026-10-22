@@ -41,6 +41,8 @@ namespace PokerEngine
         public long Amount { get; }
         /// <summary>Optional exact healing amount retained until healing-ratio modifiers have been applied.</summary>
         public decimal? UnroundedAmount { get; private set; }
+        /// <summary>Optional enemy attack multiplier, resolved from the authoritative completed-round count before binding.</summary>
+        public decimal? EnemyAttackScale { get; private set; }
         public StatusApplicationSpec Status { get; }
         public StatusApplicationSpec OnHitStatus { get; }
         private BattleEffectSpec(CombatEffectKind kind, long amount = 0, StatusApplicationSpec status = null, StatusApplicationSpec onHitStatus = null)
@@ -49,6 +51,11 @@ namespace PokerEngine
             Kind = kind; Amount = amount; Status = status; OnHitStatus = onHitStatus;
         }
         public static BattleEffectSpec Damage(long amount, StatusApplicationSpec onHitStatus = null) => new BattleEffectSpec(CombatEffectKind.Damage, amount, onHitStatus: onHitStatus);
+        public static BattleEffectSpec DamageFromEnemyAttack(decimal scale, StatusApplicationSpec onHitStatus = null)
+        {
+            if (scale < 0) throw new ArgumentOutOfRangeException(nameof(scale));
+            return new BattleEffectSpec(CombatEffectKind.Damage, onHitStatus: onHitStatus) { EnemyAttackScale = scale };
+        }
         public static BattleEffectSpec Heal(long amount) => new BattleEffectSpec(CombatEffectKind.Heal, amount);
         public static BattleEffectSpec HealExact(decimal amount)
         {

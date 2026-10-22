@@ -39,6 +39,23 @@ Action 内可有一个 Effects：复用现有 Damage、Heal、GainBlock、ApplyS
 
 OpeningEffects 只允许给自己施加状态，原生入场与召唤入场共用。多个单位的状态实例 ID 独立。
 
+### 攻击成长与流血精英
+
+`Behavior.attack` 与 `attackPerRound` 是非负整数，默认均为 0。当前攻击为 `attack + 已完成完整回合数 × attackPerRound`；首回合使用基础攻击，眩晕跳过行动仍随完整回合成长。公开读取使用 `BattleEnemySetup.AttackAtRound(completedRounds)`。固定伤害和未配置倍率的旧行为不受影响。
+
+行为内的 Damage 可配置 `amountKind="EnemyAttackScale"`，`amount` 为非负倍率。编译器要求 Behavior 的 attack 大于 0；玩家牌型、固定敌人 Effects、治疗等其他效果不接受此来源。绑定效果时按当前攻击乘倍率向下取整，预览与实际共用此步骤。
+
+```xml
+<Status id="elite-bleeding" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+  <IncomingAttackDamagePerStack rate="0.5" />
+  <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
+</Status>
+```
+
+IncomingAttackDamagePerStack 的 rate 默认 0.5：每层增加敌方对玩家主攻击伤害的 50%，在护盾吸收前合成；不放大道具自伤、反伤或周期伤害。独立 StackDecay 不造成伤害，默认在施加者实际行动完成后减 1 层；眩晕跳过、替死鬼中断敌方阶段、战斗已经结束均沿用原行动时钟的跳过规则。层数归零移除。Negative 可被净化，Control 免疫不会阻止它。
+
+当前日期版与独立模板 `11_BleedingElite.xml` 使用 400 生命、8 基础攻击、每完整回合 +10，以及 Sequence 轮换的半攻施法（先伤害，再加 3 层）和全攻普攻。前四次未阻挡行动的伤害为 4/36/21/95，结束层数为 2/1/3/2。旧状态 `bleed` 的中毒和模板 `08_ArmoredSummoner.xml` 保留原行为。新状态只属于本场；冒险仍按原流程携带实际生命值。内容包语义改变会产生新指纹，旧包在未启用新字段时的指纹及存档 schema 不变。
+
 ### 护甲
 
 ```xml
@@ -87,3 +104,12 @@ XML 网页编辑器提供上述字段、引用重命名和试玩意图显示；�
 ## revision 1582 / battle-content.5
 
 标准 XML 和新增字段、遗物边界、召唤归属、狂暴及意图预告约定见 [标准局内规则](../../../Content/README.md#revision-1582-扩展)。Combat 契约升级为 `combat.12`，新增卡牌边界事实；核心默认牌型仍保持传统扑克五张同花，标准对局通过配置启用短同花。
+
+
+## 暴怒专属行为
+
+`Behavior` 可选单个 `<Wrath bloodHandRefs="wrath-blood-1,wrath-blood-2,wrath-blood-3,wrath-blood-4" bindingHandRef="wrath-binding" />`，其默认参数为 `baseAttack=8`、`attackPerHand=5`、`attackPerCharge=10`、`chargeActionId=charge`、`initialWarningRound=5`、`cooldownRounds=5`、`regenerationRounds=8`、`ultimateScale=3`。五个引用必须各自对应本场唯一单位，chargeActionId 必须存在于常规动作中；单场只支持一个暴怒本体。
+
+常规 `Stage mode="Sequence"` 按用户确认的“普攻 → 普攻 → 防御（龟缩两层免伤）→ 蓄力”四步循环执行；两个普攻分别使用 `strike`、`strike-2` 独立 ID，显示名称均为“普攻”，并用 `intentPreviewTurns="8"` 预览；五手大招在本体常规动作及其反应之后追加，使用同一正式主攻击修正/反伤/替死链路，只结算一次 ActionCompleted。未受中断且五手齐全时，第 6 轮为普攻 43 后追加大招 129；第 12 轮先蓄力使 D 从 53 升至 63，再追加大招 189。手于 R 轮死亡，R+8 轮敌阶段开始正式 Revive，保持原身份并在本体前行动；预警时断手、释放轮本体无法行动或阶段提前中止均取消并重新冷却。普通敌人未配置 Wrath 时保持原路径。
+
+`WrathBossQuery.Read(TeamBattleState)` 返回本体 D、蓄力次数、预警/释放轮/冷却和每只手的职责、生死、再生期限与剩余轮数；非暴怒返回 null。状态保存在不可变 EnemyBehaviorRuntime 中，客户端不推进计时。`UltimateBaseDamage` 是当前 D×倍率的基础伤害，`PendingUltimateBaseDamage` 额外计入待释放前常规蓄力；均未计入攻击/承伤修正。常规图标可调用 `PreviewEnemyAction(state, actor, includeWrathUltimate: false)`，默认 true 则预览完整普通动作和追加大招。

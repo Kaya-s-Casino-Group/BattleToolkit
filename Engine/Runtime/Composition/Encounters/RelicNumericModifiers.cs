@@ -186,13 +186,15 @@ namespace PokerEngine
     }
 
     /// <summary>Reads passive configuration only; does not consume charges, cooldowns or runtime counters.</summary>
-    public sealed class RelicCombatAmountModifier : ICombatAmountModifier, ICombatInteractions
+    public sealed class RelicCombatAmountModifier : ICombatAmountModifier, ICombatInteractions, ICombatEffectPolicy
     {
         private readonly Dictionary<ParticipantId, BattleRelicLoadout> loadouts;
         private readonly HandAttackInfo hand;
         private readonly ParticipantId? handSource;
         private readonly EnemyLinkRuntime links;
         private readonly CombatState start;
+        private readonly HashSet<ParticipantId> restrictedHands;
+        public bool CanReceiveBlock(CombatState current, ParticipantId target) => !restrictedHands.Contains(target);
         internal IReadOnlyCollection<string> EnteredStages => links.EnteredStages;
         public ParticipantId Redirect(CombatState c, CombatEffect e, CombatEffectProvenance p) => links.Redirect(c, e, p);
         public bool BypassBlock(CombatState c, CombatEffect e) => links.BypassBlock(c, e);
@@ -206,6 +208,7 @@ namespace PokerEngine
             if ((handSource.HasValue != (hand != null)) || handSource.HasValue && !state.Players.Any(player => player.Id == handSource.Value))
                 throw new ArgumentException("Hand facts require their battle player source.");
             start = state.Combat; links = new EnemyLinkRuntime(state);
+            restrictedHands = new HashSet<ParticipantId>(WrathHandEffectRestrictions.HandIds(state.Enemies));
             loadouts = state.Players.ToDictionary(player => player.Id, player => player.Relics);
             this.hand = hand; this.handSource = handSource;
         }
@@ -213,7 +216,7 @@ namespace PokerEngine
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             BattleRelicLoadout loadout;
-            if (!loadouts.TryGetValue(context.Owner, out loadout)) return new CombatAmountModification(context.Amount, links.Contributions(context), true);
+            if (!loadouts.TryGetValue(context.Owner, out loadout)) return ResolveContributions(context, links.Contributions(context));
             bool outgoing = context.Stage == CombatAmountStage.Outgoing;
             BattleNumericStat stat;
             switch (context.Effect.Kind)
@@ -232,7 +235,14 @@ namespace PokerEngine
                 context.Effect.Attack?.Origin == AttackOrigin.ScoredHand && context.Combat.Get(context.Effect.Target).TeamId != context.Combat.Get(context.Effect.Source).TeamId
                 ? BattleItemRuntime.HandMultiplier(loadout) : 1;
             if (finalFactor != 1) contributions = contributions.Concat(new[] { new CombatAmountContribution("item/roulette", "hand-final", rateAdjustment: finalFactor - 1) });
-            return new CombatAmountModification(context.Amount, contributions, true);
+            return ResolveContributions(context, contributions);
+        }
+        private CombatAmountModification ResolveContributions(CombatAmountContext context, IEnumerable<CombatAmountContribution> contributions)
+        {
+            bool attack = context.Stage == CombatAmountStage.Outgoing && context.Effect.Kind == CombatEffectKind.Damage &&
+                context.Effect.Attack?.Origin == AttackOrigin.EnemyAttack && context.Provenance.Origin == CombatEffectOrigin.Primary &&
+                restrictedHands.Contains(context.Effect.Source);
+            return new CombatAmountModification(context.Amount, attack ? contributions.Select(WrathHandEffectRestrictions.NegativeOnly) : contributions, true);
         }
     }
 }

@@ -75,7 +75,7 @@ namespace PokerEngine
             });
         private Dictionary<string, BattleEnemyContentDefinition> ReadEnemies(BattleContentNode section) => ReadDefinitions(section, "Enemy", node =>
         {
-            Check(node, ActorAttributes.Concat(new[] { "damage" }).ToArray(), new[] { "Effects", "Behavior" });
+            Check(node, ActorAttributes.Concat(new[] { "damage", "scaleHealthWithAdventure" }).ToArray(), new[] { "Effects", "Behavior" });
             var behavior = node.Children.Where(item => item.Name == "Behavior").ToArray();
             if (behavior.Length > 1 || behavior.Length > 0 && (Optional(node, "damage") != null || node.Children.Any(c => c.Name == "Effects")))
                 throw new ArgumentException("Behavior is exclusive with fixed damage/Effects.");
@@ -83,9 +83,12 @@ namespace PokerEngine
             if (sequences.Length > 1 || sequences.Length > 0 && Optional(node, "damage") != null)
                 throw new ArgumentException("Enemy accepts either damage or one Effects sequence.");
             long damage = Long(node, "damage", 0); if (damage < 0) throw new ArgumentException("Enemy damage cannot be negative.");
+            var sequence = sequences.Length == 0 ? null : ReadEnemySequence(sequences[0]);
+            if (sequence?.Steps.Any(step => step.Effect.EnemyAttackScale.HasValue) == true)
+                throw new ArgumentException("EnemyAttackScale requires a Behavior with a positive attack.");
             return new BattleEnemyContentDefinition(ReadActor(node), damage, ReadDamageRules(node), ReadTargetRules(node),
-                sequences.Length == 0 ? null : new ConfiguredEnemyEffectRule(ReadEnemySequence(sequences[0])),
-                behavior.Length == 0 ? null : ReadEnemyBehavior(behavior[0]));
+                sequence == null ? null : new ConfiguredEnemyEffectRule(sequence),
+                behavior.Length == 0 ? null : ReadEnemyBehavior(behavior[0]), Bool(node, "scaleHealthWithAdventure", true));
         });
         private Dictionary<string, IReadOnlyList<DeckEntry>> ReadDecks(BattleContentNode section) => ReadDefinitions<IReadOnlyList<DeckEntry>>(section, "Deck", node =>
         {

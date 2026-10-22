@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    public enum EffectAmountKind { Constant = 1, ScoreTotalScale, ScorePointsScale, ThreeOfAKindTotalScale, OnePairTotalScale, FlushBaseTotalScale, CardScoreScale }
+    public enum EffectAmountKind { Constant = 1, ScoreTotalScale, ScorePointsScale, ThreeOfAKindTotalScale, OnePairTotalScale, FlushBaseTotalScale, CardScoreScale, EnemyAttackScale }
     public enum HandEffectVariant { Any = 1, Ordinary, Royal }
 
     /// <summary>Restricted content expression evaluated from authoritative score facts.</summary>
@@ -65,11 +65,13 @@ namespace PokerEngine
                 throw new ArgumentException("Configured effects require relative battle lifetimes.");
             if (onHitStatus != null && kind != CombatEffectKind.Damage) throw new ArgumentException("On-hit status requires damage.");
             if (amount?.Kind == EffectAmountKind.CardScoreScale && !perSubmittedCard) throw new ArgumentException("CardScoreScale requires perSubmittedCard.");
+            if (amount?.Kind == EffectAmountKind.EnemyAttackScale && (kind != CombatEffectKind.Damage || perSubmittedCard))
+                throw new ArgumentException("EnemyAttackScale requires a non-repeated enemy damage effect.");
             Kind = kind; Amount = amount; Status = status; OnHitStatus = onHitStatus; PerSubmittedCard = perSubmittedCard;
         }
         public BattleEffectStep Resolve(ScoreResult score = null, long? flushBaseTotal = null, string cardId = null, bool includeSharedPoints = false)
         {
-            var effect = Kind == CombatEffectKind.Damage ? BattleEffectSpec.Damage(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints), OnHitStatus) :
+            var effect = Kind == CombatEffectKind.Damage ? (Amount.Kind == EffectAmountKind.EnemyAttackScale ? BattleEffectSpec.DamageFromEnemyAttack(Amount.Value, OnHitStatus) : BattleEffectSpec.Damage(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints), OnHitStatus)) :
                 Kind == CombatEffectKind.Heal ? BattleEffectSpec.Heal(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :
                 Kind == CombatEffectKind.GainBlock ? BattleEffectSpec.GainBlock(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :
                 Kind == CombatEffectKind.DrawCards ? BattleEffectSpec.DrawCards(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :

@@ -66,6 +66,8 @@ namespace PokerEngine
                 var b=enemy.Behavior;
                 var references=b.Stages.SelectMany(s=>ConditionRefs(s.Condition).Concat(s.EntryEffects.SelectMany(e=>e.ReviveRefs)).Concat(s.Actions.SelectMany(a=>ConditionRefs(a.Condition).Concat(a.WorldEffects.SelectMany(e=>e.ReviveRefs)))))
                     .Concat(b.Links.SelectMany(l=>l.Targets.Where(t=>t!="Self"&&t!="Opponents").Concat(l.CountRefs).Concat(ConditionRefs(l.Condition)).Concat(l.HealTarget==null?Array.Empty<string>():new[]{l.HealTarget})));
+                references = references.Concat(b.Wrath?.HandRefs ?? Array.Empty<string>());
+                if (b.Wrath != null && !b.Stages.SelectMany(s => s.Actions).Any(a => a.Id == b.Wrath.ChargeActionId)) AddError(section("Enemies"), "InvalidWrath", "Wrath chargeActionId must name an ordinary action.");
                 foreach(var reference in references.Distinct())Reference(section("Enemies"),"enemyRefs",reference,enemies);
             }
             var decks = ReadDecks(section("Decks"));

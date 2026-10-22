@@ -128,7 +128,13 @@ namespace PokerEngine
                 var source = State.Duel; var combat = source.Combat;
                 var units = combat.Combatants.ToArray(); var statuses = combat.Statuses.ToList();
                 if (fact is CombatEvent vitals)
+                {
                     units = units.Select(unit => unit.Id == vitals.After.Id ? vitals.After : unit).ToArray();
+                    // Revive clears the target's statuses atomically in CombatEngine, without separate removal facts.
+                    if (vitals.Effect.Kind == CombatEffectKind.Revive)
+                        statuses.RemoveAll(status => status.Target.Kind == EntityKind.Participant &&
+                            status.Target.Id == vitals.Effect.Target.Value);
+                }
                 else if (fact is CombatStatusEvent applied) statuses.Add(applied.Status);
                 else if (fact is CombatStatusChangedEvent changed)
                 {

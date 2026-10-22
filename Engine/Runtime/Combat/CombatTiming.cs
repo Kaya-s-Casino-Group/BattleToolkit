@@ -46,6 +46,22 @@ namespace PokerEngine
             new CombatTimingSignal(CombatTimingKind.PhaseStarted, boundaryId, participants, phaseKey: Guard.Text(phaseKey, nameof(phaseKey)));
     }
 
+    /// <summary>Consumes stacks directly at a configured boundary without creating a damage effect.</summary>
+    public sealed class StackDecaySpec : StatusBehaviorSpec
+    {
+        public CombatTimingKind Timing { get; }
+        public PeriodicTimingSubject TimingSubject { get; }
+        public int Stacks { get; }
+        public StackDecaySpec(CombatTimingKind timing = CombatTimingKind.ActionCompleted,
+            PeriodicTimingSubject timingSubject = PeriodicTimingSubject.Applier, int stacks = 1)
+        {
+            if ((timing != CombatTimingKind.ActionCompleted && timing != CombatTimingKind.PhaseEnding && timing != CombatTimingKind.TurnStarted) ||
+                !Enum.IsDefined(typeof(PeriodicTimingSubject), timingSubject) || stacks < 1)
+                throw new ArgumentException("Stack decay requires a supported clock, timing subject and positive stack count.");
+            Timing = timing; TimingSubject = timingSubject; Stacks = stacks;
+        }
+    }
+
     /// <summary>Fixed per-stack damage; target selection is relative to the holder, attribution to the applier.</summary>
     public sealed class PeriodicDamageSpec : StatusBehaviorSpec
     {

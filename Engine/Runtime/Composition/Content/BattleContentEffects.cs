@@ -14,7 +14,7 @@ namespace PokerEngine
             return ReadDefinitions(section, "Status", node =>
             {
                 Check(node, new[] { "id", "name", "tags", "lifetime", "count", "phase", "reapply" },
-                    new[] { "BlockActionWindow", "PreventStatusApplication", "ReflectBlockedDamage", "LifeSteal", "OverhealDamage", "PeriodicDamage", "HitArmor" });
+                    new[] { "BlockActionWindow", "PreventStatusApplication", "ReflectBlockedDamage", "LifeSteal", "OverhealDamage", "PeriodicDamage", "HitArmor", "DamageImmunity", "IncomingAttackDamagePerStack", "StackDecay" });
                 var behaviors = node.Children.Select(child => Capture(child, () => ReadStatusBehavior(child))).Where(item => item != null).ToArray();
                 return new CombatStatusDefinition(new StatusDefinitionId(Text(node, "id")), Enum(node, "tags", StatusTags.None), behaviors,
                     ReadLifetime(node, true), Enum(node, "reapply", StatusReapplyPolicy.KeepLonger));
@@ -25,6 +25,13 @@ namespace PokerEngine
         {
             switch (node.Name)
             {
+                case "DamageImmunity": Check(node, Array.Empty<string>(), Array.Empty<string>()); return new DamageImmunitySpec();
+                case "IncomingAttackDamagePerStack":
+                    Check(node, new[] { "rate" }, Array.Empty<string>());
+                    return new IncomingAttackDamagePerStackSpec(Decimal(node, "rate", 0.5m));
+                case "StackDecay":
+                    Check(node, new[] { "timing", "timingSubject", "stacks" }, Array.Empty<string>());
+                    return new StackDecaySpec(Enum(node, "timing", CombatTimingKind.ActionCompleted), Enum(node, "timingSubject", PeriodicTimingSubject.Applier), Int(node, "stacks", 1));
                 case "HitArmor":
                     Check(node, new[] { "multiplier", "reduction", "consumeStacks", "primaryOnly" }, new string[0]);
                     return new HitArmorSpec(Decimal(node, "multiplier", 0.5m), Long(node, "reduction", 0), Int(node, "consumeStacks", 1), Bool(node, "primaryOnly", true));
@@ -94,6 +101,8 @@ namespace PokerEngine
             bool perCard = Bool(node, "perSubmittedCard", false);
             if (perCard && !allowScore) throw new ArgumentException("Per-card repetition is only available to hand effects.");
             var amountKind = Enum(node, "amountKind", EffectAmountKind.Constant);
+            if (amountKind == EffectAmountKind.EnemyAttackScale && allowScore)
+                throw new ArgumentException("Enemy attack amounts are only available to enemy damage effects.");
             if (amountKind == EffectAmountKind.FlushBaseTotalScale && !flushBonus)
                 throw new ArgumentException("Flush base amounts are only available to FlushBonus effects.");
             if (flushBonus && (amountKind == EffectAmountKind.ThreeOfAKindTotalScale || amountKind == EffectAmountKind.OnePairTotalScale))
@@ -137,7 +146,7 @@ namespace PokerEngine
         {
             Text(node, "amount");
             var kind = Enum(node, "amountKind", EffectAmountKind.Constant);
-            if (!allowScore && kind != EffectAmountKind.Constant) throw new ArgumentException("Score amount sources are only available to hand effects.");
+            if (!allowScore && kind != EffectAmountKind.Constant && kind != EffectAmountKind.EnemyAttackScale) throw new ArgumentException("Score amount sources are only available to hand effects.");
             return new EffectAmountSpec(kind, Decimal(node, "amount", 0));
         }
         private StatusApplicationSpec ReadStatusApplication(BattleContentNode node, bool allowSubmittedCards = false)

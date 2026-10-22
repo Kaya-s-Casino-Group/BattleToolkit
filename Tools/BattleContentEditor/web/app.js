@@ -1,6 +1,6 @@
 import {createPlaytest} from './playtest.js';
 import {sections,descriptor,exclusiveChildren,initialize,meta,tr,help} from './schema.js';
-import {parse,serialize,pathOf,atPath,definitions,owner,references,uniqueId,addDefinition,addChild,cloneDefinition,fieldIssues} from './model.js';
+import {parse,serialize,pathOf,atPath,definitions,encounterSummary,owner,references,uniqueId,addDefinition,addChild,cloneDefinition,fieldIssues} from './model.js';
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node;};
 const btn=(text,fn,cls='')=>{const b=el('button',cls,text);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(fn).catch(error=>notify(error.message)));return b;};
@@ -175,7 +175,7 @@ async function importXml(xml,{confirm=true,pending=null}={}){
  }finally{importing=false;renderSummary();}
 }
 function bind(){
- playtest=createPlaytest($('playtest-view'),{getConfig:()=>({xml:snapshot(),sourceDirty,importing,encounters:definitions(doc,'Encounters').map(node=>({id:node.getAttribute('id')||'',name:label(node)}))}),getToken:()=>token,onLoadStandard:async()=>{const response=await fetch('/api/standard');if(!response.ok)throw new Error('标准对局加载失败');if(await importXml(await response.text())){playtestMode=true;xmlMode=false;render();}}});
+ playtest=createPlaytest($('playtest-view'),{getConfig:()=>({xml:snapshot(),sourceDirty,importing,encounters:definitions(doc,'Encounters').map(node=>({id:node.getAttribute('id')||'',name:label(node),summary:encounterSummary(doc,node)}))}),getToken:()=>token,onLoadStandard:async()=>{const response=await fetch('/api/standard');if(!response.ok)throw new Error('标准对局加载失败');if(await importXml(await response.text())){playtestMode=true;xmlMode=false;render();}}});
  $('playtest-tab').onclick=()=>{playtestMode=true;render();};
  $('search').addEventListener('input',renderNavigation);$('pack-settings').onclick=()=>{selected=doc.documentElement;section=null;xmlMode=false;playtestMode=false;render();};
  $('save').onclick=()=>saveDraft(true);$('validate').onclick=()=>validate().catch(e=>notify(e.message));$('export').onclick=()=>validate(true).catch(e=>notify(e.message));

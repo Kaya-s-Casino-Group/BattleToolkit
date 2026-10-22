@@ -40,7 +40,7 @@ else
 | Statuses / Status | 标签、默认期限、重复施加策略、行为列表 | 行为参数内联；不配置局内剩余期限 |
 | Relics / Relic | 获取/升级约束、四类能力、共享触发预算 | 引用状态和牌型步骤；不持有局内使用次数 |
 | Players / Player | 基础生命/护盾、个人行动与补牌规则、伤害/目标策略 | 可选 handRuleRef；不含当前血量或构筑 |
-| Enemies / Enemy | 基础属性、固定伤害或固定效果序列 | 引用状态；本期没有敌人轮换 AI 脚本 |
+| Enemies / Enemy | 基础属性、固定伤害、固定效果序列或可配置 Behavior | 引用状态；行为轮换与成长见 EnemyBehavior.md |
 | Decks / Deck | 卡牌来源 ID、标准牌面、卡牌效果、失效标志 | 定义初始牌组；不定义洗牌后的手牌/牌区 |
 | Loadouts / Loadout | 初始牌组、牌型等级、遗物实例初始值 | deckRef 可省略；Relic.ref；不定义敌人 |
 | Encounters / Encounter | 规则集、阵容顺序、参与者 ID、当前血量覆盖 | rulesRef、Player.ref/loadoutRef、Enemy.ref |
@@ -55,7 +55,7 @@ else
 - `Rules`：scoringRef 必填；roundLimit 默认 20，blockExpiry 默认 Retain；maxReactionEffects 默认 256、maxReactionDepth 默认 16。可选 version 默认继承包版本。
 - `Player`：maxHealth=100、initialBlock=0、maxEnergy=3、initialEnergy=3、playEnergyCost=1、discardEnergyCost=1、handSize=8、discards=3、unlimitedDiscards=false、maxPlayCards=5、maxDiscardCards=5。playRefill=NextPlayerTurn、discardRefill=AfterAction。缺省弃牌收益为空；显式 discardBlockPerCard 启用既有按张护盾。未设置 handRuleRef 时仍为 EqualScoreDamageRule；可选 pointsPerDamage 使用旧除法伤害规则，不能与 handRuleRef 同时配置。可选 discardBlockPerPoint 按弃牌筹码总和计算护盾，与 discardBlockPerCard 互斥。新流程字段见下节。
 - 双方模板可配 attackMultiplier/attackFlat、incomingMultiplier/incomingFlat、attackTarget/allowRequestedTargets；未填写时使用现有默认策略。单步目标仍由效果自己配置；ActorPolicy 才委托给角色目标策略。本期 XML 未开放独立 supportTarget 字段，沿用现有默认友方策略；需要自动选定友方时可直接配置效果的 Allies/selection。
-- `Enemy`：maxHealth=100、initialBlock=0；缺省 damage=0。damage 与子项 Effects 互斥，Effects 内每个 Effect 必须有稳定 id。敌人序列只支持常量，不支持手动 Requested 目标。
+- `Enemy`：maxHealth=100、initialBlock=0；缺省 damage=0。damage、子项 Effects、Behavior 互斥，Effects 内每个 Effect 必须有稳定 id。固定敌人序列只支持常量；Behavior 可使用 EnemyAttackScale 和 attack/attackPerRound，见 [EnemyBehavior.md](EnemyBehavior.md)。敌人不支持手动 Requested 目标。
 - `Deck/Card`：id 是来源 ID，face 是现有标准牌面 ID（例如 standard:1:2，梅花 2），effects 为 CardEffects 的枚举名称或逗号组合，disabled 默认 false。来源 ID 不同可以引用同一牌面。目录验证 1–512 张和来源 ID 唯一；自动发牌流程还验证有效手牌上限所需牌数；手动摸牌流程允许短牌库。
 - `Loadout`：deckRef 省略时使用既有标准 52 张牌组。HandLevel 要求 category/level，省略类别默认 1 级。Relic 要求 instanceId/ref，level=1、growth=0、cooldownRounds=0；charges 省略继承遗物定义，未限次遗物不能填有限 charges。实例参数不能越过定义的等级/拷贝约束。
 - `Encounter`：rulesRef 必填。Player 子项要求 id/ref，可选 loadoutRef、initialHealth；Enemy 子项要求 id/ref。参与者数量、重复 ID 和初始血量通过现有组装检查。
@@ -173,6 +173,13 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 - 替死鬼按获取顺序每次只消费一件；恢复 floor(最大生命×比例)，清空所有状态和护盾。极端配置最大生命为 1 且比例 0.6 时恢复 0，仍判失败。超回合判负不触发复活。
 - 反甲对主攻击实际挡伤反伤，不产生反射递归；13002 只判定出牌造成的实际生命伤害，每段/每目标一次，毒伤、道具和反射不触发。
 - 生命、最大生命、护盾、固定战斗效果与弃牌护盾参数为 `long`，上层不要窄化为 int。内容契约升级会拒绝旧规则指纹，不提供自动存档迁移。
+
+## 暴怒所用的独立状态与生命成长策略
+
+- `<Status ... lifetime="UntilRemoved" reapply="KeepLonger"><DamageImmunity /></Status>`：每个原始金额大于 0 的 `Damage` 段消耗一层，所有数值修正后、护盾/生命结算前强制归零。毒、反伤和道具伤害同样计次；原始 0 伤害、纯状态施加不消层，`Eliminate` 不受影响。未声明该行为的旧护甲和普通单位保持原规则。
+- 层数由 `ApplyStatus.stacks` 决定；暴怒龟缩配置为 2 层并使用 `KeepLonger`，再次施加刷新至 2 层。通用免伤行为不硬编码 Boss 的层数上限，不与 `TriggerCount` 预算混用。
+- `Enemy.scaleHealthWithAdventure` 缺省为 `true`，沿用章节生命倍率。设为 `false` 时保留模板最大生命；暴怒五手设为 `false`、最大生命 1，本体继续成长。此开关不修改章节地图或其他敌人的成长。
+- 暴怒的独立时序、攻击公式及共享查询见 [EnemyBehavior.md](EnemyBehavior.md)。标准冒险地图仍保留原有 Boss 节点。
 
 ## 对局管理员接口
 

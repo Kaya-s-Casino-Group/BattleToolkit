@@ -34,6 +34,15 @@ export function atPath(doc,path) {
 export function definitions(doc,section) {
  return [...doc.documentElement.children].filter(n=>n.tagName===section).flatMap(n=>[...n.children]);
 }
+export function encounterSummary(doc,encounter) {
+ const refs=[...encounter.children].filter(node=>node.tagName==='Enemy').map(node=>node.getAttribute('ref'));
+ const enemies=definitions(doc,'Enemies').filter(node=>refs.includes(node.getAttribute('id')));
+ const statuses=definitions(doc,'Statuses');
+ if(enemies.some(enemy=>[...enemy.querySelectorAll('Behavior Effect[kind="ApplyStatus"]')].some(effect=>
+  statuses.some(status=>status.getAttribute('id')===effect.getAttribute('statusRef')&&status.querySelector('IncomingAttackDamagePerStack')))))return '精英 / 攻击成长与流血';
+ if(enemies.some(enemy=>enemy.querySelector('Behavior Summon')))return '精英 / 护甲与召唤';
+ return '';
+}
 export function owner(node) {
  if(!node?.parentElement)return node;
  while(node.parentElement && node.parentElement.parentElement?.tagName!=='BattleContent')node=node.parentElement;
@@ -84,6 +93,8 @@ export function addChild(doc,parent,name) {
  if(name==='Summon')set({count:'1',livingLimit:'4'});
  if(name==='AddCards')set({face:meta.cards[0].id,count:'1',zone:'discard',disabled:'false',effects:'Ineffective,Unplayable'});
  if(name==='HitArmor')set({multiplier:'0.5',consumeStacks:'1',primaryOnly:'true'});
+ if(name==='IncomingAttackDamagePerStack')set({rate:'0.5'});
+ if(name==='StackDecay')set({timing:'ActionCompleted',timingSubject:'Applier',stacks:'1'});
  if(name==='PeriodicDamage')set({timingSubject:'Holder',timing:'TurnStarted',amount:'2'});
  if(['ReflectBlockedDamage','LifeSteal','OverhealDamage'].includes(name))set({ratio:'0.2'});
  if(name==='Numeric')set({id:id('numeric'),stat:'DamageDealt',operation:'AddFlat',value:'1'});

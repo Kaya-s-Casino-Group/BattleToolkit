@@ -29,6 +29,18 @@ namespace PokerEngine
     }
 
     public abstract class StatusBehaviorSpec { protected StatusBehaviorSpec() { } }
+    /// <summary>One positive damage request consumes one stack and becomes zero after all numeric modifiers.</summary>
+    public sealed class DamageImmunitySpec : StatusBehaviorSpec { }
+    /// <summary>Additive incoming multiplier per stack for primary attacks from an opposing enemy.</summary>
+    public sealed class IncomingAttackDamagePerStackSpec : StatusBehaviorSpec
+    {
+        public decimal Rate { get; }
+        public IncomingAttackDamagePerStackSpec(decimal rate = 0.5m)
+        {
+            if (rate < 0) throw new ArgumentOutOfRangeException(nameof(rate));
+            Rate = rate;
+        }
+    }
     /// <summary>Each eligible positive damage hit consumes layers even when block absorbs all damage.</summary>
     public sealed class HitArmorSpec : StatusBehaviorSpec
     {
@@ -69,7 +81,8 @@ namespace PokerEngine
                 throw new ArgumentException("Invalid status definition.");
             var copy = Guard.Copy(behaviors, nameof(behaviors));
             if (copy.Any(item => item == null || !(item is BlockActionWindowSpec || item is PreventStatusApplicationSpec ||
-                item is ReflectBlockedDamageSpec || item is LifeStealSpec || item is OverhealDamageSpec || item is PeriodicDamageSpec || item is HitArmorSpec)) ||
+                item is ReflectBlockedDamageSpec || item is LifeStealSpec || item is OverhealDamageSpec || item is PeriodicDamageSpec ||
+                item is HitArmorSpec || item is DamageImmunitySpec || item is IncomingAttackDamagePerStackSpec || item is StackDecaySpec)) ||
                 copy.Select(item => item.GetType()).Distinct().Count() != copy.Length)
                 throw new ArgumentException("Status behaviors must have distinct supported types.", nameof(behaviors));
             Id = id; Tags = tags; Behaviors = Guard.View(copy);
@@ -78,7 +91,9 @@ namespace PokerEngine
         }
         internal void ValidateTriggerBudget(bool hasTriggerBudget)
         {
-            if (hasTriggerBudget && Behaviors.OfType<HitArmorSpec>().Any()) throw new ArgumentException("Hit armor consumes stacks, not trigger budgets.");
+            if (hasTriggerBudget && Behaviors.Any(b => b is HitArmorSpec || b is DamageImmunitySpec)) throw new ArgumentException("Hit armor and damage immunity consume stacks, not trigger budgets.");
+            if (hasTriggerBudget && Behaviors.OfType<StackDecaySpec>().Any())
+                throw new ArgumentException("Choose stack decay or a trigger budget, not both.");
             if (hasTriggerBudget && Behaviors.OfType<PeriodicDamageSpec>().Any(p => p.StackDecay > 0))
                 throw new ArgumentException("Choose stack decay or a trigger budget for periodic damage, not both.");
             if (hasTriggerBudget && Behaviors.Count > 1)

@@ -63,8 +63,12 @@ namespace PokerEngine
         public DamageModification IncomingModification { get; }
         public CombatAmountModification OutgoingAmountModification { get; }
         public CombatAmountModification IncomingAmountModification { get; }
+        /// <summary>Optional final damage override, after all incoming numeric modifiers and before block.</summary>
+        public DamageModification FinalDamageModification { get; }
+        /// <summary>Optional final amount restriction after every outgoing/incoming amount modifier.</summary>
+        public CombatAmountModification FinalAmountModification { get; }
         /// <summary>Effective amount before block/health caps. Effect retains the original authority request.</summary>
-        public long SettledAmount => IncomingAmountModification?.OutputAmount ?? IncomingModification?.OutputAmount ??
+        public long SettledAmount => FinalAmountModification?.OutputAmount ?? FinalDamageModification?.OutputAmount ?? IncomingAmountModification?.OutputAmount ?? IncomingModification?.OutputAmount ??
             OutgoingAmountModification?.OutputAmount ?? Effect.Amount;
         public long SettledDamage => Effect.Kind == CombatEffectKind.Damage ? SettledAmount : 0;
         public CombatantState Before { get; }
@@ -74,11 +78,13 @@ namespace PokerEngine
             Effect.Kind == CombatEffectKind.Eliminate ? CombatDeathCause.Eliminate : CombatDeathCause.Damage;
         internal CombatEvent(long revision, int index, CombatEffect effect, CombatantState before, CombatantState after, long absorbed, long overkill,
             DamageModification incomingModification = null, int sequenceIndex = -1, CombatEffectProvenance provenance = null,
-            CombatAmountModification outgoingAmountModification = null, CombatAmountModification incomingAmountModification = null)
+            CombatAmountModification outgoingAmountModification = null, CombatAmountModification incomingAmountModification = null,
+            DamageModification finalDamageModification = null, CombatAmountModification finalAmountModification = null)
             : base(revision, index, effect, sequenceIndex, provenance)
         {
             IncomingModification = incomingModification; Before = before; After = after; BlockAbsorbed = absorbed; Overkill = overkill;
             OutgoingAmountModification = outgoingAmountModification; IncomingAmountModification = incomingAmountModification;
+            FinalDamageModification = finalDamageModification; FinalAmountModification = finalAmountModification;
             HealthLost = Math.Max(0, before.Health - after.Health); HealthRestored = Math.Max(0, after.Health - before.Health);
         }
     }
@@ -114,7 +120,7 @@ namespace PokerEngine
             return ResolveCore(state, expectedRevision, effects, null, incomingDamage, statusCatalog, reactionProvider, reactionLimits, amountModifier, reactionRuntime);
         }
 
-        /// <summary>Resolve one authority-owned boundary atomically. Periodic damage is a leaf and never re-enters reaction rules.</summary>
+        /// <summary>Resolve one authority-owned boundary atomically. Periodic damage is a leaf; stack decay creates only a status fact.</summary>
         public static CombatTransition ResolveTiming(CombatState state, long expectedRevision, CombatTimingSignal signal,
             IIncomingDamageModifier incomingDamage = null, CombatStatusCatalog statusCatalog = null, CombatReactionLimits reactionLimits = null,
             ICombatAmountModifier amountModifier = null, ICombatReactionRuntime reactionRuntime = null, ICombatReactionProvider reactionProvider = null, bool suppressPeriodic = false)
@@ -166,6 +172,12 @@ namespace PokerEngine
                     // tick can kill a later holder. Snapshot only identities, in stable stored order.
                     if (statusCatalog != null && !suppressPeriodic)
                         for (int index = statuses.Count - 1; index >= 0; index--)
+                        {
+                            var status = statuses[index];
+                            var decay = statusCatalog.Get(status.DefinitionId).Behaviors.OfType<StackDecaySpec>().SingleOrDefault();
+                            // Run the status's periodic tick first, then its independent decay, before the boundary runtime.
+                            if (decay != null && DecayMatches(signal, status, decay, units))
+                                queue.Push(new QueuedEffect(status.Id, decay));
                             if (statuses[index].Target.Kind == EntityKind.Participant &&
                                 statusCatalog.Get(statuses[index].DefinitionId).Behaviors.OfType<PeriodicDamageSpec>()
                                     .Any(behavior => behavior.Timing == signal.Kind &&
@@ -174,6 +186,7 @@ namespace PokerEngine
                                         (behavior.TimingSubject != PeriodicTimingSubject.Applier || signal.Kind == CombatTimingKind.PhaseEnding ||
                                             units[new ParticipantId(statuses[index].Source.Id)].IsAlive)))
                                 queue.Push(new QueuedEffect(statuses[index].Id));
+                        }
                 }
                 for (int index = batch.Length - 1; index >= 0; index--)
                     queue.Push(new QueuedEffect(batch[index], new CombatEffectProvenance(index)));
@@ -198,6 +211,19 @@ namespace PokerEngine
                         }
                         catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidReaction); }
                         catch (InvalidOperationException) { return new CombatTransition(state, CombatError.InvalidReaction); }
+                        continue;
+                    }
+                    if (queued.DecayStatusId.HasValue)
+                    {
+                        var status = statuses.FirstOrDefault(item => item.Id == queued.DecayStatusId.Value);
+                        if (status == null || !DecayMatches(signal, status, queued.StackDecay, units)) continue;
+                        int stacks = Math.Max(0, status.Stacks - queued.StackDecay.Stacks);
+                        var after = stacks == 0 ? null : new StatusInstance(status.Id, status.DefinitionId,
+                            status.Source, status.Target, stacks, status.Duration);
+                        int position = statuses.IndexOf(status);
+                        if (after == null) statuses.RemoveAt(position); else statuses[position] = after;
+                        events.Add(new CombatStatusChangedEvent(revision, -1, events.Count, null, status, after,
+                            CombatStatusChangeReason.Consumed));
                         continue;
                     }
                     if (queued.PeriodicStatusId.HasValue)
@@ -293,7 +319,8 @@ namespace PokerEngine
                     int firstEvent = events.Count;
                     var before = units[effect.Target]; long health = before.Health, block = before.Block, absorbed = 0; long overkill = 0;
                     DamageModification incoming = null;
-                    CombatAmountModification outgoingAmount = null, incomingAmount = null;
+                    DamageModification finalDamage = null;
+                    CombatAmountModification outgoingAmount = null, incomingAmount = null, finalAmount = null;
                     long settledAmount = effect.Amount;
                     try
                     {
@@ -328,6 +355,26 @@ namespace PokerEngine
                                             if (afterArmor == null) statuses.RemoveAt(armorIndex); else statuses[armorIndex] = afterArmor;
                                             events.Add(new CombatStatusChangedEvent(revision, effectIndex, events.Count, effect, armor, afterArmor, CombatStatusChangeReason.Consumed, provenance: provenance));
                                         }
+                                    if (statusCatalog != null && provenance.Origin == CombatEffectOrigin.Primary &&
+                                        effect.Attack.Origin == AttackOrigin.EnemyAttack && units[effect.Source].TeamId != before.TeamId)
+                                    {
+                                        decimal rate = 0m;
+                                        foreach (var status in statuses.Where(item => CombatStatusRules.Targets(item, effect.Target)))
+                                        {
+                                            var spec = statusCatalog.Get(status.DefinitionId).Behaviors.OfType<IncomingAttackDamagePerStackSpec>().SingleOrDefault();
+                                            if (spec != null) rate = checked(rate + checked(spec.Rate * status.Stacks));
+                                        }
+                                        if (rate > 0m)
+                                        {
+                                            long previous = settledAmount;
+                                            decimal multiplier = checked(1m + rate);
+                                            settledAmount = checked((long)decimal.Floor(checked(previous * multiplier)));
+                                            string reason = "每层敌方攻击承伤加成：" + previous + "→" + settledAmount + "，+" + (settledAmount - previous) +
+                                                "，总倍率 " + multiplier.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                            incoming = new DamageModification("incoming.attack-per-stack.1", "按目标状态层数合成敌方攻击承伤", incoming.InputAmount,
+                                                settledAmount, incoming.Triggers.Concat(new[] { new DamageTriggerReason("incoming.attack-per-stack", reason) }));
+                                        }
+                                    }
                                 }
                                 catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidDamageModifier); }
                             }
@@ -337,6 +384,34 @@ namespace PokerEngine
                                 settledAmount = incomingAmount?.OutputAmount ?? settledAmount;
                             }
                             catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidAmountModifier); }
+                        }
+                        // Only explicit immunity opts in. A raw zero request never spends a layer;
+                        // positive hits consume one even when shield would otherwise absorb them.
+                        // This runs last so incoming additive modifiers cannot undo the immunity.
+                        if (effect.Kind == CombatEffectKind.Damage && effect.Amount > 0 && statusCatalog != null)
+                        {
+                            var immunity = statuses.FirstOrDefault(s => CombatStatusRules.Targets(s, effect.Target) &&
+                                statusCatalog.Get(s.DefinitionId).Behaviors.OfType<DamageImmunitySpec>().Any());
+                            if (immunity != null)
+                            {
+                                finalDamage = new DamageModification("incoming.damage-immunity.1", "免疫本次伤害并消耗一层", settledAmount, 0,
+                                    new[] { new DamageTriggerReason(immunity.DefinitionId.Value, "伤害免疫") });
+                                settledAmount = 0;
+                                var afterImmunity = immunity.Stacks == 1 ? null : new StatusInstance(immunity.Id, immunity.DefinitionId,
+                                    immunity.Source, immunity.Target, immunity.Stacks - 1, immunity.Duration);
+                                int immunityIndex = statuses.IndexOf(immunity);
+                                if (afterImmunity == null) statuses.RemoveAt(immunityIndex); else statuses[immunityIndex] = afterImmunity;
+                                events.Add(new CombatStatusChangedEvent(revision, effectIndex, events.Count, effect, immunity, afterImmunity,
+                                    CombatStatusChangeReason.Consumed, provenance: provenance));
+                            }
+                        }
+                        // A rejected grant stays zero even if an earlier BlockReceived modifier added a flat amount.
+                        if (effect.Kind == CombatEffectKind.GainBlock && amountModifier is ICombatEffectPolicy effectPolicy &&
+                            !effectPolicy.CanReceiveBlock(new CombatState(state.Id, state.Revision, state.Combatants.Select(u => units[u.Id]), statuses), effect.Target))
+                        {
+                            finalAmount = new CombatAmountModification(settledAmount, new[] {
+                                new CombatAmountContribution(effect.Target.Value, "effect-policy/block-rejected", rateAdjustment: -1m) });
+                            settledAmount = 0;
                         }
                         switch (effect.Kind)
                         {
@@ -367,7 +442,7 @@ namespace PokerEngine
                         {
                             var after = before.WithVitals(health, block); units[after.Id] = after;
                             events.Add(new CombatEvent(revision, effectIndex, effect, before, after, absorbed, overkill, incoming, events.Count, provenance,
-                                outgoingAmount, incomingAmount));
+                                outgoingAmount, incomingAmount, finalDamage, finalAmount));
                         }
                     }
                     catch (ArgumentException)
@@ -460,6 +535,16 @@ namespace PokerEngine
             return result.IsIdentity ? null : result;
         }
 
+        private static bool DecayMatches(CombatTimingSignal signal, StatusInstance status, StackDecaySpec decay,
+            IDictionary<ParticipantId, CombatantState> units)
+        {
+            if (signal.Kind != decay.Timing || status.Target.Kind != EntityKind.Participant ||
+                !units[new ParticipantId(status.Target.Id)].IsAlive) return false;
+            var subject = new ParticipantId(decay.TimingSubject == PeriodicTimingSubject.Applier ? status.Source.Id : status.Target.Id);
+            return signal.Participants.Contains(subject) && (decay.TimingSubject != PeriodicTimingSubject.Applier ||
+                signal.Kind == CombatTimingKind.PhaseEnding || units[subject].IsAlive);
+        }
+
         private static IEnumerable<CombatReaction> Reactions(CombatReactionContext context,
             ICombatReactionProvider statusReactions, ICombatReactionProvider externalReactions)
         {
@@ -476,12 +561,16 @@ namespace PokerEngine
             internal CombatEffectProvenance Provenance { get; }
             internal StatusInstanceId? PeriodicStatusId { get; }
             internal bool ConsumePeriodic { get; }
+            internal StatusInstanceId? DecayStatusId { get; }
+            internal StackDecaySpec StackDecay { get; }
             internal CombatTimingEvent Boundary { get; }
             internal QueuedEffect(CombatTimingEvent boundary) { Boundary = boundary; }
             internal QueuedEffect(CombatEffect effect, CombatEffectProvenance provenance)
             { Effect = effect; Provenance = provenance; }
             internal QueuedEffect(StatusInstanceId statusId, bool consume = false, CombatEffectProvenance provenance = null)
             { PeriodicStatusId = statusId; ConsumePeriodic = consume; Provenance = provenance; }
+            internal QueuedEffect(StatusInstanceId statusId, StackDecaySpec decay)
+            { DecayStatusId = statusId; StackDecay = decay; }
         }
         public static void Validate(CombatState state)
         {

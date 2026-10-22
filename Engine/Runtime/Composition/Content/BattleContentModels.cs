@@ -29,14 +29,15 @@ namespace PokerEngine
     }
     public sealed class BattleEnemyContentDefinition
     {
+        public bool ScaleHealthWithAdventure { get; }
         public EnemyBehaviorDefinition Behavior { get; }
         public CombatantDefinition Definition { get; }
         public long Damage { get; }
         public BattleActorDamageRules DamageRules { get; }
         public BattleActorTargetRules TargetRules { get; }
         public IEnemyBattleEffectRule EffectRule { get; }
-        internal BattleEnemyContentDefinition(CombatantDefinition definition, long damage, BattleActorDamageRules damageRules, BattleActorTargetRules targetRules, IEnemyBattleEffectRule effectRule, EnemyBehaviorDefinition behavior = null)
-        { Definition = definition; Damage = damage; DamageRules = damageRules; TargetRules = targetRules; EffectRule = effectRule; Behavior = behavior; }
+        internal BattleEnemyContentDefinition(CombatantDefinition definition, long damage, BattleActorDamageRules damageRules, BattleActorTargetRules targetRules, IEnemyBattleEffectRule effectRule, EnemyBehaviorDefinition behavior = null, bool scaleHealthWithAdventure = true)
+        { Definition = definition; Damage = damage; DamageRules = damageRules; TargetRules = targetRules; EffectRule = effectRule; Behavior = behavior; ScaleHealthWithAdventure = scaleHealthWithAdventure; }
     }
     public sealed class BattleLoadoutContentDefinition
     {

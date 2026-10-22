@@ -151,6 +151,7 @@ def make_server(compiler, port=18767):
     files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
              '/schema.js': ('schema.js', 'text/javascript'), '/model.js': ('model.js', 'text/javascript'),
              '/admin.js': ('admin.js', 'text/javascript'), '/playtest.js': ('playtest.js', 'text/javascript'), '/playtest.css': ('playtest.css', 'text/css'),
+             '/wrath-presentation.js': ('wrath-presentation.js', 'text/javascript'),
              '/style.css': ('style.css', 'text/css')}
 
     class Handler(BaseHTTPRequestHandler):

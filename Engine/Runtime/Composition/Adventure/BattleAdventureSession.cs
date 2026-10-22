@@ -263,8 +263,8 @@ namespace PokerEngine
             {
                 var e = pair.Value;
                 return new BattleEnemyContentDefinition(new CombatantDefinition(e.Definition.Id,
-                    Math.Max(1L, checked((long)decimal.Floor(e.Definition.MaxHealth * CurrentNode.EnemyHealthMultiplier))), e.Definition.InitialBlock),
-                    e.Damage, e.DamageRules, e.TargetRules, e.EffectRule, e.Behavior);
+                    e.ScaleHealthWithAdventure ? Math.Max(1L, checked((long)decimal.Floor(e.Definition.MaxHealth * CurrentNode.EnemyHealthMultiplier))) : e.Definition.MaxHealth,
+                    e.Definition.InitialBlock), e.Damage, e.DamageRules, e.TargetRules, e.EffectRule, e.Behavior, e.ScaleHealthWithAdventure);
             }, StringComparer.Ordinal);
             var enemies = encounter.Enemies.Select(s =>
             {

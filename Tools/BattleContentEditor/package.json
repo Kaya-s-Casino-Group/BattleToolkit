@@ -3,6 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "description": "本地 XML 战斗配置工具；运行无需 npm 依赖",
-  "scripts": { "test:browser": "node tests/browser.cjs", "test:playtest": "node tests/playtest-browser.cjs", "test:h5": "node tests/h5-scene-browser.cjs", "test:adventure": "node tests/adventure-browser.cjs" },
+  "scripts": { "test:browser": "node tests/browser.cjs", "test:playtest": "node tests/playtest-browser.cjs", "test:h5": "node tests/h5-scene-browser.cjs", "test:elite": "node tests/elite-ui-browser.cjs", "test:wrath": "node tests/wrath-ui-browser.cjs", "test:wrath-interactions": "node tests/wrath-interaction-browser.cjs", "test:adventure": "node tests/adventure-browser.cjs" },
   "devDependencies": { "playwright": "1.62.1" }
 }

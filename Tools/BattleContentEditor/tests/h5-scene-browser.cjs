@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const {chromium} = require('playwright');
 const base = process.env.EDITOR_URL || 'http://127.0.0.1:18767';
-const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gluttony-boss'];
+const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gluttony-boss', 'standard-wrath-thousand-hands', 'standard-item-lab'];
 
 (async () => {
   const browser = await chromium.launch({headless:true, channel:process.env.PLAYWRIGHT_CHANNEL || 'chrome'});
@@ -103,9 +103,9 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       }
       assert.ok(total<=200*1024,'资源合计 '+total+' 字节，超过 200 KiB 预算');
     });
-    await test('新浏览器默认标准 XML，提供三个独立可选试炼且未自动开局',async()=>{
+    await test('新浏览器默认标准 XML，提供五个独立可选试炼且未自动开局',async()=>{
       assert.deepEqual(await page.locator('#playtest-encounter option').evaluateAll(options=>options.map(option=>option.value)),ids);
-      assert.equal(await page.locator('[data-encounter-id]').count(),3);
+      assert.equal(await page.locator('[data-encounter-id]').count(),5);
       assert.equal(await page.locator('#restore-banner').isVisible(),false);
       assert.equal(await page.locator('#playtest-empty').isVisible(),true);
       assert.equal(await page.locator('#playtest-live').isVisible(),false);
@@ -151,29 +151,36 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       const shield=await page.locator('#playtest-players .unit-shield').boundingBox();
       assert.ok(shield.height<=28&&shield.width<=60,'零护盾图标不应变成空面板：'+JSON.stringify(shield));
     });
-    await test('头顶意图与护甲层数显示真实规则数据，精英首轮召唤两名下轮护卫',async()=>{
+    await test('流血精英显示施法与成长，首轮伤害4且流血减为2层，下一次攻击36',async()=>{
       const opened=await start(page,ids[1]);
-      assert.equal(opened.battle.enemies[0].intentMeta.actionId,'summon');
-      assert.match(await page.locator('#playtest-enemies .playtest-intent').getAttribute('aria-label'),/召唤/);
-      assert.equal(await page.locator('#playtest-enemies .playtest-status b').textContent(),'3');
-      assert.equal(await page.locator('#playtest-enemies .playtest-status use').getAttribute('href'),'/assets/icons.svg#armor');
+      assert.equal(opened.battle.enemies[0].health,'400');
+      assert.equal(opened.battle.enemies[0].maxHealth,'400');
+      assert.equal(opened.battle.enemies[0].intentMeta.actionId,'cast');
+      assert.match(await page.locator('#playtest-enemies .intent-status').textContent(),/\+3层.*减1层/);
+      assert.match(await page.locator('#playtest-enemies .intent-growth').textContent(),/8.*\+10/);
+      await page.locator('#playtest-enemies .playtest-intent').hover();
+      assert.equal(await page.locator('#playtest-enemies .playtest-intent > .battle-tooltip').isVisible(),true,'target overlay must preserve the existing mouse hover tooltip');
+      assert.equal(await page.locator('#playtest-enemies .playtest-status').count(),0);
+      assert.match(await page.locator('[data-encounter-id="'+ids[1]+'"] small').textContent(),/攻击成长与流血/);
       const intent=await page.locator('#playtest-enemies .playtest-intent').boundingBox(),figure=await page.locator('#playtest-enemies .unit-figure').boundingBox();
       assert.ok(intent.y+intent.height<=figure.y+1,'意图应位于角色形象上方');
       const result=await round(page);
-      assert.equal(result.battle.enemies.length,3);
-      assert.equal(result.battle.players[0].health,'800');
-      assert.equal(await page.locator('#playtest-enemies .playtest-unit').count(),3);
-      assert.equal(await page.locator('#playtest-enemies .playtest-intent').count(),3);
-      assert.equal(await page.locator('#playtest-enemies [data-art="grunt"]').count(),2);
-      await draw(page);
+      assert.equal(result.battle.enemies.length,1);
+      assert.equal(result.battle.players[0].health,'796');
+      assert.equal(await page.locator('#playtest-enemies .playtest-unit').count(),1);
+      assert.equal(await page.locator('#playtest-players .playtest-status b').textContent(),'2');
+      assert.equal(await page.locator('#playtest-players .playtest-status use').getAttribute('href'),'/assets/icons.svg#bleed');
+      assert.match(await page.locator('#playtest-players .playtest-status').getAttribute('title'),/敌人对玩家攻击.*50%.*实际行动结束/);
+      assert.equal(await page.locator('#playtest-enemies .intent-main b').textContent(),'36');
+      assert.match(await page.locator('#playtest-enemies .intent-damage-detail').textContent(),/18→36.*\+18/);
       await idleArtReady(page);
       await page.screenshot({path:'/private/tmp/h5-scene-desktop.png',fullPage:true,animations:'disabled'});
     });
-    await test('战斗记录可展开，包含召唤与真实结算步骤',async()=>{
+    await test('战斗记录可展开，包含流血施加和减层的真实结算步骤',async()=>{
       assert.equal(await page.locator('.playtest-log-section').evaluate(el=>el.open),false);
       await page.locator('.playtest-log-section>summary').click();
       assert.equal(await page.locator('.playtest-log-section').evaluate(el=>el.open),true);
-      assert.match(await page.locator('#playtest-log').textContent(),/召唤/);
+      assert.match(await page.locator('#playtest-log').textContent(),/流血/);
       assert.ok(await page.locator('.playtest-log-entry').count()>1);
       await page.locator('.playtest-log-section>summary').click();
     });
@@ -235,19 +242,18 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       assert.equal(await page.locator('#playtest-enemies .intent-main b').textContent(),'60');
       assert.match(await page.locator('#playtest-log').textContent(),/塞|生成|创建/);
     });
-    await test('375px 移动布局无页面水平溢出，三怪阵容仍能摸牌并结束回合',async()=>{
+    await test('375px 移动布局无页面水平溢出，流血意图和自动补牌随回合更新',async()=>{
       const mobile=await makePage({viewport:{width:375,height:812},isMobile:true,hasTouch:true});
       await noHorizontalOverflow(mobile.page);
       await start(mobile.page,ids[1]);
-      await round(mobile.page);
-      const drawn=await draw(mobile.page,5);
+      const drawn=await round(mobile.page);
       assert.equal(drawn.battle.players[0].hand.length,8);
       assert.equal(await mobile.page.locator('#playtest-hand [data-card-id]').count(),8);
       await noHorizontalOverflow(mobile.page);
       await idleArtReady(mobile.page);
       await mobile.page.screenshot({path:'/private/tmp/h5-scene-mobile.png',fullPage:true,animations:'disabled'});
       const ended=await round(mobile.page);
-      assert.equal(ended.battle.players[0].health,'630');
+      assert.equal(ended.battle.players[0].health,'760');
       await noHorizontalOverflow(mobile.page);
       await start(mobile.page,ids[2]);await round(mobile.page);
       await mobile.page.locator('#playtest-discard-pile').click();
@@ -355,6 +361,42 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
         assert.equal(await page.locator('.playtest-preview-line').filter({hasText:'兼容牌型：'}).count(),0,'预览不重复输出机制摘要');
         if(process.env.COMPATIBLE_SCREENSHOT)await page.screenshot({path:process.env.COMPATIBLE_SCREENSHOT.replace(/\.png$/,'-'+fixture.category+'.png'),fullPage:true,animations:'disabled'});
       }
+    });
+    await test('暴怒六单位在375px下可读且无水平溢出，死手倒计时仍可见且不可选中',async()=>{
+      const mobile=await makePage({viewport:{width:375,height:1000}}),bossPage=mobile.page;
+      const initial=await start(bossPage,ids[3]);
+      assert.equal(await bossPage.locator('#playtest-enemies .playtest-unit').count(),6);
+      assert.match(await bossPage.locator('.wrath-stats').innerText(),/攻击 D 33/);
+      await noHorizontalOverflow(bossPage);
+      const clipped=await bossPage.evaluate(()=>{
+        const field=document.querySelector('.playtest-battlefield').getBoundingClientRect();
+        return [...document.querySelectorAll('#playtest-enemies .playtest-unit')].filter(unit=>{
+          const bounds=unit.getBoundingClientRect();return bounds.left<field.left||bounds.right>field.right;
+        }).map(unit=>unit.dataset.participantId);
+      });
+      assert.deepEqual(clipped,[],'no boss unit may be hidden by the battlefield overflow clipping');
+      const clippedIntents=await bossPage.locator('.wrath-body .intent-step').evaluateAll(steps=>steps.filter(step=>step.scrollWidth>step.clientWidth).map(step=>step.textContent));
+      assert.deepEqual(clippedIntents,[],'relative intent positions and action names must remain readable on mobile');
+      const previewResponse=responseFor(bossPage,'preview','Play');
+      await bossPage.locator('#playtest-hand [data-card-id]').first().click();
+      const preview=await(await previewResponse).json();
+      const hand=initial.battle.enemies.find(unit=>unit.wrath?.role==='Blood');
+      const target=preview.preview.targets.find(slot=>slot.candidates.some(candidate=>candidate.id===hand.id));
+      await bossPage.locator('select[data-target-slot="'+target.slot+'"]').selectOption(hand.id);
+      await bossPage.waitForFunction(()=>!document.querySelector('#playtest-play').disabled);
+      const result=await clickRequest(bossPage,'#playtest-play','command','Play');
+      assert.equal(result.battle.enemies.find(unit=>unit.id===hand.id).alive,false);
+      const broken=bossPage.locator('[data-participant-id="'+hand.id+'"]');
+      assert.match(await broken.locator('.wrath-regeneration').innerText(),/再生剩余 8 轮/);
+      assert.equal(await bossPage.locator('#playtest-enemies .playtest-unit').count(),6);
+      const nextPreview=responseFor(bossPage,'preview','Play');
+      await bossPage.locator('#playtest-hand [data-card-id]').first().click();
+      const next=await(await nextPreview).json();
+      assert.ok(next.preview.targets.every(slot=>slot.candidates.every(candidate=>candidate.id!==hand.id)));
+      assert.equal(await bossPage.locator('#playtest-targets option[value="'+hand.id+'"]').count(),0);
+      await noHorizontalOverflow(bossPage);
+      if(process.env.EDITOR_WRATH_SCREENSHOT)await bossPage.screenshot({path:process.env.EDITOR_WRATH_SCREENSHOT,fullPage:true,animations:'disabled'});
+      assert.deepEqual(mobile.errors,[]);
     });
     await test('XML 中恶意角色与状态名称按文本显示，不创建 HTML 节点或执行脚本',async()=>{
       const payload='<img id="h5-xss" src=x onerror="window.__h5Xss=1">';

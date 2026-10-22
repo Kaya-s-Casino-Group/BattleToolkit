@@ -37,6 +37,6 @@ internal static partial class PlaytestBridge
             "message", result == null ? "当前不能进行战斗操作。" : result.Accepted ? "可以执行" : Error(result.Error),
             "hand", hand.Accepted ? Hand(hand.Score, before.Engine.PreviewHandFacts(before.State, actor, cards)) : null,
             "targets", targets, "targetMessage", targetError,
-            "steps", result == null ? new object[0] : Steps(result, before.Engine.Duel.Definition.StatusCatalog, entry));
+            "steps", result == null ? new object[0] : Steps(result, before.Engine.Duel.Definition.StatusCatalog, entry, includePresentation: false));
     }
 }

@@ -38,7 +38,16 @@ namespace PokerEngine
         }
         private EnemyBehaviorDefinition ReadEnemyBehavior(BattleContentNode node)
         {
-            Check(node, new[] { "seed", "intentPreviewTurns", "refreshOnHealthThreshold", "consumeFailedSummon", "recheckIntentOnAction" }, new[] { "Stage", "OpeningEffects", "Link" });
+            Check(node, new[] { "seed", "intentPreviewTurns", "refreshOnHealthThreshold", "consumeFailedSummon", "recheckIntentOnAction", "attack", "attackPerRound" }, new[] { "Stage", "OpeningEffects", "Link", "Wrath" });
+            var wrathNodes = node.Children.Where(c => c.Name == "Wrath").ToArray();
+            if (wrathNodes.Length > 1) throw new ArgumentException("Only one Wrath definition is allowed.");
+            WrathBossDefinition wrath = null;
+            if (wrathNodes.Length == 1)
+            {
+                var w = wrathNodes[0];
+                Check(w, new[] { "bloodHandRefs", "bindingHandRef", "baseAttack", "attackPerHand", "attackPerCharge", "chargeActionId", "initialWarningRound", "cooldownRounds", "regenerationRounds", "ultimateScale" }, Array.Empty<string>());
+                wrath = new WrathBossDefinition(RefList(w, "bloodHandRefs"), Text(w, "bindingHandRef"), Long(w, "baseAttack", 8), Long(w, "attackPerHand", 5), Long(w, "attackPerCharge", 10), Text(w, "chargeActionId", "charge"), Int(w, "initialWarningRound", 5), Int(w, "cooldownRounds", 5), Int(w, "regenerationRounds", 8), Decimal(w, "ultimateScale", 3));
+            }
             var opening = node.Children.Where(c => c.Name == "OpeningEffects").ToArray();
             if (opening.Length > 1) throw new ArgumentException("Only one OpeningEffects is allowed.");
             var initial = opening.Length == 0 ? null : ReadEnemySequence(opening[0]);
@@ -66,7 +75,7 @@ namespace PokerEngine
                 return new EnemyBehaviorStage(Text(stage, "id"), Enum(stage, "mode", EnemySelectionMode.Sequence), actions, EnemyWhen(stage), stage.Children.Where(c => c.Name == "OnEnter").SelectMany(entry => {
                     Check(entry, Array.Empty<string>(), new[] { "Revive" }); return entry.Children.Select(ReadRevive); }));
             });
-            return new EnemyBehaviorDefinition(stages, initial, Int(node, "seed", 1), Int(node, "intentPreviewTurns", 1), Bool(node, "refreshOnHealthThreshold", false), Bool(node, "consumeFailedSummon", true), node.Children.Where(c => c.Name == "Link").Select(ReadLink), Bool(node, "recheckIntentOnAction", false));
+            return new EnemyBehaviorDefinition(stages, initial, Int(node, "seed", 1), Int(node, "intentPreviewTurns", 1), Bool(node, "refreshOnHealthThreshold", false), Bool(node, "consumeFailedSummon", true), node.Children.Where(c => c.Name == "Link").Select(ReadLink), Bool(node, "recheckIntentOnAction", false), Long(node, "attack", 0), Long(node, "attackPerRound", 0), wrath);
         }
     }
 }

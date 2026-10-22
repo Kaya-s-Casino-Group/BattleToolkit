@@ -1,5 +1,6 @@
 // The browser only presents authoritative C# results; it never settles combat.
 import {createBattleAdmin} from './admin.js';
+import {appendWrathState,createWrathNotices,createWrathPlayback,wrathIntentIcon} from './wrath-presentation.js';
 const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n;};
 const button=(text,fn,cls='')=>{const n=node('button',cls,text);n.type='button';n.addEventListener('click',fn);return n;};
 const phaseNames={AwaitingPlayerHand:'玩家行动',AwaitingEnemyAction:'敌人行动',Player:'玩家行动',Enemy:'敌人行动',PlayerTurn:'玩家行动',EnemyTurn:'敌人行动',PlayerPhase:'玩家行动',EnemyPhase:'敌人行动',Finished:'对局结束',NotStarted:'尚未开始',BattleEnded:'对局结束'};
@@ -12,7 +13,7 @@ const artFor=(value,isPlayer=false)=>isPlayer?'hero':/glutton|暴食|boss/i.test
 // Authoritative quantities arrive as decimal strings; never round them through Number.
 const compact=value=>{try{const n=BigInt(value),a=n<0n?-n:n;for(const [scale,suffix]of [[1000000000n,'B'],[1000000n,'M'],[1000n,'K']])if(a>=scale){const tenths=a*10n/scale;return(n<0n?'-':'')+(tenths/10n)+(tenths%10n?'.'+tenths%10n:'')+suffix;}return String(n);}catch{return String(value);}};
 const unitName=unit=>unit.displayName||unit.name||unit.id;
-const stateIcon=status=>{const keys=(status.behaviorKeys||[]).join(' ');return /HitArmor/.test(keys)?'armor':/PeriodicDamage/.test(keys)?'bleed':/BlockActionWindow/.test(keys)?'stun':/PreventStatus/.test(keys)?'cleanse':/LifeSteal|Overheal/.test(keys)?'heal':/Reflect/.test(keys)?'shield':status.isNegative?'curse':'spark';};
+const stateIcon=status=>{const keys=(status.behaviorKeys||[]).join(' ');return /HitArmor/.test(keys)?'armor':/PeriodicDamage|IncomingAttackDamagePerStack/.test(keys)?'bleed':/BlockActionWindow/.test(keys)?'stun':/PreventStatus/.test(keys)?'cleanse':/LifeSteal|Overheal/.test(keys)?'heal':/Reflect/.test(keys)?'shield':status.isNegative?'curse':'spark';};
 export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=null}) {
  const sessionId=crypto.randomUUID();
  let battle=null,actor='',selected=new Set(),bindings={},previews={},previewSequence=0,previewTimer;
@@ -21,6 +22,9 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  let effects=new Map(),effectTime=0,inspectZone='',creationNotice='';
  let itemId='',itemTarget='',itemPreview=null,itemPreviewBusy=false,itemSequence=0;
  let motion=!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let activeTargetSlot='',focusedTarget='',playbackFrame=null,playbackSequence=0,externalInstallSequence=0;
+ const renderedWrathFloats=new Set();
+ const wrathPlayback=createWrathPlayback();
  const refs={};
  const put=(id,n)=>{n.id='playtest-'+id;refs[id]=n;return n;};
  const label=(text,control)=>{const n=node('label','playtest-field');n.append(node('span','',text),control);return n;};
@@ -40,10 +44,11 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  toolbar.append(put('status',node('h2')),put('battle-tag',node('span','battle-tag')),sessionActions);root.append(toolbar);
  const empty=put('empty',node('div','playtest-empty'));empty.append(icon('summon'),node('h2','','下一场战斗，由你选牌。'),node('p','','选择上方试炼，开始一场标准对局。'),node('small','','先摸牌，再组合牌型。怪物将在你结束回合后行动。'));root.append(empty);
  const live=put('live',node('div'));root.append(live);
+ const wrathNotices=createWrathNotices(put('wrath-notices',node('section','wrath-notices')));live.append(refs['wrath-notices']);
  const field=put('battlefield',node('div','playtest-battlefield'));
  const scenery=node('div','battle-scenery');scenery.setAttribute('aria-hidden','true');scenery.append(node('i','scene-arch arch-one'),node('i','scene-arch arch-two'),node('i','scene-arch arch-three'),node('i','scene-moon'),node('div','scene-floor'));field.append(scenery);
  const topRail=node('div','battle-top-rail');topRail.append(put('relic-tray',node('div','battle-relic-tray')),put('phase-banner',node('div','battle-phase-banner')));field.append(topRail);
- field.append(put('players',node('div','playtest-units player-team')),node('div','battle-versus','VS'),put('enemies',node('div','playtest-units enemy-team')),put('result',node('div','battle-result')));live.append(field);
+ field.append(put('players',node('div','playtest-units player-team')),node('div','battle-versus','VS'),put('enemies',node('div','playtest-units enemy-team')),put('result',node('div','battle-result')));live.append(field,put('target-hint',node('p','battle-target-hint')));
  const handPanel=node('section','battle-hand-panel');live.append(handPanel);
  const handHeading=node('div','playtest-hand-heading');handHeading.append(put('energy',node('div','battle-energy')),label('操作角色',put('actor',node('select'))),put('flow-hint',node('span','battle-flow-hint')),put('hand-count',node('span','muted')));handPanel.append(handHeading);
  refs.actor.setAttribute('aria-label','当前操作角色');
@@ -104,7 +109,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  function adopt(next){
   if(!next)return;
   const changed=!battle||battle.runId!==next.runId||battle.revision!==next.revision;
-  if(battle&&battle.runId!==next.runId){startXml=null;logs=[];creationNotice='';inspectZone='';}
+  if(battle&&battle.runId!==next.runId){startXml=null;logs=[];creationNotice='';inspectZone='';renderedWrathFloats.clear();}
   if(changed){
    creationNotice='';effects=new Map();effectTime=performance.now();
    if(battle?.runId===next.runId){
@@ -123,7 +128,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   }
   battle=next;
   if(!battle.players.some(p=>p.id===actor&&p.canAct))actor=battle.actors?.find(id=>battle.players.some(p=>p.id===id&&p.canAct))||battle.players.find(p=>p.canAct)?.id||battle.players[0]?.id||'';
-  if(changed){selected.clear();bindings={};invalidatePreviews();itemPreview=null;itemPreviewBusy=false;itemSequence++;}
+  if(changed){selected.clear();bindings={};activeTargetSlot='';focusedTarget='';invalidatePreviews();itemPreview=null;itemPreviewBusy=false;itemSequence++;}
  }
  function addSteps(steps){
   const units=[...(battle?.players||[]),...(battle?.enemies||[])];const name=id=>unitName(units.find(unit=>unit.id===id)||{id});
@@ -177,13 +182,49 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   const player=currentPlayer();if(busy||uncertain||!battle||battle.finished||!player?.canAct)return;
   if(['Play','Discard'].includes(action)&&(previewBusy||!previews[action]?.legal))return;
   if(action==='EndTurn'&&player.turnFlow&&player.window==='Ending')action='FinishTurn';
-  const payload={...actionPayload(action),...extra};busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
+  const payload={...actionPayload(action),...extra},installation=externalInstallSequence;busy=true;invalidatePreviews();message='正在结算…';diagnostics=[];render();
   try{
-   const data=await request('command',payload);adopt(data.battle);
-   if(data.success){addSteps(data.steps);selected.clear();bindings={};message=battle?.finished?(external?'战斗已结算，可以继续旅程。':'对局已结束，可使用同一种子重开。'):'结算完成。';}
-   else setResponseError(data);
+   const data=await request('command',payload);
+   if(installation!==externalInstallSequence||battle?.runId!==payload.runId)return;
+   if(data.success){if(!await presentCommitted(data.battle,data.steps)||installation!==externalInstallSequence)return;addSteps(data.steps);selected.clear();bindings={};message=battle?.finished?(external?'战斗已结算，可以继续旅程。':'对局已结束，可使用同一种子重开。'):'结算完成。';}
+   else{adopt(data.battle);setResponseError(data);}
   }catch(error){message=error.message;await recover();}
   finally{busy=false;render();queuePreview();}
+ }
+ async function presentCommitted(next,steps=[]){
+  if(!next)return false;
+  const sequence=++playbackSequence;
+  for(const frame of wrathPlayback.take(next,steps)){
+   if(sequence!==playbackSequence)return false;
+   // Checkpoints are display-only. Busy stays true until the final authority revision is restored.
+   playbackFrame=frame;
+   adopt({...frame.battle,runId:next.runId,sessionId:next.sessionId,seed:next.seed,encounterId:next.encounterId});
+   renderedUnitsKey='';render();
+   const warning=frame.battle.enemies.some(unit=>unit.wrath?.warningActive);
+   await new Promise(resolve=>setTimeout(resolve,warning?1400:frame.handFloats?.length?850:250));
+  }
+  if(sequence!==playbackSequence)return false;
+  playbackFrame=null;adopt(next);renderedUnitsKey='';
+  return true;
+ }
+ function chooseTarget(id){
+  if(busy||uncertain||battle?.finished||!currentPlayer()?.canAct)return;
+  const slots=previews.Play?.targets||[],slot=slots.find(item=>item.slot===activeTargetSlot)||slots[0];
+  if(!slot?.candidates.some(candidate=>candidate.id===id))return;
+  activeTargetSlot=slot.slot;bindings[slot.slot]=[id];focusedTarget=id;queuePreview();render();
+ }
+ function renderTargetHighlights(){
+  const slots=previews.Play?.targets||[],slot=slots.find(item=>item.slot===activeTargetSlot)||slots[0];
+  if(slot)activeTargetSlot=slot.slot;
+  const available=!busy&&!uncertain&&!battle.finished&&currentPlayer()?.canAct;
+  for(const card of refs.enemies.querySelectorAll('.playtest-unit')){
+   const id=card.dataset.participantId,unit=battle.enemies.find(item=>item.id===id),target=card.querySelector('.unit-target');
+   const enabled=available&&unit?.alive&&slot?.candidates.some(candidate=>candidate.id===id);
+   const chosen=!!unit?.alive&&Object.values(bindings).some(ids=>ids.includes(id));
+   card.dataset.targetSelected=String(chosen);card.classList.toggle('target-selected',chosen);target.disabled=!enabled;target.setAttribute('aria-pressed',String(chosen));
+  }
+  refs['target-hint'].textContent=slot?'点击角色选择 '+slot.label+'，或使用下方目标列表。':selected.size&&!previewBusy?'本次效果自动选择目标，无需点击角色。':'先选择要出的牌，再点击本体或存活手臂选敌。';
+  if(focusedTarget&&!previewBusy){const target=[...refs.enemies.querySelectorAll('.unit-target')].find(item=>item.dataset.targetId===focusedTarget);if(target&&!target.disabled)target.focus({preventScroll:true});focusedTarget='';}
  }
  function queuePreview(){
   invalidatePreviews();
@@ -227,7 +268,7 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
    const choice=button('',()=>{refs.encounter.value=item.id;encounterValue=item.id;updateConfig();},'battle-encounter'+(chosen?' selected':''));
    choice.dataset.encounterId=item.id;choice.setAttribute('aria-pressed',String(chosen));choice.disabled=busy||config.importing;
    const portrait=node('img');portrait.src='/assets/'+kind+'.png';portrait.alt='';portrait.loading='lazy';portrait.addEventListener('error',()=>{portrait.hidden=true;});
-   const words=node('span');words.append(node('strong','',item.name||item.id),node('small','',/wrath|千手/.test(item.id+' '+item.name)?'BOSS / 五手联动':kind==='gluttony'?'BOSS / 废牌压力':kind==='summoner'?'精英 / 护甲与召唤':'遭遇 / 行为轮换'));choice.append(portrait,words,icon(chosen?'spark':'sword'));refs['encounter-rail'].append(choice);if(focusedEncounter===item.id&&!choice.disabled)choice.focus({preventScroll:true});
+   const words=node('span');words.append(node('strong','',item.name||item.id),node('small','',item.summary||(/wrath|千手/.test(item.id+' '+item.name)?'BOSS / 五手联动':kind==='gluttony'?'BOSS / 废牌压力':kind==='summoner'?'精英 / 护甲与召唤':'遭遇 / 行为轮换')));choice.append(portrait,words,icon(chosen?'spark':'sword'));refs['encounter-rail'].append(choice);if(focusedEncounter===item.id&&!choice.disabled)choice.focus({preventScroll:true});
   }
   refs['encounter-rail'].hidden=config.encounters.length===0||config.encounters.length>6;
 
@@ -235,7 +276,8 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  function appendStatuses(host,unit){
   const statuses=node('div','playtest-statuses');
   for(const status of unit.statuses||[]){
-   const name=status.displayName||status.name,info=name+' ×'+status.stacks+' · '+status.duration;
+   const name=status.displayName||status.name,description=status.description||(status.name!==name?status.name:'');
+   const info=name+' ×'+status.stacks+' · '+status.duration+(description?'；'+description:'');
    const badge=node('span','playtest-status '+(status.isNegative?'debuff':'buff'));badge.title=info;badge.tabIndex=0;badge.setAttribute('aria-label',info);
    badge.append(icon(stateIcon(status)),node('b','',status.stacks),node('span','battle-tooltip',info));statuses.append(badge);
   }
@@ -244,26 +286,45 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
  function unitCard(unit,isPlayer){
   const fx=motion&&performance.now()-effectTime<1100?effects.get(unit.id)||[]:[];
   const box=node('article','playtest-unit'+(!unit.alive?' defeated':'')+(unit.id===actor?' current':'')+fx.map(f=>' fx-'+f.kind).join(''));box.dataset.participantId=unit.id;box.dataset.definitionId=unit.definitionId||'';
+  const wrath=!isPlayer?unit.wrath:null;
+  if(wrath)appendWrathState(box,unit,battle,compact);
   box.style.setProperty('--fx-delay',Math.min(0,effectTime-performance.now())+'ms');
   const kind=artFor(unit.definitionId||unitName(unit),isPlayer);box.dataset.art=kind;
   if(!isPlayer&&unit.alive){
    const intent=node('div','playtest-intent');const meta=unit.intentMeta,world=meta?.worldEffects||[];
-   const intentKind=meta?.skipped?'stun':world.some(e=>e.kind==='Summon')?'summon':Number(meta?.damage)>0?'sword':world.some(e=>e.kind==='AddCards')?'curse':/盾|block/i.test((unit.intent||[]).join(' '))?'shield':'spark';
+   const intentKind=meta?.skipped?'stun':wrathIntentIcon(unit)||(world.some(e=>e.kind==='Summon')?'summon':Number(meta?.damage)>0?'sword':world.some(e=>e.kind==='AddCards')?'curse':/盾|block/i.test((unit.intent||[]).join(' '))?'shield':'spark');
    const main=node('div','intent-main');main.append(icon(intentKind),node('b','',meta?.skipped?'跳过':Number(meta?.damage)>0?compact(meta.damage):world.length?'×'+world[0].count:'准备'));
    intent.append(main,node('span','intent-name',meta?.name||(unit.intent||[])[0]||'等待'));intent.tabIndex=0;
+   if(meta?.statusSummary)intent.append(node('span','intent-status',meta.statusSummary));
+   for(const detail of meta?.damageDetails||[])intent.append(node('span','intent-damage-detail',detail));
+   if(meta?.growthSummary)intent.append(node('span','intent-growth',meta.growthSummary));
    const description=(unit.intent||[]).join('；');intent.title=description;intent.setAttribute('aria-label','行动意图：'+description);
    intent.append(node('span','battle-tooltip',description));box.append(intent);
-   if((unit.intentSchedule||[]).length>1){const strip=node('div','intent-schedule');strip.setAttribute('aria-label','未来八回合意图');for(const item of unit.intentSchedule){const step=node('span','intent-step',item.round+' '+item.name.split(/[：:]/)[0]);step.title='第 '+item.round+' 回合：'+item.name;strip.append(step);}box.append(strip);}
+   if((unit.intentSchedule||[]).length>1){
+    const sequence=wrath?.role==='Body',strip=node('div','intent-schedule');
+    const label=sequence?'常规意图序列 · 眩晕时不推进':'未来八回合意图';strip.setAttribute('aria-label',label);
+    if(sequence)box.append(node('div','intent-sequence-note',label));
+    for(const [index,item] of unit.intentSchedule.entries()){
+     const position=sequence?(index===0?'当前':'后续 '+index):String(item.round);
+     const step=node('span','intent-step',position+' '+item.name.split(sequence?/[：:·]/:/[：:]/)[0]);
+     step.title=(sequence?position:'第 '+item.round+' 回合')+'：'+item.name;strip.append(step);
+    }
+    box.append(strip);
+   }
   }else box.append(node('div','hero-caption',isPlayer?'YOUR HAND. YOUR FATE.':''));
   const figure=node('div','unit-figure');figure.append(node('span','unit-shadow'));
   const image=node('img','unit-art');image.src='/assets/'+kind+'.png';image.alt=isPlayer?'玩家占位形象':unitName(unit)+'占位形象';image.draggable=false;image.addEventListener('error',()=>{image.hidden=true;figure.classList.add('art-missing');});figure.append(image,icon(isPlayer?'crown':'skull','unit-fallback'));
   for(const [i,f]of fx.filter(f=>f.text).entries()){const number=node('span','battle-float '+f.kind,f.text);number.style.setProperty('--float-index',i);figure.append(number);}
+  if(wrath&&wrath.role!=='Body'&&!unit.alive&&wrath.reviveRound!=null&&!battle.finished){const remaining=node('strong','wrath-regeneration-count',String(wrath.reviveRemaining));remaining.setAttribute('aria-label','再生剩余 '+wrath.reviveRemaining+' 轮');figure.append(remaining);}
+  const regeneration=playbackFrame?.handFloats?.find(item=>item.id===unit.id),floatId=battle.runId+'/'+playbackFrame?.id+'/'+unit.id;
+  if(regeneration&&!unit.alive&&!renderedWrathFloats.has(floatId)){renderedWrathFloats.add(floatId);const floating=node('span','wrath-regeneration-float',regeneration.remaining+'个回合后再生');floating.dataset.eventId=floatId;floating.setAttribute('role','status');figure.append(floating);}
   box.append(figure);
   const heading=node('div','playtest-unit-heading');heading.append(node('strong','',unitName(unit)));if(!unit.alive)heading.append(node('small','','已倒下'));box.append(heading);
   const vitals=node('div','unit-vitals-row');const hp=node('div','unit-hp');hp.setAttribute('role','progressbar');hp.setAttribute('aria-label',unitName(unit)+'生命');hp.setAttribute('aria-valuenow',unit.health);hp.setAttribute('aria-valuemax',unit.maxHealth);hp.setAttribute('aria-valuemin','0');
   hp.style.setProperty('--health',Math.max(0,Math.min(100,Number(unit.health)/Number(unit.maxHealth)*100))+'%');hp.append(node('span','hp-fill'),node('span','hp-label',compact(unit.health)+' / '+compact(unit.maxHealth)));
   hp.title='生命 '+unit.health+' / '+unit.maxHealth;
   const shield=node('span','unit-shield');shield.title='护盾 '+unit.block;shield.append(icon('shield'),node('b','',compact(unit.block)));shield.classList.toggle('zero-block',Number(unit.block)===0);vitals.append(hp,shield);box.append(vitals);appendStatuses(box,unit);
+  if(!isPlayer){const target=button('',()=>chooseTarget(unit.id),'unit-target');target.dataset.targetId=unit.id;target.setAttribute('aria-label','选择 '+unitName(unit));target.disabled=true;box.append(target);}
   return box;
  }
  function renderRelics(){
@@ -350,7 +411,8 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   for(const target of previews.Play?.targets||[]){
    const select=node('select');select.dataset.targetSlot=target.slot;select.setAttribute('aria-label','效果目标 '+target.label);select.append(new Option(target.required?'请选择目标…':'自动选择',''));
    for(const candidate of target.candidates)select.append(new Option(candidate.label,candidate.id));select.value=bindings[target.slot]?.[0]||'';select.disabled=busy;
-   select.addEventListener('change',()=>{if(select.value)bindings[target.slot]=[select.value];else delete bindings[target.slot];queuePreview();render();});refs.targets.append(label(target.label+(target.required?' *':''),select));
+   select.addEventListener('focus',()=>{activeTargetSlot=target.slot;renderTargetHighlights();});
+   select.addEventListener('change',()=>{activeTargetSlot=target.slot;if(select.value)bindings[target.slot]=[select.value];else delete bindings[target.slot];queuePreview();render();});refs.targets.append(label(target.label+(target.required?' *':''),select));
   }
   refs.play.textContent='出牌 · '+(player?.costs.play??'—')+' 能量';refs.discard.textContent='弃牌 · '+(player?.costs.discard??'—')+' 能量';
   const unavailable=busy||uncertain||battle.finished||!player?.canAct;
@@ -401,21 +463,25 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   for(const diagnostic of diagnostics){const row=node('div','issue'+(diagnostic.severity==='Warning'?' warning':''));row.append(node('strong','',(diagnostic.severity==='Warning'?'警告':'错误')+(diagnostic.definitionId?' · '+diagnostic.definitionId:'')),node('span','',diagnostic.message),node('small','',[diagnostic.path,diagnostic.line?'第 '+diagnostic.line+' 行':''].filter(Boolean).join(' · ')));refs.diagnostics.append(row);}
   refs.sync.disabled=busy;refs.sync.hidden=!battle&&!uncertain;refs.close.disabled=busy||uncertain;refs.close.hidden=!!external||!battle;refs.live.hidden=!battle;refs.empty.hidden=!!battle;refs.status.textContent=battle?'第 '+battle.round+' 回合 · '+(battle.finished?(outcomeNames[battle.outcome]||battle.outcome):(phaseNames[battle.phase]||battle.phase)):'尚未开局';
   refs['battle-tag'].textContent=battle?'种子 '+battle.seed+' · 金币 '+(currentPlayer()?.gold??'0'):'';
-  if(!battle)return;
+  wrathNotices.update(battle);if(!battle)return;
   refs.status.dataset.revision=battle.revision;refs.status.dataset.runId=battle.runId;
   const unitsKey=battle.runId+':'+battle.revision+':'+actor;
   if(unitsKey!==renderedUnitsKey){renderedUnitsKey=unitsKey;refs.enemies.replaceChildren(...battle.enemies.map(unit=>unitCard(unit,false)));refs.players.replaceChildren(...battle.players.map(unit=>unitCard(unit,true)));}
   refs.enemies.classList.toggle('large-roster',battle.enemies.length>3);
   refs.battlefield.classList.toggle('battle-finished',battle.finished);
-  refs['phase-banner'].textContent=battle.finished?'试炼结束':currentPlayer()?.window==='Draw'?'DRAW · 摸牌阶段':'YOUR TURN · 你的回合';
+  refs['phase-banner'].textContent=battle.finished?'试炼结束':playbackFrame?'ENEMY · 第 '+playbackFrame.round+' 轮敌方阶段':currentPlayer()?.window==='Draw'?'DRAW · 摸牌阶段':'YOUR TURN · 你的回合';
   refs.result.hidden=!battle.finished;refs.result.replaceChildren(icon(battle.outcome==='胜利'?'crown':'skull'),node('strong','',battle.outcome==='胜利'?'试炼完成':'下次，再来一局。'),node('span','',battle.outcome==='胜利'?'每一张牌，都算数。':'复盘记录或用同一种子重新挑战。'));
-  renderHand();renderLogs();
+  renderHand();renderTargetHighlights();renderLogs();
  }
- function setExternalBattle(next,steps=[]){
+ async function setExternalBattle(next,steps=[]){
   if(!external)return;
-  if(!next){battle=null;selected.clear();invalidatePreviews();logs=[];render();return;}
+  if(!next){externalInstallSequence++;playbackSequence++;playbackFrame=null;busy=false;battle=null;selected.clear();invalidatePreviews();logs=[];render();return;}
   if(battle?.runId===next.runId&&battle?.revision===next.revision)return;
-  adopt(next);uncertain=false;message='';if(!busy&&steps.length)addSteps(steps);render();
+  if(battle?.runId===next.runId&&BigInt(next.revision)<BigInt(battle.revision))return;
+  const installation=++externalInstallSequence;
+  // Existing adventure callers install snapshots synchronously; only committed playback is asynchronous.
+  if(!steps.some(step=>step.wrathPlayback?.length)){playbackSequence++;if(playbackFrame||battle?.runId!==next.runId)busy=false;playbackFrame=null;adopt(next);uncertain=false;message='';if(!busy&&steps.length)addSteps(steps);render();return;}
+  const wasBusy=busy;busy=true;const completed=await presentCommitted(next,steps);if(!completed||installation!==externalInstallSequence)return;busy=wasBusy;uncertain=false;message='';if(!busy&&steps.length)addSteps(steps);render();
  }
  return {updateConfig,render,setExternalBattle};
 }

@@ -80,8 +80,10 @@ namespace PokerEngine
                 definition.ValidateTriggerBudget(status.Duration.Kind == DurationKind.TriggerCount);
                 if (definition.Behaviors.Count > 0 && status.Target.Kind != EntityKind.Participant)
                     throw new ArgumentException("Behavior statuses require a participant target.");
-                if (definition.Behaviors.Any(item => item is PeriodicDamageSpec) && status.Source.Kind != EntityKind.Participant)
-                    throw new ArgumentException("Periodic damage requires a participant applier.");
+                if ((definition.Behaviors.Any(item => item is PeriodicDamageSpec) ||
+                    definition.Behaviors.OfType<StackDecaySpec>().Any(item => item.TimingSubject == PeriodicTimingSubject.Applier)) &&
+                    status.Source.Kind != EntityKind.Participant)
+                    throw new ArgumentException("Applier clock behaviors require a participant applier.");
             }
             if (state.Statuses.Where(status => catalog.Get(status.DefinitionId).ReapplyPolicy != StatusReapplyPolicy.IndependentInstances)
                 .GroupBy(status => new { status.DefinitionId, status.Target.Kind, status.Target.Id,
@@ -90,7 +92,8 @@ namespace PokerEngine
         }
 
         private static bool UsesApplierClock(CombatStatusDefinition definition) =>
-            definition.Behaviors.OfType<PeriodicDamageSpec>().Any(behavior => behavior.TimingSubject == PeriodicTimingSubject.Applier);
+            definition.Behaviors.OfType<PeriodicDamageSpec>().Any(behavior => behavior.TimingSubject == PeriodicTimingSubject.Applier) ||
+            definition.Behaviors.OfType<StackDecaySpec>().Any(behavior => behavior.TimingSubject == PeriodicTimingSubject.Applier);
 
         // Control is cleansable even for existing definitions authored before the Negative tag.
         internal static void Cleanse(List<StatusInstance> statuses, CombatEffect effect, CombatStatusCatalog catalog,

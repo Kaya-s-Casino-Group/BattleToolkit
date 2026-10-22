@@ -144,7 +144,16 @@ namespace PokerEngine
         public bool ConsumeFailedSummon { get; }
         public IReadOnlyList<EnemyLinkRule> Links { get; }
         public bool RecheckIntentOnAction { get; }
-        public EnemyBehaviorDefinition(IEnumerable<EnemyBehaviorStage> stages, BattleEffectSequence openingEffects = null, int seed = 1, int intentPreviewTurns = 1, bool refreshOnHealthThreshold = false, bool consumeFailedSummon = true, IEnumerable<EnemyLinkRule> links = null, bool recheckIntentOnAction = false)
+        public WrathBossDefinition Wrath { get; }
+        public long Attack { get; }
+        public long AttackPerRound { get; }
+        /// <summary>Completed full rounds grow attack even when the enemy skipped its action.</summary>
+        public long AttackAtRound(int completedRounds)
+        {
+            if (completedRounds < 0) throw new ArgumentOutOfRangeException(nameof(completedRounds));
+            return checked(Attack + checked(AttackPerRound * completedRounds));
+        }
+        public EnemyBehaviorDefinition(IEnumerable<EnemyBehaviorStage> stages, BattleEffectSequence openingEffects = null, int seed = 1, int intentPreviewTurns = 1, bool refreshOnHealthThreshold = false, bool consumeFailedSummon = true, IEnumerable<EnemyLinkRule> links = null, bool recheckIntentOnAction = false, long attack = 0, long attackPerRound = 0, WrathBossDefinition wrath = null)
         {
             var copy = stages.ToArray();
             if (copy.Length == 0 || copy.Length > 16 || copy.Any(s => s == null) || copy.Select(s => s.Id).Distinct().Count() != copy.Length)
@@ -152,6 +161,10 @@ namespace PokerEngine
             if (openingEffects != null && openingEffects.Steps.Any(s => s.Target.Group != EffectTargetGroup.Self || s.Effect.Kind != CombatEffectKind.ApplyStatus))
                 throw new ArgumentException("Opening effects only apply statuses to Self.");
             if (intentPreviewTurns < 1 || intentPreviewTurns > 8) throw new ArgumentOutOfRangeException(nameof(intentPreviewTurns));
+            if (attack < 0 || attackPerRound < 0) throw new ArgumentException("Enemy attack and round growth cannot be negative.");
+            if (attack == 0 && wrath == null && copy.SelectMany(s => s.Actions).Where(a => a.Effects != null).SelectMany(a => a.Effects.Steps).Any(s => s.Effect.EnemyAttackScale.HasValue))
+                throw new ArgumentException("Enemy attack scaling requires a positive Behavior attack.");
+            Attack = attack; AttackPerRound = attackPerRound; Wrath = wrath;
             IntentPreviewTurns = intentPreviewTurns; RefreshOnHealthThreshold = refreshOnHealthThreshold; ConsumeFailedSummon = consumeFailedSummon;
             Links = Array.AsReadOnly((links ?? Array.Empty<EnemyLinkRule>()).ToArray());
             if (Links.Select(l => l.Id).Distinct().Count() != Links.Count) throw new ArgumentException("Duplicate enemy link id.");
@@ -162,6 +175,7 @@ namespace PokerEngine
     /// <summary>Immutable memory and committed intent. Previews never consume this memory.</summary>
     public sealed class EnemyBehaviorRuntime
     {
+        public WrathBossRuntime Wrath { get; }
         public string StageId { get; }
         public IReadOnlyList<IReadOnlyList<ParticipantId>> Targets { get; }
         public EnemyBehaviorAction Intent { get; }
@@ -169,17 +183,18 @@ namespace PokerEngine
         public IReadOnlyDictionary<string, int> Uses { get; }
         public IReadOnlyDictionary<string, int> LastUsedRound { get; }
         internal EnemyBehaviorRuntime(string stage = null, EnemyBehaviorAction intent = null, int cursor = 0,
-            IDictionary<string, int> uses = null, IDictionary<string, int> last = null, IEnumerable<IReadOnlyList<ParticipantId>> targets = null)
+            IDictionary<string, int> uses = null, IDictionary<string, int> last = null, IEnumerable<IReadOnlyList<ParticipantId>> targets = null, WrathBossRuntime wrath = null)
         {
-            StageId = stage; Intent = intent; SequenceCursor = cursor;
+            StageId = stage; Intent = intent; SequenceCursor = cursor; Wrath = wrath;
             Targets = Array.AsReadOnly((targets ?? Array.Empty<IReadOnlyList<ParticipantId>>()).Select(t => (IReadOnlyList<ParticipantId>)Array.AsReadOnly(t.ToArray())).ToArray());
             Uses = new System.Collections.ObjectModel.ReadOnlyDictionary<string, int>(new Dictionary<string, int>(uses ?? new Dictionary<string, int>()));
             LastUsedRound = new System.Collections.ObjectModel.ReadOnlyDictionary<string, int>(new Dictionary<string, int>(last ?? new Dictionary<string, int>()));
         }
+        internal EnemyBehaviorRuntime WithWrath(WrathBossRuntime wrath) => new EnemyBehaviorRuntime(StageId, Intent, SequenceCursor, Uses.ToDictionary(p => p.Key, p => p.Value), LastUsedRound.ToDictionary(p => p.Key, p => p.Value), Targets, wrath);
         internal EnemyBehaviorRuntime MarkEntry(string stage)
         {
             var uses = Uses.ToDictionary(p => p.Key, p => p.Value); uses["@entry/" + stage] = 1;
-            return new EnemyBehaviorRuntime(StageId, Intent, SequenceCursor, uses, LastUsedRound.ToDictionary(p => p.Key, p => p.Value), Targets);
+            return new EnemyBehaviorRuntime(StageId, Intent, SequenceCursor, uses, LastUsedRound.ToDictionary(p => p.Key, p => p.Value), Targets, Wrath);
         }
         internal EnemyBehaviorRuntime Complete(int round)
         {
@@ -187,7 +202,7 @@ namespace PokerEngine
             string key = StageId + "/" + Intent.Id;
             var uses = Uses.ToDictionary(p => p.Key, p => p.Value); var last = LastUsedRound.ToDictionary(p => p.Key, p => p.Value);
             uses[key] = uses.TryGetValue(key, out int n) ? checked(n + 1) : 1; last[key] = round;
-            return new EnemyBehaviorRuntime(StageId, null, checked(SequenceCursor + 1), uses, last);
+            return new EnemyBehaviorRuntime(StageId, null, checked(SequenceCursor + 1), uses, last, wrath: Wrath);
         }
         internal EnemyBehaviorRuntime Plan(TeamBattleState state, BattleEnemySetup enemy)
         {
@@ -220,7 +235,7 @@ namespace PokerEngine
                 }
             }
             return new EnemyBehaviorRuntime(stage?.Id, selected, cursor, Uses.ToDictionary(p => p.Key, p => p.Value), LastUsedRound.ToDictionary(p => p.Key, p => p.Value),
-                selected?.Effects?.Steps.Select(step => BattleTargetResolver.Resolve(state, enemy.Id, step.Target)));
+                selected?.Effects?.Steps.Select(step => BattleTargetResolver.Resolve(state, enemy.Id, step.Target)), Wrath);
         }
     }
 }

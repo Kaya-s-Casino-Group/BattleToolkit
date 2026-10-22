@@ -7,10 +7,11 @@ using PokerEngine;
 internal static partial class PlaytestBridge
 {
     // Display adapters only: amounts, targets and lifetimes below are settled engine facts.
-    private static object Snapshot(Entry entry)
+    private static object Snapshot(Entry entry, CardDuelState state = null)
     {
-        var state = entry.Session.State; var duel = state.Duel;
+        state = state ?? entry.Session.State; var duel = state.Duel;
         var catalog = entry.Session.Engine.Duel.Definition.StatusCatalog;
+        var wrath = WrathBossQuery.Read(duel);
         return D("sessionId", entry.SessionId, "runId", entry.RunId, "revision", Number(state.Revision),
             "seed", entry.Seed, "encounterId", entry.EncounterId, "fingerprint", entry.Fingerprint, "xmlHash", entry.XmlHash,
             "phase", duel.Phase.ToString(), "round", Math.Min(duel.CompletedRounds + 1, entry.Session.Engine.Duel.Definition.RoundLimit),
@@ -57,7 +58,8 @@ internal static partial class PlaytestBridge
             }).ToArray(),
             "enemies", duel.Enemies.Select(enemy => {
                 var unit = Unit(entry, duel, enemy.Id, catalog, "Enemies");
-                var intent = entry.Session.Engine.Duel.PreviewEnemyAction(duel, enemy.Id);
+                // The extra ultimate has a separate warning; it must not inflate the regular intent icon.
+                var intent = entry.Session.Engine.Duel.PreviewEnemyAction(duel, enemy.Id, includeWrathUltimate: false);
                 var planned = enemy.BehaviorState.Intent;
                 var active = intent != null && intent.Accepted && !intent.IsSkipped;
                 var hits = active ? intent.Hits.Where(hit => hit.Effect.Source == enemy.Id &&
@@ -66,6 +68,9 @@ internal static partial class PlaytestBridge
                 unit["intentMeta"] = D("actionId", planned?.Id, "name", planned?.Name ?? (active ? "行动" : "等待"),
                     "stageId", enemy.BehaviorState.StageId, "available", intent?.Accepted ?? false, "skipped", intent?.IsSkipped ?? false,
                     "damage", Number(hits.Sum(hit => hit.SettledDamage)), "hitCount", hits.Length,
+                    "damageDetails", hits.SelectMany(BleedingDetails).ToArray(),
+                    "statusSummary", active ? IntentStatusSummary(intent.RuleEvents, catalog, entry) : "",
+                    "growthSummary", active && enemy.Behavior?.Wrath == null ? AttackGrowthSummary(enemy.Behavior, duel.CompletedRounds) : "",
                     "worldEffects", (active ? planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>() : Array.Empty<EnemyWorldEffect>())
                         .Select(effect => D("kind", effect.IsRevive ? "Revive" : effect.EnemyRef != null ? "Summon" : "AddCards", "count", effect.Count,
                             "reviveRefs",effect.ReviveRefs,"enemyRef", effect.EnemyRef, "displayName", effect.EnemyRef == null ? null : ContentName(entry, "Enemies", effect.EnemyRef), "zone", effect.Zone, "position", effect.EnemyRef == null ? effect.Position.ToString() : null)).ToArray());
@@ -74,6 +79,20 @@ internal static partial class PlaytestBridge
                 {
                     unit["intent"] = new[] { planned?.Name ?? "等待" }.Concat((string[])unit["intent"])
                         .Concat((planned?.WorldEffects ?? Array.Empty<EnemyWorldEffect>()).Select(e => e.IsRevive ? "按顺序复活 " + e.Count + " 个阵亡单位" : e.EnemyRef != null ? "召唤 " + e.EnemyRef + " × " + e.Count : "塞入卡牌 × " + e.Count + " → " + InsertionLabel(e.Zone, e.Position))).ToArray();
+                }
+                if (wrath != null)
+                {
+                    if (enemy.Id == wrath.BodyId)
+                        unit["wrath"] = D("role", "Body", "bodyId", wrath.BodyId.Value, "attack", Number(wrath.Attack),
+                            "charges", wrath.Charges, "warningActive", wrath.WarningActive, "releaseRound", wrath.ReleaseRound,
+                            "cooldownRemaining", wrath.CooldownRemaining, "ultimateBaseDamage", Number(wrath.UltimateBaseDamage),
+                            "pendingUltimateBaseDamage", Number(wrath.PendingUltimateBaseDamage));
+                    else
+                    {
+                        var hand = wrath.Hands.SingleOrDefault(item => item.Id == enemy.Id);
+                        if (hand != null) unit["wrath"] = D("role", hand.Role.ToString(), "bodyId", wrath.BodyId.Value,
+                            "reviveRound", hand.ReviveRound, "reviveRemaining", hand.ReviveRemaining);
+                    }
                 }
                 return unit;
             }).ToArray());
@@ -107,6 +126,7 @@ internal static partial class PlaytestBridge
                     var tags = definition?.Tags ?? StatusTags.None;
                     return D("id", status.Id.Value, "definitionId", status.DefinitionId.Value, "name", StatusName(status.DefinitionId, catalog, entry),
                         "displayName", ContentName(entry, "Statuses", status.DefinitionId.Value),
+                        "description", string.Join("；", (definition?.Behaviors ?? Array.Empty<StatusBehaviorSpec>()).Select(BehaviorName)),
                         "tags", Enum.GetValues(typeof(StatusTags)).Cast<StatusTags>().Where(tag => tag != StatusTags.None && (tags & tag) == tag).Select(tag => tag.ToString()).ToArray(),
                         "behaviorKeys", (definition?.Behaviors ?? Array.Empty<StatusBehaviorSpec>()).Select(behavior => behavior.GetType().Name.Replace("Spec", "")).ToArray(),
                         "isNegative", (tags & StatusTags.Negative) != 0 || (definition?.Behaviors.Any(behavior => behavior is BlockActionWindowSpec) ?? false),
@@ -159,7 +179,7 @@ internal static partial class PlaytestBridge
             "multiplier", score.Multiplier.ToString(CultureInfo.InvariantCulture), "total", Number(score.Total));
     }
 
-    private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog, Entry entry) => result.Steps.Select(step => {
+    private static object[] Steps(BattleSessionResult result, CombatStatusCatalog catalog, Entry entry, bool includePresentation = true) => result.Steps.Select(step => {
         var transition = step.Transition; var lines = new List<string>();
         if (transition.Score != null)
         {
@@ -204,6 +224,7 @@ internal static partial class PlaytestBridge
         if (lines.Count == 0) lines.Add("结算完成");
         return (object)D("action", step.Action.ToString(), "actor", step.Actor.Value, "title", Name(step.Before.Duel, step.Actor) + " · " + ActionName(step.Action),
             "revision", Number(transition.State.Revision), "lines", lines.ToArray(),
+            "wrathPlayback", includePresentation ? WrathPlayback(transition.Timeline, entry) : Array.Empty<object>(),
             "cardCreations", transition.Timeline.Where(fact => fact.Kind == BattleTimelineKind.CardsCreated)
                 .Select(fact => D("actor", fact.Actor.Value, "owner", fact.CardOwner.Value, "zone", fact.ToZone, "position", fact.InsertionPosition?.ToString(),
                     "count", fact.Cards.Count, "unplayableCount", fact.Cards.Count(id => !fact.State.Table.GetCard(id).CanPlay))).ToArray());
@@ -289,7 +310,10 @@ internal static partial class PlaytestBridge
             switch (effect.Kind)
             {
                 case CombatEffectKind.Damage:
-                    yield return target + origin + "伤害 " + Number(fact.SettledDamage) + "（扣血 " + Number(fact.DamageToHealth) + " · 护盾吸收 " + Number(fact.BlockAbsorbed) + "）" + (fact.Died ? " · 击败" : ""); break;
+                    yield return target + origin + "伤害 " + Number(fact.SettledDamage) + "（扣血 " + Number(fact.DamageToHealth) + " · 护盾吸收 " + Number(fact.BlockAbsorbed) + "）" + (fact.Died ? " · 击败" : "");
+                    foreach (var trigger in fact.IncomingModification?.Triggers ?? Array.Empty<DamageTriggerReason>())
+                        yield return target + (trigger.SourceId == "incoming.attack-per-stack" ? "流血增伤：" : "承伤调整：") + trigger.Reason;
+                    break;
                 case CombatEffectKind.Heal: yield return target + origin + "治疗 +" + Number(fact.HealthRestored) + (fact.Overheal > 0 ? "（溢出 " + Number(fact.Overheal) + "）" : ""); break;
                 case CombatEffectKind.GainBlock: yield return target + origin + "护盾 +" + Number(fact.After.Block - fact.Before.Block); break;
                 case CombatEffectKind.ClearBlock: yield return target + "护盾清空"; break;
@@ -298,6 +322,52 @@ internal static partial class PlaytestBridge
                 case CombatEffectKind.Eliminate: yield return target + "消灭"; break;
             }
         }
+    }
+
+    private static IEnumerable<string> BleedingDetails(CombatEvent hit) =>
+        (hit.IncomingModification?.Triggers ?? Array.Empty<DamageTriggerReason>())
+            .Where(trigger => trigger.SourceId == "incoming.attack-per-stack")
+            .Select(trigger => "流血增伤：" + trigger.Reason);
+
+    private static string AttackGrowthSummary(EnemyBehaviorDefinition behavior, int completedRounds)
+    {
+        if (behavior == null || behavior.Attack <= 0) return "";
+        try
+        {
+            return "当前攻击 " + Number(behavior.AttackAtRound(completedRounds)) +
+                (behavior.AttackPerRound > 0 ? " · 每完整回合结束 +" + Number(behavior.AttackPerRound) : "");
+        }
+        // An accepted non-damaging action need not evaluate attack. Invalid growth must not break its snapshot.
+        catch (OverflowException) { return ""; }
+    }
+
+    private static string IntentStatusSummary(IEnumerable<CombatRuleEvent> events, CombatStatusCatalog catalog, Entry entry)
+    {
+        var facts = events.ToArray();
+        bool bleeding(StatusInstance status) => status != null &&
+            (catalog?.Find(status.DefinitionId)?.Behaviors.Any(behavior => behavior is IncomingAttackDamagePerStackSpec) ?? false);
+        // Existing XML names may append their full rules after a middle dot; intent chips stay compact.
+        string label(StatusInstance status) => ContentName(entry, "Statuses", status.DefinitionId.Value).Split('·')[0];
+        var lines = new List<string>();
+        // These are forecast facts, including immunity and actual stack consumption, rather than JS rule estimates.
+        foreach (var applied in facts.Where(item => item is CombatStatusEvent ||
+                item is CombatStatusChangedEvent changed && changed.Reason == CombatStatusChangeReason.Refreshed)
+            .Where(item => item.Effect?.Kind == CombatEffectKind.ApplyStatus && bleeding(item.Effect.Status)))
+        {
+            var status = applied.Effect.Status;
+            bool afterDamage = facts.TakeWhile(item => item != applied).OfType<CombatEvent>().Any(item => item.Effect.Kind == CombatEffectKind.Damage);
+            lines.Add((afterDamage ? "伤害后" : "") + label(status) + " +" + status.Stacks + "层");
+        }
+        foreach (var changed in facts.OfType<CombatStatusChangedEvent>().Where(item =>
+            item.Reason == CombatStatusChangeReason.Consumed && item.Effect == null && bleeding(item.StatusBefore)))
+        {
+            int consumed = changed.StatusBefore.Stacks - (changed.StatusAfter?.Stacks ?? 0);
+            var decay = catalog.Find(changed.StatusBefore.DefinitionId).Behaviors.OfType<StackDecaySpec>().SingleOrDefault();
+            string timing = decay?.Timing == CombatTimingKind.ActionCompleted ? "行动结束后" :
+                decay?.Timing == CombatTimingKind.TurnStarted ? "回合开始" : "阵营阶段结束后";
+            if (consumed > 0 && decay != null) lines.Add(timing + label(changed.StatusBefore) + "减" + consumed + "层");
+        }
+        return string.Join("；", lines.Distinct());
     }
 
     private static string Name(TeamBattleState state, ParticipantId id)
@@ -322,6 +392,17 @@ internal static partial class PlaytestBridge
         if (behavior is LifeStealSpec) return "吸血 " + Ratio(((LifeStealSpec)behavior).Ratio);
         if (behavior is OverhealDamageSpec) return "溢出治疗转伤 " + Ratio(((OverhealDamageSpec)behavior).Ratio);
         if (behavior is HitArmorSpec armor) return "护甲 · 承伤 " + Ratio(armor.Multiplier) + " · 每击消耗 " + armor.ConsumeStacks + " 层";
+        if (behavior is DamageImmunitySpec) return "每段正数伤害消耗1层并免伤（含毒、反伤、道具）；不免疫附加状态或强制击杀";
+        if (behavior is IncomingAttackDamagePerStackSpec incoming) return "每层使敌人对玩家攻击伤害增加" + Ratio(incoming.Rate) +
+            "，护盾前合成一次伤害；不影响道具自伤、周期伤害或反伤";
+        if (behavior is StackDecaySpec decay)
+        {
+            string subject = decay.TimingSubject == PeriodicTimingSubject.Applier ? "施加者" : "持有者";
+            string timing = decay.Timing == CombatTimingKind.ActionCompleted ? "每次实际行动结束" :
+                decay.Timing == CombatTimingKind.TurnStarted ? "回合开始" : "所属阵营阶段结束";
+            return subject + timing + "后减" + decay.Stacks + "层" +
+                (decay.Timing == CombatTimingKind.ActionCompleted ? "（跳过行动不减）" : "");
+        }
         var periodic = behavior as PeriodicDamageSpec;
         if (periodic != null)
         {

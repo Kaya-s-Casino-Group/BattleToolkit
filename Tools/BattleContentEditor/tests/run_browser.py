@@ -9,7 +9,7 @@ def main():
     host = NativeHost()
     try:
         environment = dict(os.environ, EDITOR_URL=host.base)
-        for script in ['browser.cjs', 'playtest-browser.cjs', 'h5-scene-browser.cjs', 'adventure-browser.cjs']:
+        for script in ['browser.cjs', 'playtest-browser.cjs', 'elite-ui-browser.cjs', 'wrath-ui-browser.cjs', 'wrath-interaction-browser.cjs', 'h5-scene-browser.cjs', 'adventure-browser.cjs']:
             subprocess.run(['node', str(HERE / 'tests' / script)], cwd=server.ROOT, env=environment, check=True)
     finally:
         host.close()

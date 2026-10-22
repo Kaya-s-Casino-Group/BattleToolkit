@@ -1,6 +1,12 @@
 using System.Collections.Generic;
 namespace PokerEngine
 {
+    /// <summary>Optional final effect acceptance. Encounter identities remain outside the Combat module.</summary>
+    public interface ICombatEffectPolicy
+    {
+        bool CanReceiveBlock(CombatState current, ParticipantId target);
+    }
+
     /// <summary>Optional encounter mechanics. Use a fresh instance per transaction; the resolver owns all combat writes and reaction limits.</summary>
     public interface ICombatInteractions
     {

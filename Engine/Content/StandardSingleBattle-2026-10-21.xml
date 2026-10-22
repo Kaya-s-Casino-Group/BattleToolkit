@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <BattleContent schemaVersion="1" id="standard-single-battle-2026-10-21" name="标准单对局·2026-10-21·策划2951" version="standard-single-battle.2026-10-21.1">
-  <!--策划 revision 2951：弃牌按张补牌、同花属性计伤、十二件道具和复活。Boss 专属行为及其回合上限配置保持原样；完整局外经济与绝杀暂缓。-->
+  <!--策划 revision 2951：弃牌按张补牌、同花属性计伤、十二件道具和复活。暴怒按2026-10-22确认规则接入，旧暴食保持；完整局外经济与绝杀暂缓。-->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -34,7 +34,7 @@
     <Rules id="single-battle-rules" name="普通战·10回合" scoringRef="single-battle-score" roundLimit="10" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
     <Rules id="elite-battle-rules" name="精英战·20回合" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
     <Rules id="legacy-boss-rules" name="标准单局规则·20回合后狂暴" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Enrage" enrageDamagePerRound="20" clearEnemyBlock="false" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
-    <Rules id="thousand-hands-rules" name="击败千手本体获胜" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Enrage" enrageDamagePerRound="20" clearEnemyBlock="false" blockExpiry="AfterEnemyPhase" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" victoryEnemyRef="wrath" />
+    <Rules id="thousand-hands-rules" name="击败千手本体获胜" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" victoryEnemyRef="wrath" />
   </BattleRules>
   <Statuses>
     <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
@@ -45,6 +45,10 @@
     </Status>
     <Status id="bleed" tags="Negative" name="中毒·按层数伤害并衰减" lifetime="UntilRemoved" reapply="AddStacks">
       <PeriodicDamage timing="TurnStarted" timingSubject="Holder" amount="1" target="Self" stackDecay="1" />
+    </Status>
+    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高50%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+      <IncomingAttackDamagePerStack rate="0.5" />
+      <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
     </Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
       <ReflectBlockedDamage ratio="1" target="EventSource" />
@@ -58,6 +62,7 @@
     <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
       <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
     </Status>
+    <Status id="wrath-shell" name="龟缩·两次免伤" lifetime="UntilRemoved" reapply="KeepLonger"><DamageImmunity /></Status>
   </Statuses>
   <HandRules>
     <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2951" modernScoring="true" flushDamageMultiplier="2" combineCompatibleEffects="true" flushAsAttribute="true" fullHouseComponentDamage="true">
@@ -169,19 +174,18 @@
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="summoner" name="护甲召唤精英" maxHealth="1800">
-      <Behavior consumeFailedSummon="false">
-        <OpeningEffects>
-          <Effect id="armor" kind="ApplyStatus" statusRef="layer-armor" stacks="3" target="Self" />
-        </OpeningEffects>
-        <Stage id="normal" mode="Priority">
-          <Action id="summon" name="召唤护卫" cooldownRounds="1">
-            <When kind="AlliesBelow" value="2" />
-            <Summon enemyRef="rotator" count="2" livingLimit="3" limitScope="Summoner" />
-          </Action>
-          <Action id="strike" name="震击">
+    <Enemy id="summoner" name="流血精英" maxHealth="400">
+      <Behavior attack="8" attackPerRound="10">
+        <Stage id="normal" mode="Sequence">
+          <Action id="cast" name="施法·半攻伤害后叠加3层流血">
             <Effects>
-              <Effect id="hit" kind="Damage" amount="90" target="Opponents" selection="AllLiving" />
+              <Effect id="hit" kind="Damage" amount="0.5" amountKind="EnemyAttackScale" />
+              <Effect id="bleeding" kind="ApplyStatus" statusRef="elite-bleeding" stacks="3" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="普攻">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="1" amountKind="EnemyAttackScale" />
             </Effects>
           </Action>
         </Stage>
@@ -208,131 +212,42 @@
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="wrath" name="暴怒·千手（测试数值）" maxHealth="4000">
-      <Behavior refreshOnHealthThreshold="true" recheckIntentOnAction="true">
-        <Link id="hands-reduction" kind="DamageTaken" targets="Self" countRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" snapshot="true" rate="-.1" />
-        <Link id="hands-attack" kind="DamageDone" targets="Self" countRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" rate=".15" />
-        <Stage id="rage" mode="Priority">
-          <When kind="HealthBelow" value="0.5" />
-          <OnEnter>
-            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" count="5" />
-          </OnEnter>
-          <Action id="all-hands" name="万手归一：五手存活时3倍攻击">
-            <Effects>
-              <Effect id="main" kind="Damage" amount="120" />
-            </Effects>
-            <When kind="UnitsAliveAtLeast" value="5" enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" />
+    <Enemy id="wrath" name="暴怒·千手" maxHealth="1500">
+      <Behavior attack="8" intentPreviewTurns="8">
+        <Wrath bloodHandRefs="wrath-blood-1,wrath-blood-2,wrath-blood-3,wrath-blood-4" bindingHandRef="wrath-binding" baseAttack="8" attackPerHand="5" attackPerCharge="10" chargeActionId="charge" initialWarningRound="5" cooldownRounds="5" regenerationRounds="8" ultimateScale="3" />
+        <Stage id="normal" mode="Sequence">
+          <Action id="strike" name="普攻">
+            <Effects><Effect id="main" kind="Damage" amountKind="EnemyAttackScale" amount="1" /></Effects>
           </Action>
-          <Action id="strike" name="本体攻击">
-            <Effects>
-              <Effect id="main" kind="Damage" amount="40" />
-            </Effects>
+          <Action id="strike-2" name="普攻">
+            <Effects><Effect id="main" kind="Damage" amountKind="EnemyAttackScale" amount="1" /></Effects>
           </Action>
-        </Stage>
-        <Stage id="normal" mode="Priority">
-          <Action id="all-hands" name="万手归一：五手存活时3倍攻击">
-            <Effects>
-              <Effect id="main" kind="Damage" amount="120" />
-            </Effects>
-            <When kind="UnitsAliveAtLeast" value="5" enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood,wrath-regen" />
+          <Action id="guard" name="防御·龟缩免疫两次伤害">
+            <Effects><Effect id="shell" kind="ApplyStatus" statusRef="wrath-shell" stacks="2" target="Self" /></Effects>
           </Action>
-          <Action id="strike" name="本体攻击">
-            <Effects>
-              <Effect id="main" kind="Damage" amount="40" />
-            </Effects>
+          <Action id="charge" name="蓄力·攻击永久增加10">
+            <Effects><Effect id="charge" kind="GainBlock" amount="0" target="Self" /></Effects>
           </Action>
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="wrath-fist" name="铁拳之手" maxHealth="1">
-      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
-        <Link id="other-hands" kind="DamageDone" targets="Self" countRefs="wrath-shield,wrath-chain,wrath-blood,wrath-regen" rate=".2" />
-        <Link id="rage-damage" kind="DamageDone" targets="Self" rate=".5">
-          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
-        </Link>
-        <Stage id="normal" mode="Priority">
-          <Action id="punch" name="铁拳：随其他手臂增伤">
-            <Effects>
-              <Effect id="main" kind="Damage" amount="16" />
-            </Effects>
-          </Action>
-        </Stage>
-      </Behavior>
+    <Enemy id="wrath-blood-1" name="饮血手1" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
-    <Enemy id="wrath-shield" name="护盾之手" maxHealth="1">
-      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
-        <Link id="guard" kind="Intercept" targets="wrath-fist,wrath-chain,wrath-blood,wrath-regen" />
-        <Link id="rage-shield" kind="BlockDone" targets="Self" rate=".5">
-          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
-        </Link>
-        <Stage id="normal" mode="Priority">
-          <Action id="shield" name="护盾：为本体加盾">
-            <Effects>
-              <Effect id="main" kind="GainBlock" amount="20" target="Allies" selection="FirstLiving" />
-            </Effects>
-          </Action>
-        </Stage>
-      </Behavior>
+    <Enemy id="wrath-blood-2" name="饮血手2" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
-    <Enemy id="wrath-chain" name="锁链之手" maxHealth="1">
-      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
-        <Link id="chain-fist" kind="BypassBlock" targets="wrath-fist" />
-        <Link id="weaken-block" kind="BlockReceived" targets="Opponents" rate="-.5" />
-        <Stage id="rage" mode="Priority">
-          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
-          <Action id="junk" name="锁链：随机洗入废牌">
-            <AddCards face="standard:1:2" count="3" zone="deck" position="Shuffle" effects="Ineffective,Unplayable" />
-          </Action>
-        </Stage>
-        <Stage id="normal" mode="Priority">
-          <Action id="junk" name="锁链：随机洗入废牌">
-            <AddCards face="standard:1:2" count="2" zone="deck" position="Shuffle" effects="Ineffective,Unplayable" />
-          </Action>
-        </Stage>
-      </Behavior>
+    <Enemy id="wrath-blood-3" name="饮血手3" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
-    <Enemy id="wrath-blood" name="血祭之手" maxHealth="1">
-      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
-        <Link id="blood-fist" kind="DamageHeal" targets="wrath-fist" healTarget="wrath" rate=".5" />
-        <Link id="blood-heal" kind="HealFromMaxHealth" targets="wrath" rate=".03" />
-        <Link id="rage-heal" kind="HealingDone" targets="Self" rate=".5">
-          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
-        </Link>
-        <Stage id="normal" mode="Priority">
-          <Action id="heal" name="血祭：恢复本体最大生命3%">
-            <Effects>
-              <Effect id="main" kind="Heal" amount="0" target="Allies" selection="FirstLiving" />
-            </Effects>
-          </Action>
-        </Stage>
-      </Behavior>
+    <Enemy id="wrath-blood-4" name="饮血手4" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
-    <Enemy id="wrath-regen" name="再生之手" maxHealth="1">
-      <Behavior recheckIntentOnAction="true" refreshOnHealthThreshold="true">
-        <Stage id="rage" mode="Priority">
-          <When kind="UnitHealthBelow" value="0.5" enemyRefs="wrath" />
-          <Action id="revive" name="再生：按编号复活一只手">
-            <When kind="RoundModulo" value="1" />
-            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood" count="1" />
-          </Action>
-          <Action id="rest" name="再生等待">
-            <Effects>
-              <Effect id="main" kind="GainBlock" amount="0" target="Self" />
-            </Effects>
-          </Action>
-        </Stage>
-        <Stage id="normal" mode="Priority">
-          <Action id="revive" name="再生：按编号复活一只手">
-            <When kind="RoundModulo" value="2" />
-            <Revive enemyRefs="wrath-fist,wrath-shield,wrath-chain,wrath-blood" count="1" />
-          </Action>
-          <Action id="rest" name="再生等待">
-            <Effects>
-              <Effect id="main" kind="GainBlock" amount="0" target="Self" />
-            </Effects>
-          </Action>
-        </Stage>
-      </Behavior>
+    <Enemy id="wrath-binding" name="束缚手" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior><Stage id="normal" mode="Priority">
+        <Action id="binding" name="束缚·眩晕玩家"><When kind="RoundModulo" value="5" /><Effects><Effect id="binding" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="AllLiving" /></Effects></Action>
+        <Action id="wait" name="等待束缚"><Effects><Effect id="wait" kind="GainBlock" amount="0" target="Self" /></Effects></Action>
+      </Stage></Behavior>
     </Enemy>
   </Enemies>
   <Decks>
@@ -414,7 +329,7 @@
       <Player id="player" ref="hero" loadoutRef="baseline" />
       <Enemy id="enemy" ref="rotator" />
     </Encounter>
-    <Encounter id="standard-armored-summoner" name="护甲召唤精英 · 标准单对局" rulesRef="elite-battle-rules">
+    <Encounter id="standard-armored-summoner" name="流血精英 · 标准单对局" rulesRef="elite-battle-rules">
       <Player id="player" ref="hero" loadoutRef="baseline" />
       <Enemy id="enemy" ref="summoner" />
     </Encounter>
@@ -425,11 +340,11 @@
     <Encounter id="standard-wrath-thousand-hands" name="暴怒·千手 · 本体与五手" rulesRef="thousand-hands-rules">
       <Player id="player" ref="hero" loadoutRef="baseline" />
       <Enemy id="enemy" ref="wrath" />
-      <Enemy id="hand-1" ref="wrath-fist" />
-      <Enemy id="hand-2" ref="wrath-shield" />
-      <Enemy id="hand-3" ref="wrath-chain" />
-      <Enemy id="hand-4" ref="wrath-blood" />
-      <Enemy id="hand-5" ref="wrath-regen" />
+      <Enemy id="hand-1" ref="wrath-blood-1" />
+      <Enemy id="hand-2" ref="wrath-blood-2" />
+      <Enemy id="hand-3" ref="wrath-blood-3" />
+      <Enemy id="hand-4" ref="wrath-blood-4" />
+      <Enemy id="hand-5" ref="wrath-binding" />
     </Encounter>
     <Encounter id="standard-item-lab" name="道具测试单局 · 十二件道具" rulesRef="single-battle-rules">
       <Player id="player" ref="hero" initialHealth="600" loadoutRef="item-lab" />

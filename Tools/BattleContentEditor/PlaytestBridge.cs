@@ -115,7 +115,7 @@ internal static partial class PlaytestBridge
                 "action", action.ToString(), "actor", actor.Value, "selected", cards.Select(card => card.Value).ToArray(),
                 "legal", result.Accepted, "error", result.Error.ToString(), "message", result.Accepted ? "可以执行" : Error(result.Error),
                 "hand", hand.Accepted ? Hand(hand.Score, entry.Session.Engine.PreviewHandFacts(state, actor, cards)) : null, "targets", targets, "targetMessage", targetError,
-                "steps", Steps(result, entry.Session.Engine.Duel.Definition.StatusCatalog, entry)));
+                "steps", Steps(result, entry.Session.Engine.Duel.Definition.StatusCatalog, entry, includePresentation: false)));
         }
         if (!result.Accepted) return Fail(result.Error.ToString(), Error(result.Error), entry);
         var next = Copy(entry, candidate); next.Commands++;
@@ -195,7 +195,7 @@ internal static partial class PlaytestBridge
             var groupSpecs = group.ToArray();
             bool required = groupSpecs.Any(spec => spec.Selection == EffectTargetSelection.Requested);
             var candidates = state.Duel.Combat.Combatants.Where(unit => unit.IsAlive && groupSpecs.All(spec => AcceptsTarget(state.Duel, actor, spec, unit.Id)))
-                .Select(unit => D("id", unit.Id.Value, "label", Name(state.Duel, unit.Id))).ToArray();
+                .Select(unit => D("id", unit.Id.Value, "label", DisplayName(entry, state.Duel, unit.Id))).ToArray();
             return D("slot", group.Key, "label", (groupSpecs.All(spec => spec.Group == EffectTargetGroup.Allies) ? "友方目标" : "效果目标") + " · " + group.Key,
                 "required", required, "candidates", candidates);
         }).Where(slot => (bool)slot["required"] || ((object[])slot["candidates"]).Length > 0).ToArray();
