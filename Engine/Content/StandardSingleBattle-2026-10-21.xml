@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="standard-single-battle-2026-10-21" name="标准单对局·2026-10-21·策划2951" version="standard-single-battle.2026-10-21.1">
+<BattleContent schemaVersion="1" id="standard-single-battle-2026-10-21" name="标准单对局·2026-10-21·策划2951" version="standard-single-battle.2026-10-21.2">
   <!--策划 revision 2951：弃牌按张补牌、同花属性计伤、十二件道具和复活。暴怒按2026-10-22确认规则接入，旧暴食保持；完整局外经济与绝杀暂缓。-->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
@@ -46,8 +46,8 @@
     <Status id="bleed" tags="Negative" name="中毒·按层数伤害并衰减" lifetime="UntilRemoved" reapply="AddStacks">
       <PeriodicDamage timing="TurnStarted" timingSubject="Holder" amount="1" target="Self" stackDecay="1" />
     </Status>
-    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高50%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
-      <IncomingAttackDamagePerStack rate="0.5" />
+    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高30%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+      <IncomingAttackDamagePerStack rate="0.3" />
       <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
     </Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
@@ -174,8 +174,8 @@
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="summoner" name="流血精英" maxHealth="400">
-      <Behavior attack="8" attackPerRound="10">
+    <Enemy id="summoner" name="流血精英" maxHealth="500">
+      <Behavior attack="8" attackPerRound="5">
         <Stage id="normal" mode="Sequence">
           <Action id="cast" name="施法·半攻伤害后叠加3层流血">
             <Effects>

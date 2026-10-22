@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<BattleContent schemaVersion="1" id="11_BleedingElite" name="流血精英·独立验证模板" version="elite-bleeding.1">
+<BattleContent schemaVersion="1" id="11_BleedingElite" name="流血精英·独立验证模板" version="elite-bleeding.2">
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·倍率待定" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -42,8 +42,8 @@
     <Status id="bleed" tags="Negative" name="中毒·按层数伤害并衰减" lifetime="UntilRemoved" reapply="AddStacks">
       <PeriodicDamage timing="TurnStarted" timingSubject="Holder" amount="1" target="Self" stackDecay="1" />
     </Status>
-    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高50%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
-      <IncomingAttackDamagePerStack rate="0.5" />
+    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高30%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+      <IncomingAttackDamagePerStack rate="0.3" />
       <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
     </Status>
     <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
@@ -152,8 +152,8 @@
     <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="512" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" />
   </Players>
   <Enemies>
-    <Enemy id="summoner" name="流血精英" maxHealth="400">
-      <Behavior attack="8" attackPerRound="10">
+    <Enemy id="summoner" name="流血精英" maxHealth="500">
+      <Behavior attack="8" attackPerRound="5">
         <Stage id="normal" mode="Sequence">
           <Action id="cast" name="施法·半攻伤害后叠加3层流血">
             <Effects>

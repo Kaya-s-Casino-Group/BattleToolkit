@@ -151,13 +151,13 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       const shield=await page.locator('#playtest-players .unit-shield').boundingBox();
       assert.ok(shield.height<=28&&shield.width<=60,'零护盾图标不应变成空面板：'+JSON.stringify(shield));
     });
-    await test('流血精英显示施法与成长，首轮伤害4且流血减为2层，下一次攻击36',async()=>{
+    await test('流血精英显示施法与成长，首轮伤害4且流血减为2层，下一次攻击20',async()=>{
       const opened=await start(page,ids[1]);
-      assert.equal(opened.battle.enemies[0].health,'400');
-      assert.equal(opened.battle.enemies[0].maxHealth,'400');
+      assert.equal(opened.battle.enemies[0].health,'500');
+      assert.equal(opened.battle.enemies[0].maxHealth,'500');
       assert.equal(opened.battle.enemies[0].intentMeta.actionId,'cast');
       assert.match(await page.locator('#playtest-enemies .intent-status').textContent(),/\+3层.*减1层/);
-      assert.match(await page.locator('#playtest-enemies .intent-growth').textContent(),/8.*\+10/);
+      assert.match(await page.locator('#playtest-enemies .intent-growth').textContent(),/8.*\+5/);
       await page.locator('#playtest-enemies .playtest-intent').hover();
       assert.equal(await page.locator('#playtest-enemies .playtest-intent > .battle-tooltip').isVisible(),true,'target overlay must preserve the existing mouse hover tooltip');
       assert.equal(await page.locator('#playtest-enemies .playtest-status').count(),0);
@@ -170,9 +170,9 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       assert.equal(await page.locator('#playtest-enemies .playtest-unit').count(),1);
       assert.equal(await page.locator('#playtest-players .playtest-status b').textContent(),'2');
       assert.equal(await page.locator('#playtest-players .playtest-status use').getAttribute('href'),'/assets/icons.svg#bleed');
-      assert.match(await page.locator('#playtest-players .playtest-status').getAttribute('title'),/敌人对玩家攻击.*50%.*实际行动结束/);
-      assert.equal(await page.locator('#playtest-enemies .intent-main b').textContent(),'36');
-      assert.match(await page.locator('#playtest-enemies .intent-damage-detail').textContent(),/18→36.*\+18/);
+      assert.match(await page.locator('#playtest-players .playtest-status').getAttribute('title'),/敌人对玩家攻击.*30%.*实际行动结束/);
+      assert.equal(await page.locator('#playtest-enemies .intent-main b').textContent(),'20');
+      assert.match(await page.locator('#playtest-enemies .intent-damage-detail').textContent(),/13→20.*\+7/);
       await idleArtReady(page);
       await page.screenshot({path:'/private/tmp/h5-scene-desktop.png',fullPage:true,animations:'disabled'});
     });
@@ -253,7 +253,7 @@ const ids = ['standard-single-battle', 'standard-armored-summoner', 'standard-gl
       await idleArtReady(mobile.page);
       await mobile.page.screenshot({path:'/private/tmp/h5-scene-mobile.png',fullPage:true,animations:'disabled'});
       const ended=await round(mobile.page);
-      assert.equal(ended.battle.players[0].health,'760');
+      assert.equal(ended.battle.players[0].health,'776');
       await noHorizontalOverflow(mobile.page);
       await start(mobile.page,ids[2]);await round(mobile.page);
       await mobile.page.locator('#playtest-discard-pile').click();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="single-chapter-battle" name="单章七站·战斗配置" version="single-chapter-battle.2026-10-22.4">
-  <!-- 单章七站配套内容；所有牌型初始基础分及每级基础分增长为零。主案 revision 4357：主角基础生命120；小怪两场各250血，轮换动作各为6/8攻击，第二站不再叠加生命倍率；流血精英500血、基础攻击8。暴怒1500血、基础攻击8，四饮血手各治疗10；其余已确认技能保持。同花额外乘2，治疗50%（用户确认），心连心仍加30个百分点。普通战10回合，精英及Boss20回合，超限失败；标准单局和旧三章不变。 -->
+<BattleContent schemaVersion="1" id="single-chapter-battle" name="单章七站·战斗配置" version="single-chapter-battle.2026-10-22.5">
+  <!-- 单章七站配套内容；所有牌型初始基础分及每级基础分增长为零。主案 revision 4357：主角基础生命120；小怪两场各250血，轮换动作各为6/8攻击，第二站不再叠加生命倍率；流血精英500血、基础攻击8，按用户截图改为每轮攻击+5、每层流血增伤30%。暴怒1500血、基础攻击8，四饮血手各治疗10；其余已确认技能保持。同花额外乘2，治疗50%（用户确认），心连心仍加30个百分点。普通战10回合，精英及Boss20回合，超限失败；标准单局和旧三章不变。 -->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·数值初版" version="score.standard-single-battle.1">
       <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
@@ -57,8 +57,8 @@
     <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
       <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
     </Status>
-    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高50%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
-      <IncomingAttackDamagePerStack rate="0.5" />
+    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高30%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+      <IncomingAttackDamagePerStack rate="0.3" />
       <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
     </Status>
     <Status id="wrath-shell" name="龟缩·两次免伤" lifetime="UntilRemoved" reapply="KeepLonger"><DamageImmunity /></Status>
@@ -200,7 +200,7 @@
       </Behavior>
     </Enemy>
     <Enemy id="summoner" name="流血精英" maxHealth="500">
-      <Behavior attack="8" attackPerRound="10">
+      <Behavior attack="8" attackPerRound="5">
         <Stage id="normal" mode="Sequence">
           <Action id="cast" name="施法·半攻伤害后叠加3层流血">
             <Effects>

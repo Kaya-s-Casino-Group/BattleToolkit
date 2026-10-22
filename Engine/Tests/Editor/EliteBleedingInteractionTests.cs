@@ -83,19 +83,19 @@ namespace PokerEngine.Tests
             Assert.IsEmpty(Hits(skipped)); Assert.AreEqual(2, s.State.Duel.CompletedRounds);
             Assert.AreEqual("strike", s.State.Duel.Enemies.Single().BehaviorState.Intent.Id);
             var preview = s.Engine.Duel.PreviewEnemyAction(s.State.Duel, Enemy);
-            Assert.IsTrue(preview.Accepted); Assert.AreEqual(56, preview.Hits.Single().DamageToHealth);
+            Assert.IsTrue(preview.Accepted); Assert.AreEqual(28, preview.Hits.Single().DamageToHealth);
             var cast = Act(s, CardDuelAction.EndTurn);
-            Assert.AreEqual(56, Hits(cast).Single().DamageToHealth); Assert.AreEqual(1, Layers(s.State.Duel.Combat));
+            Assert.AreEqual(28, Hits(cast).Single().DamageToHealth); Assert.AreEqual(1, Layers(s.State.Duel.Combat));
         }
 
         [Test] public void LethalSpellConsumesReviverClearsOldBleedingAndCancelsItsFollowingApplication()
         {
             var s = Session(new[] { "13004" }, xml =>
-                Find(xml, "Encounters", Encounter).Element("Player").SetAttributeValue("initialHealth", 50));
+                Find(xml, "Encounters", Encounter).Element("Player").SetAttributeValue("initialHealth", 34));
             DesignRevision1726Tests.Round(s); DesignRevision1726Tests.Round(s);
             Assert.AreEqual(1, Layers(s.State.Duel.Combat)); Assert.AreEqual(10, s.State.Duel.Combat.Get(Player).Health);
             var result = Act(s, CardDuelAction.EndTurn);
-            Assert.AreEqual(21, Hits(result).Single().SettledDamage); Assert.AreEqual(480, s.State.Duel.Combat.Get(Player).Health);
+            Assert.AreEqual(11, Hits(result).Single().SettledDamage); Assert.AreEqual(480, s.State.Duel.Combat.Get(Player).Health);
             Assert.AreEqual(0, Layers(s.State.Duel.Combat)); Assert.IsEmpty(s.State.Duel.Combat.Statuses);
             Assert.IsFalse(s.State.Duel.Player(Player).Relics.Relics.Any(r => r.DefinitionId == "13004"));
             Assert.AreEqual(1, result.Steps.SelectMany(step => step.Transition.Events).Count(e => e.Effect.Kind == CombatEffectKind.Revive));

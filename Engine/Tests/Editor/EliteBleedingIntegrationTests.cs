@@ -32,12 +32,13 @@ namespace PokerEngine.Tests
         private static int Layers(BattleSession session) => session.State.Duel.Combat.Statuses
             .Where(s => s.DefinitionId.Value == "elite-bleeding" && s.Target.Id == Player.Value).Sum(s => s.Stacks);
 
-        [Test]
-        public void CurrentEliteAlternatesGrowingAttacksAndAccumulatesBleedingAfterDamage()
+        [TestCase("Engine/Content/StandardSingleBattle-2026-10-21.xml")]
+        [TestCase("Engine/Content/Templates/11_BleedingElite.xml")]
+        public void CurrentEliteAlternatesGrowingAttacksAndAccumulatesBleedingAfterDamage(string file)
         {
-            var session = Load();
-            Assert.AreEqual(400, session.State.Duel.Combat.Get(Enemy).MaxHealth);
-            var amounts = new long[] { 4, 36, 21, 95 };
+            var session = Load(file: file);
+            Assert.AreEqual(500, session.State.Duel.Combat.Get(Enemy).MaxHealth);
+            var amounts = new long[] { 4, 20, 11, 43 };
             var layers = new[] { 2, 1, 3, 2 };
             for (int i = 0; i < amounts.Length; i++)
             {
@@ -67,9 +68,9 @@ namespace PokerEngine.Tests
             Assert.AreEqual(0, Layers(session));
             Assert.AreEqual("cast", session.State.Duel.Enemies.Single().BehaviorState.Intent.Id);
             var preview = session.Engine.Duel.PreviewEnemyAction(session.State.Duel, Enemy);
-            Assert.AreEqual(9, preview.Hits.Single().DamageToHealth);
+            Assert.AreEqual(6, preview.Hits.Single().DamageToHealth);
             DesignRevision1726Tests.Round(session);
-            Assert.AreEqual(before - 9, session.State.Duel.Combat.Get(Player).Health);
+            Assert.AreEqual(before - 6, session.State.Duel.Combat.Get(Player).Health);
             Assert.AreEqual(2, Layers(session));
         }
 

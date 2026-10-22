@@ -57,32 +57,32 @@ class EliteProjectionHttpTests(unittest.TestCase):
     def test_cast_status_and_damage_contribution_are_authoritative_and_visible(self):
         enemy = self.battle['enemies'][0]
         self.assertEqual(1, len(self.battle['enemies']))
-        self.assertEqual('400', enemy['health'])
+        self.assertEqual('500', enemy['health'])
         self.assertEqual([], enemy['statuses'])
         self.assertEqual('4', enemy['intentMeta']['damage'])
         self.assertIn('+3层', enemy['intentMeta']['statusSummary'])
         self.assertIn('减1层', enemy['intentMeta']['statusSummary'])
         self.assertEqual('伤害后流血 +3层；行动结束后流血减1层', enemy['intentMeta']['statusSummary'])
         self.assertIn('8', enemy['intentMeta']['growthSummary'])
-        self.assertIn('+10', enemy['intentMeta']['growthSummary'])
+        self.assertIn('+5', enemy['intentMeta']['growthSummary'])
 
         result = self.end_round()
         bleeding = next(status for status in self.battle['players'][0]['statuses']
             if status['definitionId'] == 'elite-bleeding')
         self.assertEqual(2, bleeding['stacks'])
         self.assertIn('敌人对玩家攻击', bleeding['description'])
-        self.assertIn('50%', bleeding['description'])
+        self.assertIn('30%', bleeding['description'])
         self.assertIn('实际行动结束', bleeding['description'])
         intent = self.battle['enemies'][0]['intentMeta']
-        self.assertEqual('36', intent['damage'])
-        self.assertIn('18→36', ' '.join(intent['damageDetails']).replace(' ', ''))
-        self.assertIn('+18', ' '.join(intent['damageDetails']).replace(' ', ''))
+        self.assertEqual('20', intent['damage'])
+        self.assertIn('13→20', ' '.join(intent['damageDetails']).replace(' ', ''))
+        self.assertIn('+7', ' '.join(intent['damageDetails']).replace(' ', ''))
         self.assertNotIn('护甲', ' '.join(self.battle['enemies'][0]['intent']))
         health = int(self.battle['players'][0]['health'])
         result = self.end_round()
-        self.assertEqual(36, health - int(self.battle['players'][0]['health']))
+        self.assertEqual(20, health - int(self.battle['players'][0]['health']))
         lines = [line for step in result['steps'] for line in step['lines']]
-        self.assertTrue(any('流血增伤' in line and '18→36' in line.replace(' ', '') for line in lines), lines)
+        self.assertTrue(any('流血增伤' in line and '13→20' in line.replace(' ', '') for line in lines), lines)
         self.assertEqual(1, self.battle['players'][0]['statuses'][0]['stacks'])
 
     def test_bleeding_audit_uses_its_stage_and_still_settles_as_one_shielded_hit(self):
@@ -95,21 +95,21 @@ class EliteProjectionHttpTests(unittest.TestCase):
         self.end_round()
         battle = self.battle
         result = self.post(op='admin', sessionId=battle['sessionId'], runId=battle['runId'], revision=battle['revision'],
-            patch={'vitals': [{'unit': battle['players'][0]['id'], 'block': '10'}]})
+            patch={'vitals': [{'unit': battle['players'][0]['id'], 'block': '5'}]})
         self.assertTrue(result['success'], result)
         intent = self.battle['enemies'][0]['intentMeta']
-        self.assertEqual('18', intent['damage'])
-        # Base attack 18 first becomes 9 due to another modifier; bleeding adds 9, not overall 18→18.
+        self.assertEqual('9', intent['damage'])
+        # Base attack 13 first becomes 6 due to another modifier; two bleeding layers add 3.
         detail = ' '.join(intent['damageDetails']).replace(' ', '')
-        self.assertIn('9→18', detail)
-        self.assertIn('+9', detail)
+        self.assertIn('6→9', detail)
+        self.assertIn('+3', detail)
         health = int(self.battle['players'][0]['health'])
         result = self.end_round()
-        self.assertEqual(8, health - int(self.battle['players'][0]['health']))
+        self.assertEqual(4, health - int(self.battle['players'][0]['health']))
         self.assertEqual('0', self.battle['players'][0]['block'])
         hits = [line for step in result['steps'] for line in step['lines'] if '伤害 ' in line]
         self.assertEqual(1, len(hits), hits)
-        self.assertIn('扣血 8 · 护盾吸收 10', hits[0])
+        self.assertIn('扣血 4 · 护盾吸收 5', hits[0])
 
     def test_unpreviewable_attack_growth_does_not_break_snapshot(self):
         root = ET.fromstring(self.xml)

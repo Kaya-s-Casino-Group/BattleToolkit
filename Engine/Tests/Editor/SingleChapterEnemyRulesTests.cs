@@ -128,12 +128,10 @@ namespace PokerEngine.Tests
                 Round(run);
                 losses[round] = before - run.Health;
             }
-            Assert.Multiple(() => {
-                Assert.AreEqual(250, health, "Adventure entry must use the shipped enemy health without a second-node scale bonus.");
-                Assert.AreEqual(250, maximum);
-                CollectionAssert.AreEqual(new[] { "jab", "strike", "jab" }, intents);
-                CollectionAssert.AreEqual(new[] { damage, damage, damage }, losses);
-            });
+            Assert.AreEqual(250, health, "Adventure entry must use the shipped enemy health without a second-node scale bonus.");
+            Assert.AreEqual(250, maximum);
+            CollectionAssert.AreEqual(new[] { "jab", "strike", "jab" }, intents);
+            CollectionAssert.AreEqual(new[] { damage, damage, damage }, losses);
         }
 
         [Test]
@@ -143,7 +141,7 @@ namespace PokerEngine.Tests
             var engine = session.Engine.Duel; var state = session.State.Duel;
             Assert.AreEqual(120, state.Combat.Get(Player).Health);
             Assert.AreEqual(120, state.Combat.Get(Player).MaxHealth);
-            foreach (long remaining in new long[] { 116, 80, 59, 0 })
+            foreach (long remaining in new long[] { 116, 96, 85, 42, 20, 0 })
             {
                 state = Round(engine, state);
                 Assert.AreEqual(remaining, state.Combat.Get(Player).Health);
@@ -157,7 +155,7 @@ namespace PokerEngine.Tests
         {
             var session = Battle("single-chapter-gatekeeper", durablePlayer: true); var engine = session.Engine.Duel; var state = session.State.Duel;
             Assert.AreEqual(500, state.Combat.Get(Body).MaxHealth);
-            var damage = new long[] { 4, 36, 21, 95 }; var layers = new[] { 2, 1, 3, 2 };
+            var damage = new long[] { 4, 20, 11, 43 }; var layers = new[] { 2, 1, 3, 2 };
             for (int i = 0; i < damage.Length; i++)
             {
                 Assert.AreEqual(i % 2 == 0 ? "cast" : "strike", state.Enemies.Single().BehaviorState.Intent.Id);
@@ -204,7 +202,7 @@ namespace PokerEngine.Tests
             long initial = run.Health; Round(run);
             Assert.AreEqual(initial - 4, run.Health); Assert.AreEqual(2, Bleeding(run.Battle.State.Duel));
             var restored = Restore(run);
-            foreach (long damage in new long[] { 36, 21, 95 })
+            foreach (long damage in new long[] { 20, 11, 43 })
             {
                 long hp = run.Health; Round(run); Round(restored);
                 Assert.AreEqual(damage, hp - run.Health);
