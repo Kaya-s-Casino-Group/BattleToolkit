@@ -16,12 +16,19 @@ namespace PokerEngine.Tests
             return compiled.Content;
         }
 
-        private static BattleSession Battle(string encounter)
+        private static BattleSession Battle(string encounter, bool durablePlayer = false)
         {
             var built = BattleContentFactory.Create(Content(), new BattleSetupRequest(encounter,
                 "single-chapter-enemy-rules", HmacDeckShuffler.FromSeed(new byte[32])));
             Assert.IsTrue(built.Success, string.Join("\n", built.Diagnostics.Select(d => d.Message)));
             Assert.IsTrue(built.Session.Execute(0, Player, CardDuelAction.Start).Accepted);
+            if (durablePlayer)
+            {
+                // Long rule checks need enough player health to observe the enemy's unchanged behavior.
+                var edited = built.Session.ApplyAdmin(built.Session.State.Revision,
+                    new BattleAdminPatch(new[] { new BattleAdminVitals(Player, 100000, 100000) }));
+                Assert.IsTrue(edited.Accepted, edited.Error.ToString());
+            }
             return built.Session;
         }
 
@@ -47,7 +54,7 @@ namespace PokerEngine.Tests
             Assert.IsTrue(result.Accepted, kind + ": " + result.Error);
         }
 
-        private static BattleAdventureSession AdventureAt(string target)
+        private static BattleAdventureSession AdventureAt(string target, bool durablePlayer = false)
         {
             var content = Content();
             var definition = BattleAdventureXml.Load(ToolkitTestFiles.Read("Engine/Content/SingleChapterAdventure.xml"), content);
@@ -60,6 +67,13 @@ namespace PokerEngine.Tests
                     Assert.IsTrue(run.ApplyAdmin(run.Revision, new BattleAdminPatch(relics: new[] {
                         new BattleAdminRelics(run.PlayerId, Array.Empty<BattleAdminRelic>()) })).Accepted);
                     Command(run, AdventureCommandKind.EnterNode, id);
+                    if (durablePlayer)
+                    {
+                        // Alter only player vitals; keep the shipped enemies, growth, healing and timers.
+                        var edited = run.ApplyAdmin(run.Revision,
+                            new BattleAdminPatch(new[] { new BattleAdminVitals(run.PlayerId, 100000, 100000) }));
+                        Assert.IsTrue(edited.Accepted, edited.Error);
+                    }
                     return run;
                 }
                 Command(run, AdventureCommandKind.EnterNode, id);
@@ -98,11 +112,51 @@ namespace PokerEngine.Tests
             return restored;
         }
 
+        [TestCase("battle-1", 6)]
+        [TestCase("battle-2", 8)]
+        public void RealSevenStationGruntsSpawnAtTwoHundredFiftyHealthAndUseTheirConfiguredAttackEveryRound(string node, long damage)
+        {
+            var run = AdventureAt(node);
+            long health = run.Battle.State.Duel.Combat.Get(Body).Health;
+            long maximum = run.Battle.State.Duel.Combat.Get(Body).MaxHealth;
+            var losses = new long[3];
+            var intents = new string[3];
+            for (int round = 0; round < 3; round++)
+            {
+                intents[round] = run.Battle.State.Duel.Enemies.Single().BehaviorState.Intent.Id;
+                long before = run.Health;
+                Round(run);
+                losses[round] = before - run.Health;
+            }
+            Assert.Multiple(() => {
+                Assert.AreEqual(250, health, "Adventure entry must use the shipped enemy health without a second-node scale bonus.");
+                Assert.AreEqual(250, maximum);
+                CollectionAssert.AreEqual(new[] { "jab", "strike", "jab" }, intents);
+                CollectionAssert.AreEqual(new[] { damage, damage, damage }, losses);
+            });
+        }
+
+        [Test]
+        public void ShippedBaseHeroHasOneHundredTwentyHealthAndDiesFromOrdinaryEnemyDamage()
+        {
+            var session = Battle("single-chapter-gatekeeper");
+            var engine = session.Engine.Duel; var state = session.State.Duel;
+            Assert.AreEqual(120, state.Combat.Get(Player).Health);
+            Assert.AreEqual(120, state.Combat.Get(Player).MaxHealth);
+            foreach (long remaining in new long[] { 116, 80, 59, 0 })
+            {
+                state = Round(engine, state);
+                Assert.AreEqual(remaining, state.Combat.Get(Player).Health);
+            }
+            Assert.AreEqual(ScoredDuelPhase.Lost, state.Phase, "Normal attack damage still ends a zero-health hero's battle.");
+            Assert.IsTrue(state.IsFinished);
+        }
+
         [Test]
         public void ShippedGatekeeperAlternatesGrowingAttacksAndBleedingWithoutSummoning()
         {
-            var session = Battle("single-chapter-gatekeeper"); var engine = session.Engine.Duel; var state = session.State.Duel;
-            Assert.AreEqual(400, state.Combat.Get(Body).MaxHealth);
+            var session = Battle("single-chapter-gatekeeper", durablePlayer: true); var engine = session.Engine.Duel; var state = session.State.Duel;
+            Assert.AreEqual(500, state.Combat.Get(Body).MaxHealth);
             var damage = new long[] { 4, 36, 21, 95 }; var layers = new[] { 2, 1, 3, 2 };
             for (int i = 0; i < damage.Length; i++)
             {
@@ -120,7 +174,7 @@ namespace PokerEngine.Tests
         [Test]
         public void ShippedWrathKeepsItsOrdinarySequenceAndAddsTheSixthAndTwelfthRoundUltimate()
         {
-            var session = Battle("single-chapter-wrath"); var engine = session.Engine.Duel; var state = session.State.Duel;
+            var session = Battle("single-chapter-wrath", durablePlayer: true); var engine = session.Engine.Duel; var state = session.State.Duel;
             Assert.AreEqual(1500, state.Combat.Get(Body).MaxHealth);
             Assert.IsNotNull(WrathBossQuery.Read(state));
             Assert.AreEqual(33, WrathBossQuery.Read(state).Attack);
@@ -144,9 +198,9 @@ namespace PokerEngine.Tests
         [Test]
         public void RealSevenStationEliteBleedingAndGrowthSurviveAdventureRestore()
         {
-            var run = AdventureAt("elite");
+            var run = AdventureAt("elite", durablePlayer: true);
             Assert.AreEqual("single-chapter-gatekeeper", run.CurrentNode.EncounterId);
-            Assert.AreEqual(400, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
+            Assert.AreEqual(500, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
             long initial = run.Health; Round(run);
             Assert.AreEqual(initial - 4, run.Health); Assert.AreEqual(2, Bleeding(run.Battle.State.Duel));
             var restored = Restore(run);
@@ -163,7 +217,7 @@ namespace PokerEngine.Tests
         [Test]
         public void RealSevenStationBossSeverRegenerationAndUltimateSurviveAdventureRestore()
         {
-            var run = AdventureAt("boss");
+            var run = AdventureAt("boss", durablePlayer: true);
             Assert.AreEqual("single-chapter-wrath", run.CurrentNode.EncounterId);
             Assert.AreEqual(1500, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
             Round(run); Round(run);
@@ -187,6 +241,41 @@ namespace PokerEngine.Tests
             Assert.AreEqual(1500, run.Battle.State.Duel.Combat.Get(Body).Health, "Regenerated blood hands immediately heal the grenade damage.");
             long hp = run.Health; Round(run); Round(restored);
             Assert.AreEqual(189, hp - restored.Health); Assert.AreEqual(run.Export(), restored.Export());
+        }
+
+        [Test]
+        public void FourBloodHandsHealFortyThenThirtyUntilOneSeveredHandRegeneratesEightRoundsLater()
+        {
+            var run = AdventureAt("boss", durablePlayer: true);
+            var injured = run.ApplyAdmin(run.Revision, new BattleAdminPatch(new[] { new BattleAdminVitals(Body, health: 1000) }));
+            Assert.IsTrue(injured.Accepted, injured.Error);
+            Round(run);
+            Assert.AreEqual(1040, run.Battle.State.Duel.Combat.Get(Body).Health,
+                "Four blood hands heal 10 each; the living binding hand contributes no healing.");
+
+            var hand = new ParticipantId("hand-1");
+            var severed = run.ApplyAdmin(run.Revision, new BattleAdminPatch(new[] {
+                new BattleAdminVitals(Body, health: 1000), new BattleAdminVitals(hand, health: 0) }));
+            Assert.IsTrue(severed.Accepted, severed.Error);
+            var engine = run.Battle.Engine.Duel; var state = run.Battle.State.Duel;
+            Assert.AreEqual(10, WrathBossQuery.Read(state).Hands.Single(h => h.Id == hand).ReviveRound);
+            // The adventure command automatically passes a stunned player and may settle two enemy phases.
+            // Use the same compiled battle's team engine to inspect every individual enemy phase.
+            for (int round = 2; round <= 9; round++)
+            {
+                long before = state.Combat.Get(Body).Health;
+                state = Round(engine, state);
+                Assert.AreEqual(round, state.CompletedRounds, "Each sample covers exactly one enemy phase.");
+                Assert.AreEqual(30, state.Combat.Get(Body).Health - before, "round " + round);
+                Assert.IsFalse(state.Combat.Get(hand).IsAlive, "round " + round);
+            }
+            Assert.AreEqual(1240, state.Combat.Get(Body).Health);
+            state = Round(engine, state);
+            Assert.AreEqual(10, state.CompletedRounds);
+            Assert.AreEqual(1280, state.Combat.Get(Body).Health,
+                "The severed hand returns at R+8 and immediately restores its missing 10 healing.");
+            Assert.AreEqual(1, state.Combat.Get(hand).Health);
+            Assert.IsTrue(WrathBossQuery.Read(state).Hands.All(h => h.IsAlive && h.ReviveRound == null));
         }
 
         [Test]

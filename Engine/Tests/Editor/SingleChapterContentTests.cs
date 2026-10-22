@@ -81,14 +81,26 @@ namespace PokerEngine.Tests
             var first = s.Content.Enemies["rotator"].Behavior.Stages.Single().Actions;
             var second = s.Content.Enemies["rotator-strong"].Behavior.Stages.Single().Actions;
             Assert.AreEqual(2, first.Count);
-            Assert.AreEqual(1.25m, s.Definition.Node("battle-2").EnemyHealthMultiplier);
+            Assert.AreEqual(1m, s.Definition.Node("battle-2").EnemyHealthMultiplier);
             for (int i = 0; i < first.Count; i++)
             {
                 Assert.AreEqual(first[i].Id, second[i].Id);
                 Assert.AreEqual(CombatEffectKind.Damage, first[i].Effects.Steps.Single().Effect.Kind);
-                Assert.AreEqual((long)decimal.Floor(first[i].Effects.Steps.Single().Effect.Amount * 1.25m),
-                    second[i].Effects.Steps.Single().Effect.Amount);
+                Assert.AreEqual(6, first[i].Effects.Steps.Single().Effect.Amount);
+                Assert.AreEqual(8, second[i].Effects.Steps.Single().Effect.Amount);
             }
+        }
+
+        [Test]
+        public void FoolStartsAdventureAndFirstBattleAtOneHundredFortyFourHealth()
+        {
+            var s = Session();
+            Assert.AreEqual("fool", s.TarotId);
+            Assert.AreEqual(144, s.Health, "The shipped 120 base health receives the Fool's 20% increase.");
+            Assert.AreEqual(144, s.MaxHealth);
+            Command(s, AdventureCommandKind.EnterNode, "battle-1");
+            Assert.AreEqual(144, s.Battle.State.Duel.Combat.Get(s.PlayerId).Health);
+            Assert.AreEqual(144, s.Battle.State.Duel.Combat.Get(s.PlayerId).MaxHealth);
         }
 
         [TestCase("shop-1", "shop-2")]

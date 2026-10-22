@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<BattleContent schemaVersion="1" id="single-chapter-battle" name="单章七站·战斗配置" version="single-chapter-battle.2026-10-22.1">
-  <!-- 单章七站配套内容；牌型、玩家、道具和普通敌人保留 final.xml 数值初版。小怪两种攻击轮换，第二场攻击 ×1.25、节点血量 ×1.25。守门人与暴怒接入2026-10-22确认的新流血精英与1500血五手规则；普通战10回合，精英及Boss20回合，超限失败。本文件独立于标准单局配置。 -->
+<BattleContent schemaVersion="1" id="single-chapter-battle" name="单章七站·战斗配置" version="single-chapter-battle.2026-10-22.4">
+  <!-- 单章七站配套内容；所有牌型初始基础分及每级基础分增长为零。主案 revision 4357：主角基础生命120；小怪两场各250血，轮换动作各为6/8攻击，第二站不再叠加生命倍率；流血精英500血、基础攻击8。暴怒1500血、基础攻击8，四饮血手各治疗10；其余已确认技能保持。同花额外乘2，治疗50%（用户确认），心连心仍加30个百分点。普通战10回合，精英及Boss20回合，超限失败；标准单局和旧三章不变。 -->
   <ScoringProfiles>
     <Scoring id="single-battle-score" name="标准计分·数值初版" version="score.standard-single-battle.1">
-      <Hand category="HighCard" points="5" multiplier="1" pointsPerLevel="5" multiplierPerLevel="1" />
-      <Hand category="OnePair" points="10" multiplier="2" pointsPerLevel="10" multiplierPerLevel="1" />
-      <Hand category="TwoPair" points="15" multiplier="2" pointsPerLevel="15" multiplierPerLevel="1" />
-      <Hand category="ThreeOfAKind" points="25" multiplier="3" pointsPerLevel="20" multiplierPerLevel="1" />
-      <Hand category="Straight" points="25" multiplier="3" pointsPerLevel="20" multiplierPerLevel="1" />
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="Straight" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="1" />
       <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
       <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
-      <Hand category="FourOfAKind" points="50" multiplier="6" pointsPerLevel="30" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="6" pointsPerLevel="0" multiplierPerLevel="2" />
       <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
       <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
       <CardPoints>
@@ -64,7 +64,7 @@
     <Status id="wrath-shell" name="龟缩·两次免伤" lifetime="UntilRemoved" reapply="KeepLonger"><DamageImmunity /></Status>
   </Statuses>
   <HandRules>
-    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2951" modernScoring="true" flushDamageMultiplier="5" combineCompatibleEffects="true" flushAsAttribute="true" fullHouseComponentDamage="true">
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2951" modernScoring="true" flushDamageMultiplier="2" combineCompatibleEffects="true" flushAsAttribute="true" fullHouseComponentDamage="true">
       <Hand category="HighCard">
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
@@ -105,7 +105,7 @@
         <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
       </Hand>
       <FlushBonus>
-        <Effect id="heal" kind="Heal" amountKind="FlushBaseTotalScale" amount="0.8" target="Self" />
+        <Effect id="heal" kind="Heal" amountKind="FlushBaseTotalScale" amount="0.5" target="Self" />
       </FlushBonus>
     </HandRule>
   </HandRules>
@@ -153,36 +153,36 @@
     </Relic>
   </Relics>
   <Players>
-    <Player id="hero" name="玩家" maxHealth="800" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="512" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" />
+    <Player id="hero" name="玩家" maxHealth="120" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="512" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" />
   </Players>
   <Enemies>
-    <Enemy id="rotator" name="小怪" maxHealth="450">
+    <Enemy id="rotator" name="小怪" maxHealth="250">
       <Behavior consumeFailedSummon="false">
         <Stage id="normal" mode="Sequence">
           <Action id="jab" name="试探攻击">
             <Effects>
-              <Effect id="hit" kind="Damage" amount="40" />
+              <Effect id="hit" kind="Damage" amount="6" />
             </Effects>
           </Action>
           <Action id="strike" name="重击">
             <Effects>
-              <Effect id="hit" kind="Damage" amount="65" />
+              <Effect id="hit" kind="Damage" amount="6" />
             </Effects>
           </Action>
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="rotator-strong" name="强化小怪" maxHealth="450">
+    <Enemy id="rotator-strong" name="强化小怪" maxHealth="250">
       <Behavior consumeFailedSummon="false">
         <Stage id="normal" mode="Sequence">
           <Action id="jab" name="试探攻击">
             <Effects>
-              <Effect id="hit" kind="Damage" amount="50" />
+              <Effect id="hit" kind="Damage" amount="8" />
             </Effects>
           </Action>
           <Action id="strike" name="重击">
             <Effects>
-              <Effect id="hit" kind="Damage" amount="81" />
+              <Effect id="hit" kind="Damage" amount="8" />
             </Effects>
           </Action>
         </Stage>
@@ -199,7 +199,7 @@
         </Stage>
       </Behavior>
     </Enemy>
-    <Enemy id="summoner" name="流血精英" maxHealth="400">
+    <Enemy id="summoner" name="流血精英" maxHealth="500">
       <Behavior attack="8" attackPerRound="10">
         <Stage id="normal" mode="Sequence">
           <Action id="cast" name="施法·半攻伤害后叠加3层流血">
@@ -236,16 +236,16 @@
       </Behavior>
     </Enemy>
     <Enemy id="wrath-blood-1" name="饮血手1" maxHealth="1" scaleHealthWithAdventure="false">
-      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复10生命"><Effects><Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
     <Enemy id="wrath-blood-2" name="饮血手2" maxHealth="1" scaleHealthWithAdventure="false">
-      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复10生命"><Effects><Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
     <Enemy id="wrath-blood-3" name="饮血手3" maxHealth="1" scaleHealthWithAdventure="false">
-      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复10生命"><Effects><Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
     <Enemy id="wrath-blood-4" name="饮血手4" maxHealth="1" scaleHealthWithAdventure="false">
-      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复5生命"><Effects><Effect id="heal" kind="Heal" amount="5" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
+      <Behavior><Stage id="normal" mode="Sequence"><Action id="blood-heal" name="饮血·本体回复10生命"><Effects><Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" /></Effects></Action></Stage></Behavior>
     </Enemy>
     <Enemy id="wrath-binding" name="束缚手" maxHealth="1" scaleHealthWithAdventure="false">
       <Behavior><Stage id="normal" mode="Priority">
