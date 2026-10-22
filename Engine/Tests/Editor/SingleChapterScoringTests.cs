@@ -68,7 +68,8 @@ namespace PokerEngine.Tests
 
         // Restoring any active category's base points, or counting its kickers, changes these real hits.
         [TestCase(new[] { 2, 5, 9 }, HandCategory.HighCard, 9)]
-        [TestCase(new[] { 14 }, HandCategory.HighCard, 11)]
+        [TestCase(new[] { 14 }, HandCategory.HighCard, 1)]
+        [TestCase(new[] { 14, 14, 13, 11, 9 }, HandCategory.OnePair, 4)]
         [TestCase(new[] { 2, 2, 13, 11, 9 }, HandCategory.OnePair, 8)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 20)]
         [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 18)]
@@ -84,6 +85,7 @@ namespace PokerEngine.Tests
 
         // Restoring pointsPerLevel must fail, while the existing multiplier growth still contributes.
         [TestCase(new[] { 9 }, HandCategory.HighCard, 27)]
+        [TestCase(new[] { 14 }, HandCategory.HighCard, 3)]
         [TestCase(new[] { 2, 2, 13 }, HandCategory.OnePair, 16)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 40)]
         [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 30)]

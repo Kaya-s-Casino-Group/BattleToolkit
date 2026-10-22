@@ -147,7 +147,8 @@ namespace PokerEngine
         internal BattleRelicLoadout ReplaceItem(string id, BattleRelicSetup replacement)
         {
             var setups = Relics.Select(r => r.InstanceId == id ? replacement : new BattleRelicSetup(Definition(r.InstanceId),
-                new RunRelic(r.InstanceId, r.DefinitionId, r.Level, r.Growth, r.RemainingCharges, r.CooldownRounds, r.Memory), RulesFor(r.InstanceId))).ToArray();
+                new RunRelic(r.InstanceId, r.DefinitionId, r.Level, r.Growth, r.RemainingCharges, r.CooldownRounds,
+                    BattleRelicValidation.CopyMemory(r.Memory, true)), RulesFor(r.InstanceId))).ToArray();
             var next = new BattleRelicLoadout(OwnerId, setups);
             return next.WithRuntime(next.Relics.Select(r => { var old = Relics.FirstOrDefault(o => o.InstanceId == r.InstanceId); return old == null ? r :
                 r.WithRuntime(old.RemainingCharges, old.UsesThisRound, old.CooldownRounds, old.Memory); }));
@@ -156,7 +157,8 @@ namespace PokerEngine
         {
             var items = states.ToArray();
             var next = new BattleRelicLoadout(OwnerId, items.Select(r => new BattleRelicSetup(Definition(r.InstanceId),
-                new RunRelic(r.InstanceId, r.DefinitionId, r.Level, r.Growth, r.RemainingCharges, r.CooldownRounds, r.Memory), RulesFor(r.InstanceId))));
+                new RunRelic(r.InstanceId, r.DefinitionId, r.Level, r.Growth, r.RemainingCharges, r.CooldownRounds,
+                    BattleRelicValidation.CopyMemory(r.Memory, true)), RulesFor(r.InstanceId))));
             return next.WithRuntime(next.Relics.Select((r, i) => r.WithRuntime(items[i].RemainingCharges, items[i].UsesThisRound, items[i].CooldownRounds, items[i].Memory)));
         }
 

@@ -140,7 +140,7 @@ namespace PokerEngine
                     input.Growth ?? old?.Growth ?? 0, input.Charges ?? old?.RemainingCharges ?? content.Definition.Charges,
                     input.UsesThisRound ?? old?.UsesThisRound ?? 0, input.CooldownRounds ?? old?.CooldownRounds ?? 0, old?.Memory);
                 setups.Add(new BattleRelicSetup(content.Definition, new RunRelic(id, input.DefinitionId, runtime.Level, runtime.Growth,
-                    runtime.RemainingCharges, runtime.CooldownRounds, runtime.Memory), content.Rules));
+                    runtime.RemainingCharges, runtime.CooldownRounds, BattleRelicValidation.CopyMemory(runtime.Memory, true)), content.Rules));
                 runtimes.Add(runtime);
             }
             return new BattleRelicLoadout(player.Id, setups).WithRuntime(runtimes);
