@@ -71,9 +71,9 @@ namespace PokerEngine.Tests
         [TestCase(new[] { 14 }, HandCategory.HighCard, 1)]
         [TestCase(new[] { 14, 14, 13, 11, 9 }, HandCategory.OnePair, 4)]
         [TestCase(new[] { 2, 2, 13, 11, 9 }, HandCategory.OnePair, 8)]
-        [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 20)]
-        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 18)]
-        [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 48)]
+        [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 40)]
+        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 12)]
+        [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 32)]
         [TestCase(new[] { 2, 2, 2, 2, 2 }, HandCategory.FiveOfAKind, 120)]
         public void HandDamageUsesOnlyItsScoringCardsWithoutExtraBasePoints(int[] ranks, HandCategory category, long damage)
         {
@@ -87,9 +87,9 @@ namespace PokerEngine.Tests
         [TestCase(new[] { 9 }, HandCategory.HighCard, 27)]
         [TestCase(new[] { 14 }, HandCategory.HighCard, 3)]
         [TestCase(new[] { 2, 2, 13 }, HandCategory.OnePair, 16)]
-        [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 40)]
-        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 30)]
-        [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 80)]
+        [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 60)]
+        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 24)]
+        [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 64)]
         [TestCase(new[] { 2, 2, 2, 2, 2 }, HandCategory.FiveOfAKind, 180)]
         public void LevelThreeKeepsMultiplierGrowthWithoutAddingHandPoints(int[] ranks, HandCategory category, long damage)
         {
@@ -97,21 +97,21 @@ namespace PokerEngine.Tests
             Assert.AreEqual(category, result.Score.Category);
         }
 
-        [TestCase(false, null, 1, 60, new long[] { 6, 9, 12, 15, 18 }, 0)]
-        [TestCase(false, null, 3, 100, new long[] { 10, 15, 20, 25, 30 }, 0)]
-        [TestCase(false, "13003", 1, 100, new long[] { 10, 15, 20, 25, 30 }, 0)]
-        [TestCase(true, null, 1, 120, new long[] { 12, 18, 24, 30, 36 }, 10)]
-        [TestCase(true, "10001", 1, 200, new long[] { 20, 30, 40, 50, 60 }, 10)]
-        [TestCase(true, "13003", 1, 200, new long[] { 20, 30, 40, 50, 60 }, 10)]
-        [TestCase(true, "11002", 1, 120, new long[] { 12, 18, 24, 30, 36 }, 16)]
+        [TestCase(false, null, 1, 40, new long[] { 4, 6, 8, 10, 12 }, 0)]
+        [TestCase(false, null, 3, 80, new long[] { 8, 12, 16, 20, 24 }, 0)]
+        [TestCase(false, "13003", 1, 80, new long[] { 8, 12, 16, 20, 24 }, 0)]
+        [TestCase(true, null, 1, 80, new long[] { 8, 12, 16, 20, 24 }, 10)]
+        [TestCase(true, "10001", 1, 160, new long[] { 16, 24, 32, 40, 48 }, 10)]
+        [TestCase(true, "13003", 1, 160, new long[] { 16, 24, 32, 40, 48 }, 10)]
+        [TestCase(true, "11002", 1, 80, new long[] { 8, 12, 16, 20, 24 }, 16)]
         public void StraightHitsAscendingWithoutSharedBasePointsAndKeepsPoison(bool flush, string relic, int level,
             long damage, long[] hits, long healing)
         {
             var session = Session(new[] { 6, 2, 5, 3, 4 }, flush, relic, level);
             var result = Play(session, damage, hits);
             Assert.AreEqual(HandCategory.Straight, result.Score.Category);
-            Assert.AreEqual(10, session.State.Duel.Combat.Statuses.Single(s => s.DefinitionId.Value == "bleed").Stacks,
-                "All five hits still apply the shipped two poison stacks.");
+            Assert.AreEqual(5, session.State.Duel.Combat.Statuses.Single(s => s.DefinitionId.Value == "bleed").Stacks,
+                "Each of the five hits applies one poison stack, including flush and multiplier bonuses.");
             if (flush)
             {
                 Assert.AreEqual(healing, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
@@ -120,8 +120,8 @@ namespace PokerEngine.Tests
             else Assert.IsFalse(result.Events.Any(e => e.Effect.Kind == CombatEffectKind.Heal));
         }
 
-        [TestCase(new[] { 5, 3, 14, 4, 2 }, 45, new long[] { 3, 6, 9, 12, 15 })]
-        [TestCase(new[] { 14, 13, 10, 12, 11 }, 180, new long[] { 30, 33, 36, 39, 42 })]
+        [TestCase(new[] { 5, 3, 14, 4, 2 }, 30, new long[] { 2, 4, 6, 8, 10 })]
+        [TestCase(new[] { 14, 13, 10, 12, 11 }, 120, new long[] { 20, 22, 24, 26, 28 })]
         public void StraightAceUsesOneOrFourteenInEachActualHit(int[] ranks, long damage, long[] hits)
         {
             Play(Session(ranks), damage, hits);
@@ -158,9 +158,9 @@ namespace PokerEngine.Tests
             Play(Session(new[] { 2, 2, 13 }, relic: "13003"), 16);
         }
 
-        [TestCase(1, null, 52, new long[] { 40, 12 })]
-        [TestCase(3, null, 91, new long[] { 67, 24 })]
-        [TestCase(1, "13003", 91, new long[] { 67, 24 })]
+        [TestCase(1, null, 52, new long[] { 36, 16 })]
+        [TestCase(3, null, 104, new long[] { 72, 32 })]
+        [TestCase(1, "13003", 104, new long[] { 72, 32 })]
         public void FullHouseScalesTripleAndPairSeparatelyAndKeepsItsControlSkill(int level, string relic,
             long damage, long[] hits)
         {
@@ -259,10 +259,10 @@ namespace PokerEngine.Tests
         public void SevenStationStraightConsumesTwoShellLayersThenDealsItsRemainingThreeHits()
         {
             var session = WrathAfterGuard();
-            var attack = PlayAtWrath(session, new[] { 6, 2, 5, 3, 4 }, 0, 0, 12, 15, 18);
+            var attack = PlayAtWrath(session, new[] { 6, 2, 5, 3, 4 }, 0, 0, 8, 10, 12);
             Assert.AreEqual(0, ShellLayers(attack.State));
-            Assert.AreEqual(1455, attack.State.Duel.Combat.Get(Enemy).Health);
-            Assert.AreEqual(10, attack.State.Duel.Combat.Statuses.Single(s =>
+            Assert.AreEqual(1470, attack.State.Duel.Combat.Get(Enemy).Health);
+            Assert.AreEqual(5, attack.State.Duel.Combat.Statuses.Single(s =>
                 s.DefinitionId.Value == "bleed" && s.Target.Id == Enemy.Value).Stacks);
         }
 

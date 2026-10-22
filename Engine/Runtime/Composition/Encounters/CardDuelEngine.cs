@@ -244,17 +244,8 @@ namespace PokerEngine
                 var player = state.Duel.Player(actor); var flow = player.Rules.Flow;
                 var handRule = player.Rules.EffectRule as ConfiguredHandEffectRule;
                 bool compatible = handRule?.CombineCompatibleEffects == true;
-                var pattern = compatible ? PokerHandCompatibility.Classify(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
-                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
-                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value, flushAsAttribute: handRule?.FlushAsAttribute == true, modernScoring: handRule?.ModernScoring == true).Highest :
-                    PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
-                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
-                    BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value);
+                var pattern = ClassifyHand(player, ordered);
                 bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
-                if (!royal && (player.Rules.EffectRule as ConfiguredHandEffectRule)?.FlushUsesRankEffects == true)
-                    pattern = PokerHandClassifier.ClassifyBest(ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)),
-                        BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value,
-                        BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value, true);
                 var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
                 var facts = BuildHandFacts(state, actor, ordered, pattern);
                 var relics = RelicPrograms.Scores(player.Relics, facts);
@@ -273,6 +264,19 @@ namespace PokerEngine
             }
             catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
+        }
+
+        private PokerHandClassification ClassifyHand(BattlePlayerTurn player, CardInstance[] ordered)
+        {
+            var rule = player.Rules.EffectRule as ConfiguredHandEffectRule;
+            int flush = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value;
+            int straight = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value;
+            var cards = ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)).ToArray();
+            var pattern = rule?.CombineCompatibleEffects == true ?
+                PokerHandCompatibility.Classify(cards, flush, straight, flushAsAttribute: rule.FlushAsAttribute, modernScoring: rule.ModernScoring).Highest :
+                PokerHandClassifier.ClassifyBest(cards, flush, straight);
+            bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
+            return !royal && rule?.FlushUsesRankEffects == true ? PokerHandClassifier.ClassifyBest(cards, flush, straight, true) : pattern;
         }
 
         /// <summary>Authoritative card/flush facts shared by play, preview and target discovery.</summary>
