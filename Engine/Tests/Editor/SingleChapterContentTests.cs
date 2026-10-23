@@ -71,6 +71,7 @@ namespace PokerEngine.Tests
             Assert.AreEqual(800, s.Definition.Node("elite").Gold);
             Assert.IsEmpty(s.Definition.Node("boss").NextIds);
             Assert.AreEqual(12, s.Content.Relics.Count);
+            Assert.AreEqual(12, s.Definition.RelicCapacity);
             CollectionAssert.AreEquivalent(Enumerable.Range(0, 6), s.Content.Relics.Values.Select(r => r.Definition.Quality).Distinct());
             foreach (var node in s.Definition.Nodes.Where(n => n.EncounterId != null))
             {
@@ -86,8 +87,8 @@ namespace PokerEngine.Tests
             {
                 Assert.AreEqual(first[i].Id, second[i].Id);
                 Assert.AreEqual(CombatEffectKind.Damage, first[i].Effects.Steps.Single().Effect.Kind);
-                Assert.AreEqual(6, first[i].Effects.Steps.Single().Effect.Amount);
-                Assert.AreEqual(8, second[i].Effects.Steps.Single().Effect.Amount);
+                Assert.AreEqual(15, first[i].Effects.Steps.Single().Effect.Amount);
+                Assert.AreEqual(15, second[i].Effects.Steps.Single().Effect.Amount);
             }
         }
 

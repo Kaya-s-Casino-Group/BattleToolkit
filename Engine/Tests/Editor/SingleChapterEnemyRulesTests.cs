@@ -112,9 +112,9 @@ namespace PokerEngine.Tests
             return restored;
         }
 
-        [TestCase("battle-1", 6)]
-        [TestCase("battle-2", 8)]
-        public void RealSevenStationGruntsSpawnAtTwoHundredFiftyHealthAndUseTheirConfiguredAttackEveryRound(string node, long damage)
+        [TestCase("battle-1", 350, 15)]
+        [TestCase("battle-2", 400, 15)]
+        public void RealSevenStationGruntsUseConfiguredHealthAndAttackEveryRound(string node, long expectedHealth, long damage)
         {
             var run = AdventureAt(node);
             long health = run.Battle.State.Duel.Combat.Get(Body).Health;
@@ -128,8 +128,8 @@ namespace PokerEngine.Tests
                 Round(run);
                 losses[round] = before - run.Health;
             }
-            Assert.AreEqual(250, health, "Adventure entry must use the shipped enemy health without a second-node scale bonus.");
-            Assert.AreEqual(250, maximum);
+            Assert.AreEqual(expectedHealth, health, "Adventure entry must use the shipped enemy health without a second-node scale bonus.");
+            Assert.AreEqual(expectedHealth, maximum);
             CollectionAssert.AreEqual(new[] { "jab", "strike", "jab" }, intents);
             CollectionAssert.AreEqual(new[] { damage, damage, damage }, losses);
         }
@@ -154,7 +154,7 @@ namespace PokerEngine.Tests
         public void ShippedGatekeeperAlternatesGrowingAttacksAndBleedingWithoutSummoning()
         {
             var session = Battle("single-chapter-gatekeeper", durablePlayer: true); var engine = session.Engine.Duel; var state = session.State.Duel;
-            Assert.AreEqual(500, state.Combat.Get(Body).MaxHealth);
+            Assert.AreEqual(800, state.Combat.Get(Body).MaxHealth);
             var damage = new long[] { 4, 20, 11, 43 }; var layers = new[] { 2, 1, 3, 2 };
             for (int i = 0; i < damage.Length; i++)
             {
@@ -173,7 +173,7 @@ namespace PokerEngine.Tests
         public void ShippedWrathKeepsItsOrdinarySequenceAndAddsTheSixthAndTwelfthRoundUltimate()
         {
             var session = Battle("single-chapter-wrath", durablePlayer: true); var engine = session.Engine.Duel; var state = session.State.Duel;
-            Assert.AreEqual(1500, state.Combat.Get(Body).MaxHealth);
+            Assert.AreEqual(2000, state.Combat.Get(Body).MaxHealth);
             Assert.IsNotNull(WrathBossQuery.Read(state));
             Assert.AreEqual(33, WrathBossQuery.Read(state).Attack);
             Assert.IsTrue(state.Enemies.Skip(1).All(h => state.Combat.Get(h.Id).MaxHealth == 1));
@@ -198,7 +198,7 @@ namespace PokerEngine.Tests
         {
             var run = AdventureAt("elite", durablePlayer: true);
             Assert.AreEqual("single-chapter-gatekeeper", run.CurrentNode.EncounterId);
-            Assert.AreEqual(500, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
+            Assert.AreEqual(800, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
             long initial = run.Health; Round(run);
             Assert.AreEqual(initial - 4, run.Health); Assert.AreEqual(2, Bleeding(run.Battle.State.Duel));
             var restored = Restore(run);
@@ -217,7 +217,7 @@ namespace PokerEngine.Tests
         {
             var run = AdventureAt("boss", durablePlayer: true);
             Assert.AreEqual("single-chapter-wrath", run.CurrentNode.EncounterId);
-            Assert.AreEqual(1500, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
+            Assert.AreEqual(2000, run.Battle.State.Duel.Combat.Get(Body).MaxHealth);
             Round(run); Round(run);
             var equipped = run.ApplyAdmin(run.Revision, new BattleAdminPatch(relics: new[] {
                 new BattleAdminRelics(run.PlayerId, new[] { new BattleAdminRelic("11004") }) }));
@@ -236,7 +236,7 @@ namespace PokerEngine.Tests
             Assert.IsTrue(regenerated.Hands.All(h => h.IsAlive && h.ReviveRound == null));
             Assert.AreEqual(1, restored.Battle.State.Duel.Combat.Get(new ParticipantId("hand-5")).Health);
             Assert.IsTrue(regenerated.WarningActive); Assert.AreEqual(12, regenerated.ReleaseRound);
-            Assert.AreEqual(1500, run.Battle.State.Duel.Combat.Get(Body).Health, "Regenerated blood hands immediately heal the grenade damage.");
+            Assert.AreEqual(2000, run.Battle.State.Duel.Combat.Get(Body).Health, "Regenerated blood hands immediately heal the grenade damage.");
             long hp = run.Health; Round(run); Round(restored);
             Assert.AreEqual(189, hp - restored.Health); Assert.AreEqual(run.Export(), restored.Export());
         }

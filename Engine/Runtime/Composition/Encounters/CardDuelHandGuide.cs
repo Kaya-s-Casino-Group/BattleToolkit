@@ -116,10 +116,16 @@ namespace PokerEngine
             yield return new HandGuideResult(state.Revision, found.ToArray(), stopped, nodes);
         }
 
+        /// <summary>Builds scoring/effect evidence and optionally runs the unchanged play pipeline.
+        /// A pure target resolver may bind slots from the prepared effects without a second preview;
+        /// it runs synchronously once and cannot be combined with explicit target arguments.</summary>
         public HandGuidePreview PreviewHandGuide(CardDuelState state, HandGuideCandidate candidate, bool settle = false,
-            IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null)
+            IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null,
+            Func<BattleEffectSequence, BattleTargetBindings> targetBindingResolver = null)
         {
             if (state == null || candidate == null) throw new ArgumentNullException();
+            if (targetBindingResolver != null && (!settle || targets != null || targetBindings != null))
+                throw new ArgumentException("A target resolver requires settlement and cannot be combined with explicit targets.");
             if (!ReferenceEquals(candidate.Snapshot, state)) return new HandGuidePreview(candidate, CardDuelError.StaleRevision);
             // Only private hypothetical relocation: no draw hooks, deck ordering or RNG are involved.
             var missing = new HashSet<CardInstanceId>(candidate.Cards.Where(c => c.IsMissing).Select(c => c.Card.Id));
@@ -134,11 +140,9 @@ namespace PokerEngine
                     state.HasStarted, state.CopyFlows(), state.CopyGold());
             }
             var ids = candidate.Cards.Select(c => c.Card.Id).ToArray();
-            var scored = PreviewHand(snapshot, candidate.Actor, ids);
+            var scored = PreviewHand(snapshot, candidate.Actor, ids, out var hand);
             if (!scored.Accepted) return new HandGuidePreview(candidate, scored.Error);
-            // PreviewHand already classified and scored this exact selection; reuse that evidence.
-            var hand = BuildHandFacts(snapshot, candidate.Actor,
-                snapshot.Zone(CardZoneKinds.Hand, candidate.Actor).Cards.Where(ids.Contains).Select(snapshot.Table.GetCard).ToArray(), scored.Pattern);
+            // PreviewHand supplies the exact facts used for scoring; do not classify the same hand again.
             BattleEffectSequence sequence = null, ruleEffects = null;
             try
             {
@@ -154,6 +158,7 @@ namespace PokerEngine
                     sequence = new RelicHandEffectModifier().Modify(new HandEffectModifierContext(player.Relics, context, sequence)).Output;
                     sequence = RelicPrograms.Sequence(player.Relics, context, sequence);
                 }
+                if (targetBindingResolver != null) targetBindings = targetBindingResolver(sequence);
                 var settlement = settle ? PreviewPlay(snapshot, snapshot.Revision, candidate.Actor, ids, targets, targetBindings) : null;
                 return new HandGuidePreview(candidate, CardDuelError.None, scored.Score, hand, sequence, settle, settlement, ruleEffects);
             }

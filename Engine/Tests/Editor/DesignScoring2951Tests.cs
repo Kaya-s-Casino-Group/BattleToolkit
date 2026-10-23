@@ -71,15 +71,18 @@ namespace PokerEngine.Tests
             Assert.AreEqual(preview.State.Duel.Combat.Get(Enemy).Health, session.State.Duel.Combat.Get(Enemy).Health);
         }
 
-        [Test]
-        public void StraightAttacksAscendingAndHighAceScoresFourteen()
+        [TestCase(1)]
+        [TestCase(14)]
+        public void StraightAceUsesConfiguredPointsIndependentlyOfLowOrHighOrdering(int acePoints)
         {
-            var session = Session(new[] { 14, 13, 10, 12, 11 });
-            CollectionAssert.AreEqual(new long[] { 20, 22, 24, 26, 28 }, Hits(Play(session)));
-            session = Session(new[] { 5, 3, 14, 4, 2 });
-            CollectionAssert.AreEqual(new long[] { 2, 4, 6, 8, 10 }, Hits(Play(session)));
-            session = Session(new[] { 14 });
-            Assert.AreEqual(1, Play(session).Score.Points);
+            Action<XDocument> configure = xml => xml.Root.Element("ScoringProfiles").Descendants("Rank")
+                .Single(e => (string)e.Attribute("rank") == "Ace").SetAttributeValue("points", acePoints);
+            var session = Session(new[] { 14, 13, 10, 12, 11 }, edit: configure);
+            CollectionAssert.AreEqual(new long[] { 20, 22, 24, 26, acePoints * 2 }, Hits(Play(session)));
+            session = Session(new[] { 5, 3, 14, 4, 2 }, edit: configure);
+            CollectionAssert.AreEqual(new long[] { acePoints * 2, 4, 6, 8, 10 }, Hits(Play(session)));
+            session = Session(new[] { 14 }, edit: configure);
+            Assert.AreEqual(acePoints, Play(session).Score.Points);
         }
 
         [Test]
@@ -136,12 +139,18 @@ namespace PokerEngine.Tests
                 .Where(s => s.DefinitionId.Value == "stun").Select(s => s.Target.Id));
         }
 
-        [TestCase(false, 4)]
-        [TestCase(true, 12)]
-        public void LastEnemyDeathStillCompletesFlushHealing(bool royal, long healing)
+        [TestCase(false, 1, 4)]
+        [TestCase(true, 1, 9)]
+        [TestCase(true, 14, 12)]
+        public void LastEnemyDeathStillCompletesFlushHealing(bool royal, int acePoints, long healing)
         {
             var session = Session(royal ? new[] { 10, 11, 12, 13, 14 } : new[] { 2, 3, 4, 5, 6 }, true,
-                edit: xml => xml.Root.Element("Enemies").Elements().First().SetAttributeValue("maxHealth", 1));
+                edit: xml =>
+                {
+                    xml.Root.Element("Enemies").Elements().First().SetAttributeValue("maxHealth", 1);
+                    xml.Root.Element("ScoringProfiles").Descendants("Rank")
+                        .Single(e => (string)e.Attribute("rank") == "Ace").SetAttributeValue("points", acePoints);
+                });
             var result = Play(session);
             Assert.AreEqual(ScoredDuelPhase.Won, session.State.Duel.Phase);
             Assert.AreEqual(700 + healing, session.State.Duel.Combat.Get(Player).Health);

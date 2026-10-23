@@ -63,7 +63,7 @@ namespace PokerEngine
             var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute, modernScoring: modernScoring) : null;
             IsFlush = usesCompatibleEffects ? compatible.Categories.Contains(HandCategory.Flush) :
                 cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
-            RankPattern = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, true).Highest :
+            RankPattern = usesCompatibleEffects ? compatible.RankHighest :
                 PokerHandClassifier.ClassifyBest(faces, minFlushCards, minStraightCards, true);
             CompatibleCategories = compatible?.Categories ?? Array.AsReadOnly(new[] { Pattern.Category }.Concat(
                 UsesFlushOverlay && IsFlush ? new[] { HandCategory.Flush, RankPattern.Category } : Array.Empty<HandCategory>()).Distinct().OrderByDescending(c => c).ToArray());
@@ -75,6 +75,7 @@ namespace PokerEngine
             AttackCards = modernScoring && RankPattern.Category == HandCategory.Straight ?
                 Guard.View(cards.Where(card => RankPattern.ScoringCards.Contains(card.Id)).OrderBy(StraightRank).ToArray()) : SubmittedCards;
         }
+        // Ordering only: A2345 starts with Ace; scoring always uses the card point profile.
         public int StraightRank(AttackCardSnapshot card) => card.Rank == Rank.Ace &&
             RankPattern.Category == HandCategory.Straight && RankPattern.TieBreakRanks[0] != (int)Rank.Ace ? 1 : (int)card.Rank;
         public IReadOnlyList<AttackCardSnapshot> Cards(AttackCardScope scope)

@@ -228,8 +228,12 @@ namespace PokerEngine
 
         /// <summary>Read-only candidate classification/scoring, independent of action costs and target/damage policies.
         /// Authoritative Play uses this same scoring path. State, random and all resources remain unchanged.</summary>
-        public CardDuelTransition PreviewHand(CardDuelState state, ParticipantId actor, IEnumerable<CardInstanceId> selected)
+        public CardDuelTransition PreviewHand(CardDuelState state, ParticipantId actor, IEnumerable<CardInstanceId> selected) =>
+            PreviewHand(state, actor, selected, out _);
+
+        private CardDuelTransition PreviewHand(CardDuelState state, ParticipantId actor, IEnumerable<CardInstanceId> selected, out HandAttackInfo facts)
         {
+            facts = null;
             if (state == null) throw new ArgumentNullException(nameof(state));
             if (!ReferenceEquals(state.Duel.Rules, Duel.Definition)) return new CardDuelTransition(state, CardDuelError.InvalidState);
             if (!state.HasStarted || !state.Duel.Players.Any(player => player.Id == actor)) return new CardDuelTransition(state, CardDuelError.InvalidPhase);
@@ -247,13 +251,11 @@ namespace PokerEngine
                 var pattern = ClassifyHand(player, ordered);
                 bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
                 var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
-                var facts = BuildHandFacts(state, actor, ordered, pattern);
+                facts = BuildHandFacts(state, actor, ordered, pattern);
                 var relics = RelicPrograms.Scores(player.Relics, facts);
                 var kicker = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.AllCardsScore).Value > 0 ? KickerScoring.AllCards : flow.KickerScoring;
                 var score = ScoreEngine.EvaluateBattle(Duel.NextScoreId(state.Duel), Scoring, pattern, level,
-                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects,
-                        basePointsOverride: handRule?.ModernScoring == true && facts.RankPattern.Category == HandCategory.Straight &&
-                            Face(card).Rank == Rank.Ace ? (long?)(facts.RankPattern.TieBreakRanks[0] == (int)Rank.Ace ? 14 : 1) : null)),
+                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects)),
                     flow.UsesTurnFlow || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor,
                     includeLegacyComponents: !compatible || (player.Rules.EffectRule as ConfiguredHandEffectRule)?.FullHouseComponentDamage == true);
                 if (handRule?.ModernScoring == true && facts.IsFlush && !royal)
@@ -283,9 +285,9 @@ namespace PokerEngine
         public HandAttackInfo PreviewHandFacts(CardDuelState state, ParticipantId actor, IEnumerable<CardInstanceId> selected)
         {
             var ids = (selected ?? Array.Empty<CardInstanceId>()).ToArray();
-            var preview = PreviewHand(state, actor, ids);
+            var preview = PreviewHand(state, actor, ids, out var facts);
             if (!preview.Accepted) throw new ArgumentException("Invalid hand selection: " + preview.Error);
-            return BuildHandFacts(state, actor, state.Zone(CardZoneKinds.Hand, actor).Cards.Where(ids.Contains).Select(state.Table.GetCard).ToArray(), preview.Pattern);
+            return facts;
         }
         private HandAttackInfo BuildHandFacts(CardDuelState state, ParticipantId actor, CardInstance[] ordered, PokerHandClassification pattern)
         {
@@ -293,19 +295,21 @@ namespace PokerEngine
             int flushMin = BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinFlushCards).Value;
             var rule = state.Duel.Player(actor).Rules.EffectRule as ConfiguredHandEffectRule;
             int straightMin = BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinStraightCards).Value;
-            bool flush = rule?.CombineCompatibleEffects == true ? PokerHandCompatibility.Classify(
-                ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)), flushMin, straightMin, modernScoring: rule.ModernScoring).Categories.Contains(HandCategory.Flush) :
+            // A compatible flush exists exactly when one suit reaches the threshold. The legacy
+            // royal branch is exclusive; all other compatible hands retain their flush attribute.
+            bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
+            bool flush = rule?.CombineCompatibleEffects == true ?
+                (rule.ModernScoring || !royal) && ordered.GroupBy(card => Face(card).Suit).Any(group => group.Count() >= flushMin) :
                 ordered.Length >= flushMin && ordered.All(c => Face(c).Suit == Face(ordered[0]).Suit);
             if (flush)
             {
                 if (rule?.ModernScoring == true)
                 {
                     var faces = ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)).ToArray();
-                    var rankPattern = PokerHandCompatibility.Classify(faces, flushMin, straightMin, true).Highest;
                     var flushIds = PokerHandCompatibility.FlushCards(faces, flushMin);
+                    // A low Ace changes straight ordering, never the configured scoring/healing points.
                     flushBase = ordered.Where(card => flushIds.Contains(card.Id) && CardEffectRules.CanScore(card.Effects)).Aggregate(0L, (sum, card) =>
-                        checked(sum + (rankPattern.Category == HandCategory.Straight && Face(card).Rank == Rank.Ace ?
-                            rankPattern.TieBreakRanks[0] == (int)Rank.Ace ? 14L : 1L : Scoring.CardPoints.GetBasePoints(new CardFace(Face(card).Rank, Face(card).Suit)))));
+                        checked(sum + Scoring.CardPoints.GetBasePoints(new CardFace(Face(card).Rank, Face(card).Suit))));
                 }
                 else flushBase = ScoreEngine.Evaluate(Duel.NextScoreId(state.Duel) + "/flush-base", Scoring, HandCategory.Flush, 1,
                     ordered.Select(c => new ScoringCard(c.Id.Value, new CardFace(Face(c).Rank, Face(c).Suit), effects: c.Effects)),
@@ -417,11 +421,10 @@ namespace PokerEngine
                 {
                     // Authority determines both submitted membership and score, never accepting a UI-provided numeric score.
                     var ordered = state.Zone(CardZoneKinds.Hand, actor).Cards.Where(ids.Contains).Select(state.Table.GetCard).ToArray();
-                    var candidate = PreviewHand(state, actor, ids);
+                    var candidate = PreviewHand(state, actor, ids, out var hand);
                     if (!candidate.Accepted) return candidate;
                     pattern = candidate.Pattern; score = candidate.Score;
                     timeline.Add(BattleTimelineKind.HandEvaluated, score: score, pattern: pattern);
-                    var hand = BuildHandFacts(state, actor, ordered, pattern);
                     var hit = Duel.ExecuteObserved(duel, duel.Revision, actor, ScoredDuelActionKind.ScoredHand, score, requestedTargets, hand,
                         targetBindings: targetBindings, timeline: timeline, itemRandom: random);
                     if (!hit.Accepted) return new CardDuelTransition(state, hit.Error);

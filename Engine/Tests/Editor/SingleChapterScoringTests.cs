@@ -10,7 +10,7 @@ namespace PokerEngine.Tests
     {
         private static readonly ParticipantId Player = new ParticipantId("player"), Enemy = new ParticipantId("enemy");
 
-        private static BattleSession Session(int[] ranks, bool flush = false, string relic = null, int level = 1)
+        private static BattleSession Session(int[] ranks, bool flush = false, string relic = null, int level = 1, int seed = 0)
         {
             var xml = XDocument.Parse(ToolkitTestFiles.Read("Engine/Content/SingleChapterBattle.xml"));
             if (level != 1)
@@ -22,8 +22,9 @@ namespace PokerEngine.Tests
             }
             var content = BattleContentCompiler.CompileXml(xml.ToString());
             Assert.IsTrue(content.Success, string.Join("\n", content.Diagnostics.Select(d => d.Message)));
+            var seedBytes = new byte[32]; seedBytes[0] = (byte)seed;
             var built = BattleContentFactory.Create(content.Content, new BattleSetupRequest("single-chapter-battle-1",
-                "single-chapter-scoring", HmacDeckShuffler.FromSeed(new byte[32])));
+                "single-chapter-scoring", HmacDeckShuffler.FromSeed(seedBytes)));
             Assert.IsTrue(built.Success, string.Join("\n", built.Diagnostics.Select(d => d.Message)));
             var session = built.Session;
             var start = session.Execute(0, Player, CardDuelAction.Start);
@@ -41,6 +42,35 @@ namespace PokerEngine.Tests
 
         private static CombatEvent[] Hits(CardDuelTransition transition) => transition.Events.Where(e =>
             e.Effect.Kind == CombatEffectKind.Damage && e.Effect.Source == Player && e.Effect.Target == Enemy).ToArray();
+
+        [TestCase(new[] { 9 }, false, 1)]
+        [TestCase(new[] { 14, 14, 13 }, false, 1)]
+        [TestCase(new[] { 2, 3, 4, 5, 6 }, false, 1)]
+        [TestCase(new[] { 14, 2, 3, 4, 5 }, true, 1)]
+        [TestCase(new[] { 3, 3, 3, 2, 2 }, false, 1)]
+        [TestCase(new[] { 2, 5, 7, 9, 13 }, true, 1)]
+        [TestCase(new[] { 9 }, false, 10)]
+        public void RouletteFirstActiveTurnMultipliesActualDamageExactlyTenTimes(int[] ranks, bool flush, int level)
+        {
+            for (int seed = 0; seed < 100; seed++)
+            {
+                var session = Session(ranks, flush, "15001", level, seed);
+                var before = session.State;
+                var cards = before.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
+                var baseline = session.Engine.PreviewPlay(before, before.Revision, Player, cards, new[] { Enemy });
+                Assert.IsTrue(baseline.Accepted, baseline.Error.ToString());
+                var item = before.Duel.Player(Player).Relics.Relics.Single();
+                var used = session.UseItem(before.Revision, Player, item.InstanceId);
+                Assert.IsTrue(used.Accepted, used.Error.ToString());
+                if (BattleItemRuntime.HandMultiplier(session.State.Duel.Player(Player).Relics) != 10) continue;
+                Assert.AreEqual(before.Duel.CompletedRounds, session.State.Duel.CompletedRounds);
+                Assert.AreEqual(1, session.State.Duel.Player(Player).Relics.Relics.Single().Memory.CounterValue(BattleItemRuntime.RouletteTurnKey));
+                var expectedHits = Hits(baseline).Select(e => e.SettledDamage * 10).ToArray();
+                Play(session, expectedHits.Sum(), expectedHits);
+                return;
+            }
+            Assert.Fail("No deterministic seed survived roulette activation.");
+        }
 
         private static CardDuelTransition Play(BattleSession session, long expectedDamage, params long[] expectedHits)
         {
@@ -68,8 +98,9 @@ namespace PokerEngine.Tests
 
         // Restoring any active category's base points, or counting its kickers, changes these real hits.
         [TestCase(new[] { 2, 5, 9 }, HandCategory.HighCard, 9)]
-        [TestCase(new[] { 14 }, HandCategory.HighCard, 1)]
-        [TestCase(new[] { 14, 14, 13, 11, 9 }, HandCategory.OnePair, 4)]
+        [TestCase(new[] { 14 }, HandCategory.HighCard, 14)]
+        [TestCase(new[] { 13, 14, 12, 9, 2 }, HandCategory.HighCard, 14)]
+        [TestCase(new[] { 14, 14, 13, 11, 9 }, HandCategory.OnePair, 56)]
         [TestCase(new[] { 2, 2, 13, 11, 9 }, HandCategory.OnePair, 8)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 40)]
         [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 12)]
@@ -83,9 +114,23 @@ namespace PokerEngine.Tests
             Assert.IsFalse(result.Events.Any(e => e.Effect.Kind == CombatEffectKind.Heal));
         }
 
+        [Test]
+        public void HighCardSelectsAceAheadOfKingAndQueen()
+        {
+            var session = Session(new[] { 13, 14, 12, 9, 2 });
+            var cards = session.State.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
+            var preview = session.Engine.PreviewHand(session.State, Player, cards);
+            Assert.IsTrue(preview.Accepted);
+            Assert.AreEqual(HandCategory.HighCard, preview.Pattern.Category);
+            Assert.AreEqual(14, preview.Pattern.TieBreakRanks[0]);
+            Assert.AreEqual(1, preview.Pattern.ScoringCards.Count);
+            Assert.AreEqual(Rank.Ace, session.Engine.Face(session.State.Table.GetCard(preview.Pattern.ScoringCards.Single())).Rank);
+            Assert.AreEqual(14, preview.Score.Points);
+        }
+
         // Restoring pointsPerLevel must fail, while the existing multiplier growth still contributes.
         [TestCase(new[] { 9 }, HandCategory.HighCard, 27)]
-        [TestCase(new[] { 14 }, HandCategory.HighCard, 3)]
+        [TestCase(new[] { 14 }, HandCategory.HighCard, 42)]
         [TestCase(new[] { 2, 2, 13 }, HandCategory.OnePair, 16)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 60)]
         [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 24)]
@@ -120,11 +165,36 @@ namespace PokerEngine.Tests
             else Assert.IsFalse(result.Events.Any(e => e.Effect.Kind == CombatEffectKind.Heal));
         }
 
-        [TestCase(new[] { 5, 3, 14, 4, 2 }, 30, new long[] { 2, 4, 6, 8, 10 })]
+        [TestCase(new[] { 5, 3, 14, 4, 2 }, 56, new long[] { 28, 4, 6, 8, 10 })]
         [TestCase(new[] { 14, 13, 10, 12, 11 }, 120, new long[] { 20, 22, 24, 26, 28 })]
-        public void StraightAceUsesOneOrFourteenInEachActualHit(int[] ranks, long damage, long[] hits)
+        public void StraightAceAlwaysScoresFourteenButRetainsLowOrHighOrdering(int[] ranks, long damage, long[] hits)
         {
-            Play(Session(ranks), damage, hits);
+            var session = Session(ranks);
+            var cards = session.State.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
+            var preview = session.Engine.PreviewHand(session.State, Player, cards);
+            Assert.AreEqual(HandCategory.Straight, preview.Pattern.Category);
+            Assert.AreEqual(ranks.Contains(2) ? 5 : 14, preview.Pattern.TieBreakRanks[0]);
+            Assert.AreEqual(damage, preview.Score.Total);
+            Play(session, damage, hits);
+        }
+
+        [TestCase(null, 14)]
+        [TestCase("11002", 22)]
+        public void WheelFlushUsesFourteenForAceDamageAndIndependentHealing(string relic, long healing)
+        {
+            var session = Session(new[] { 5, 3, 14, 4, 2 }, true, relic);
+            var result = Play(session, 112, 56, 8, 12, 16, 20);
+            Assert.AreEqual(HandCategory.Straight, result.Score.Category);
+            Assert.AreEqual(healing, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
+            Assert.AreEqual(600 + healing, session.State.Duel.Combat.Get(Player).Health);
+        }
+
+        [Test]
+        public void NonStraightFlushAceAlsoScoresFourteen()
+        {
+            var result = Play(Session(new[] { 14, 2, 5, 7, 9 }, true), 28);
+            Assert.AreEqual(HandCategory.HighCard, result.Score.Category);
+            Assert.AreEqual(18, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
         }
 
         [TestCase(null, 1, 26)]
@@ -261,7 +331,7 @@ namespace PokerEngine.Tests
             var session = WrathAfterGuard();
             var attack = PlayAtWrath(session, new[] { 6, 2, 5, 3, 4 }, 0, 0, 8, 10, 12);
             Assert.AreEqual(0, ShellLayers(attack.State));
-            Assert.AreEqual(1470, attack.State.Duel.Combat.Get(Enemy).Health);
+            Assert.AreEqual(1970, attack.State.Duel.Combat.Get(Enemy).Health);
             Assert.AreEqual(5, attack.State.Duel.Combat.Statuses.Single(s =>
                 s.DefinitionId.Value == "bleed" && s.Target.Id == Enemy.Value).Stacks);
         }

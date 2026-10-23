@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<AdventureContent schemaVersion="1" id="single-chapter-adventure" name="单章七站·体验版" version="single-chapter-adventure.2026-10-22.2" startNode="battle-1" startingEncounter="single-chapter-battle-1" defaultTarot="fool" startingGold="30" relicCapacity="5" minimumDeckSize="5" maximumDeckSize="128" economyVersion="2" shopOfferCount="4" restHeal="20">
+<AdventureContent schemaVersion="1" id="single-chapter-adventure" name="单章七站·体验版" version="single-chapter-adventure.2026-10-23.1" startNode="battle-1" startingEncounter="single-chapter-battle-1" defaultTarot="fool" startingGold="30" relicCapacity="12" minimumDeckSize="5" maximumDeckSize="128" economyVersion="2" shopOfferCount="4" restHeal="20">
   <!-- 主案 revision 3869 / 3873：固定七站，两处补给各自选择商店或休息，共四条七站路线。
        宝箱进场立即发放100金币与一件本局未获得道具；商店/休息的随机结果进入规则存档。
        品质由 SingleChapterBattle.xml 的 Relic quality 显式定义，与实例升级等级 Level 无关。
        初始金币沿用30、遗物容量沿用5；用户确认基础休息回血20，均可配置。
-       主案 revision 4357 数值同步：第二站小怪由战斗配置直接定义250血，不再叠加旧1.25倍率。
+       第二站小怪由战斗配置直接定义400血，不再叠加旧1.25倍率。
        推币机不在本期范围。 -->
   <Tarots>
     <Tarot id="fool" name="愚者" description="最大生命提高20%，开局生命同步提高。" initiallyUnlocked="true" maxHealthMultiplier="1.2" />
