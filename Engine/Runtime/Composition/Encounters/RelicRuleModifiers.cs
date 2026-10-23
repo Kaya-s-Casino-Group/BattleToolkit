@@ -186,6 +186,12 @@ namespace PokerEngine
     /// <summary>Pure passive rules. No payment, card movement, random draws, runtime charges or action history writes.</summary>
     public sealed class BattleRuleResolver : IBattleRuleResolver
     {
+        /// <summary>Read a rule after passive relic modifiers, using the same bounds as battle execution.</summary>
+        public BattleRuleValueResolution ResolveValue(BattleLimitQuery query, BattleRuleValueKey key)
+        {
+            if (query == null) throw new ArgumentNullException(nameof(query));
+            return Value(query.Rules, query.Loadout, key);
+        }
         public BattleLimitResolution ResolveLimits(BattleLimitQuery query)
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
