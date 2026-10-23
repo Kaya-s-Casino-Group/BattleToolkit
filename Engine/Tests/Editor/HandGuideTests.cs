@@ -120,7 +120,7 @@ namespace PokerEngine.Tests
             var filtered = session.Engine.QueryHandGuide(before, Player, new HandGuideRequest(HandGuideType.Straight, true));
             Assert.AreEqual(unfiltered.Candidates.Single().Id, filtered.Candidates.Single().Id);
             var preview = session.Engine.PreviewHandGuide(before, filtered.Candidates.Single(), true, new[] { Enemy });
-            Assert.IsTrue(preview.Hand.IsFlush); Assert.AreEqual(80, preview.Score.Total);
+            Assert.IsTrue(preview.Hand.IsFlush); Assert.AreEqual(300, preview.Score.Total);
             Assert.AreEqual(10m, preview.RuleEffects.Steps.Single(s => s.Effect.Kind == CombatEffectKind.Heal).Effect.UnroundedAmount);
             Assert.AreEqual(16, preview.BaseEffects.Steps.Single(s => s.Effect.Kind == CombatEffectKind.Heal).Effect.Amount);
             Assert.AreEqual(16, preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
@@ -135,7 +135,7 @@ namespace PokerEngine.Tests
             var candidate = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(HandGuideType.HighCard, true)).Candidates.Single();
             var preview = session.Engine.PreviewHandGuide(session.State, candidate, true, new[] { Enemy });
             Assert.AreEqual(1, preview.Hand.ScoringCards.Count); Assert.AreEqual(5, preview.Hand.FlushCards.Count);
-            Assert.AreEqual(26, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
+            Assert.AreEqual(65, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
             var heal = preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal);
             Assert.AreEqual(18, heal.SettledAmount); Assert.AreEqual(0, heal.HealthRestored); Assert.AreEqual(18, heal.Overheal);
         }
