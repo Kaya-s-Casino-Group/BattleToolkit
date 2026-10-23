@@ -129,13 +129,13 @@ namespace PokerEngine.Tests
             CollectionAssert.AreEqual(actual.Steps[0].Transition.Events.Select(e => e.SettledAmount), preview.Events.Select(e => e.SettledAmount));
             Assert.AreEqual(CardDuelError.StaleRevision, session.Engine.PreviewHandGuide(session.State, filtered.Candidates.Single()).Error);
         }
-        [Test] public void PureFlushKeepsScoringCardsSeparateFromHealingCardsEvenAtFullHealth()
+        [Test] public void PureFlushScoresAllCardsWhileHealingStillReportsOverhealAtFullHealth()
         {
             var session = Setup(new[] { Card(2), Card(5), Card(7), Card(9), Card(13) }, fullHealth: true);
             var candidate = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(HandGuideType.HighCard, true)).Candidates.Single();
             var preview = session.Engine.PreviewHandGuide(session.State, candidate, true, new[] { Enemy });
-            Assert.AreEqual(1, preview.Hand.ScoringCards.Count); Assert.AreEqual(5, preview.Hand.FlushCards.Count);
-            Assert.AreEqual(65, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
+            Assert.AreEqual(5, preview.Hand.ScoringCards.Count); Assert.AreEqual(5, preview.Hand.FlushCards.Count);
+            Assert.AreEqual(180, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
             var heal = preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal);
             Assert.AreEqual(18, heal.SettledAmount); Assert.AreEqual(0, heal.HealthRestored); Assert.AreEqual(18, heal.Overheal);
         }

@@ -163,6 +163,8 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 ## revision 2951 字段与道具接口
 
 - `HandRule.modernScoring=true` 启用最新计分口径，`flushDamageMultiplier=2` 控制同花额外乘数；旧模板缺省关闭。
+- 七站配置另启用 `HandRule.wheelAceScoresOne=true`：仅完整 A2345 的计分与同花治疗把 A 视为 1，其他手牌仍查当前牌点配置。`pureFlushScoresAllCards=true` 使纯同花以完整同花子集计分，保留高牌效果分支；重复牌形成的对子、三条、葫芦和同花顺仍按各自计分子集/分段规则执行。两项缺省为 false，且仅允许现代计分模式。
+- `HandRule.fullHouseTripleBaseMultiplier` 可单独指定葫芦三条分项的基础倍率，必须启用 `fullHouseComponentDamage`。它不改变三条分项的等级增长或道具处理。七站设为 2，原分项效果系数 2，因此葫芦仍为有效 ×4，独立三条调整为 ×3。未填写时继续使用三条计分配置。
 - `Player.discardRefill=DiscardedCount` 限定主动弃牌最多补回实际弃牌数且不超过手牌上限；`forceDiscardOverflow=false` 允许超限留手牌。弃牌张数上限独立于手牌上限，最大 512。
 - `Rules.blockExpiry=PlayerTurnStart` 在玩家新回合开始清盾；`clearEnemyBlockAtTurnStart=true` 在敌人自身窗口开始清盾。
 - 每个 `Relic` 最多一个 `Item`，主动模式 `activation=None|Effects|ReplaceHeld|Roulette`。Effects 内支持固定 Heal / Damage / GainBlock，可选择 Self / Opponents / Allies 及自动选敌。只设置本模式适用的能力，原有 Numeric / Program 等机制可同时组合。

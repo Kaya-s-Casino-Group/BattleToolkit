@@ -99,11 +99,13 @@ namespace PokerEngine.Tests
         // Restoring any active category's base points, or counting its kickers, changes these real hits.
         [TestCase(new[] { 2, 5, 9 }, HandCategory.HighCard, 9)]
         [TestCase(new[] { 14 }, HandCategory.HighCard, 14)]
+        [TestCase(new[] { 14, 2, 3, 4 }, HandCategory.HighCard, 14)]
         [TestCase(new[] { 13, 14, 12, 9, 2 }, HandCategory.HighCard, 14)]
         [TestCase(new[] { 14, 14, 13, 11, 9 }, HandCategory.OnePair, 56)]
         [TestCase(new[] { 2, 2, 13, 11, 9 }, HandCategory.OnePair, 8)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 30)]
-        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 12)]
+        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 18)]
+        [TestCase(new[] { 14, 14, 14, 2, 3 }, HandCategory.ThreeOfAKind, 126)]
         [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 32)]
         [TestCase(new[] { 2, 2, 2, 2, 2 }, HandCategory.FiveOfAKind, 120)]
         public void HandDamageUsesOnlyItsScoringCardsWithoutExtraBasePoints(int[] ranks, HandCategory category, long damage)
@@ -133,7 +135,7 @@ namespace PokerEngine.Tests
         [TestCase(new[] { 14 }, HandCategory.HighCard, 42)]
         [TestCase(new[] { 2, 2, 13 }, HandCategory.OnePair, 16)]
         [TestCase(new[] { 2, 2, 3, 3, 13 }, HandCategory.TwoPair, 50)]
-        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 24)]
+        [TestCase(new[] { 2, 2, 2, 13, 12 }, HandCategory.ThreeOfAKind, 30)]
         [TestCase(new[] { 2, 2, 2, 2, 13 }, HandCategory.FourOfAKind, 64)]
         [TestCase(new[] { 2, 2, 2, 2, 2 }, HandCategory.FiveOfAKind, 180)]
         public void LevelThreeKeepsMultiplierGrowthWithoutAddingHandPoints(int[] ranks, HandCategory category, long damage)
@@ -165,9 +167,9 @@ namespace PokerEngine.Tests
             else Assert.IsFalse(result.Events.Any(e => e.Effect.Kind == CombatEffectKind.Heal));
         }
 
-        [TestCase(new[] { 5, 3, 14, 4, 2 }, 84, new long[] { 42, 6, 9, 12, 15 })]
+        [TestCase(new[] { 5, 3, 14, 4, 2 }, 45, new long[] { 3, 6, 9, 12, 15 })]
         [TestCase(new[] { 14, 13, 10, 12, 11 }, 180, new long[] { 30, 33, 36, 39, 42 })]
-        public void StraightAceAlwaysScoresFourteenButRetainsLowOrHighOrdering(int[] ranks, long damage, long[] hits)
+        public void StraightAceScoresOneOnlyInTheWheelAndKeepsAscendingSegments(int[] ranks, long damage, long[] hits)
         {
             var session = Session(ranks);
             var cards = session.State.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
@@ -178,12 +180,12 @@ namespace PokerEngine.Tests
             Play(session, damage, hits);
         }
 
-        [TestCase(null, 14)]
-        [TestCase("11002", 22)]
-        public void WheelFlushUsesFourteenForAceDamageAndIndependentHealing(string relic, long healing)
+        [TestCase(null, 7)]
+        [TestCase("11002", 12)]
+        public void WheelFlushUsesOneForAceAndKeepsIndependentHealing(string relic, long healing)
         {
             var session = Session(new[] { 5, 3, 14, 4, 2 }, true, relic);
-            var result = Play(session, 420, 210, 30, 45, 60, 75);
+            var result = Play(session, 225, 15, 30, 45, 60, 75);
             Assert.AreEqual(HandCategory.Straight, result.Score.Category);
             Assert.AreEqual(healing, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
             Assert.AreEqual(600 + healing, session.State.Duel.Combat.Get(Player).Health);
@@ -192,16 +194,16 @@ namespace PokerEngine.Tests
         [Test]
         public void NonStraightFlushAceAlsoScoresFourteen()
         {
-            var result = Play(Session(new[] { 14, 2, 5, 7, 9 }, true), 70);
+            var result = Play(Session(new[] { 14, 2, 5, 7, 9 }, true), 185);
             Assert.AreEqual(HandCategory.HighCard, result.Score.Category);
             Assert.AreEqual(18, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
         }
 
-        [TestCase(null, 1, 65)]
-        [TestCase("10001", 1, 195)]
-        [TestCase("13003", 1, 195)]
-        [TestCase(null, 3, 195)]
-        public void FlushUsesHighestCardTimesFiveAndHealsFiftyPercentIndependently(string relic, int level, long damage)
+        [TestCase(null, 1, 180)]
+        [TestCase("10001", 1, 540)]
+        [TestCase("13003", 1, 540)]
+        [TestCase(null, 3, 540)]
+        public void FlushScoresAllFiveCardsTimesFiveAndHealsFiftyPercentIndependently(string relic, int level, long damage)
         {
             var session = Session(new[] { 2, 5, 7, 9, 13 }, true, relic, level);
             var result = Play(session, damage);
@@ -211,12 +213,34 @@ namespace PokerEngine.Tests
             Assert.AreEqual(618, session.State.Duel.Combat.Get(Player).Health);
         }
 
+        [Test]
+        public void PureFlushExcludesIneffectiveCardFromBothDamageAndHealing()
+        {
+            var session = Session(new[] { 2, 5, 7, 9, 13 }, true);
+            var cards = session.State.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
+            Assert.IsTrue(session.ApplyAdmin(session.State.Revision, new BattleAdminPatch(zones: new[] {
+                new BattleAdminZone(Player, CardZoneKinds.Hand, cards.Select(id => new BattleAdminCard(instanceId: id.Value,
+                    effects: session.Engine.Face(session.State.Table.GetCard(id)).Rank == Rank.Two ? CardEffects.Ineffective : CardEffects.None)))
+            })).Accepted);
+            // The ineffective 2 still makes a five-card flush but contributes neither damage nor healing.
+            var result = Play(session, 170);
+            Assert.AreEqual(17, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
+        }
+
+        [TestCase(new[] { 2, 2, 7, 9, 13 }, 40)]
+        [TestCase(new[] { 2, 2, 2, 9, 13 }, 90)]
+        public void DuplicateCardFlushKeepsItsRankScoringSubset(int[] ranks, long damage)
+        {
+            // Shop-added duplicates keep their pair/triple mechanisms; the pure-flush change does not count kickers here.
+            Play(Session(ranks, true), damage);
+        }
+
         [TestCase(null, 17)]
         [TestCase("11002", 28)]
         public void FlushHealingCombinesHeartBonusBeforeRounding(string relic, long healing)
         {
             var session = Session(new[] { 13, 9, 7, 4, 2 }, true, relic);
-            var result = Play(session, 65);
+            var result = Play(session, 175);
             Assert.AreEqual(healing, result.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored,
                 "35 points heal 17 at 50%, or 28 at 50% + 30%; round only after combining the rates.");
             Assert.AreEqual(600 + healing, session.State.Duel.Combat.Get(Player).Health);

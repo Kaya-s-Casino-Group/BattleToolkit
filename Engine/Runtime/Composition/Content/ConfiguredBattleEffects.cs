@@ -128,7 +128,10 @@ namespace PokerEngine
         public bool FullHouseComponentDamage { get; }
         public bool ModernScoring { get; }
         public decimal FlushDamageMultiplier { get; }
-        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false, bool modernScoring = false, decimal flushDamageMultiplier = 2m)
+        public bool WheelAceScoresOne { get; }
+        public bool PureFlushScoresAllCards { get; }
+        public decimal? FullHouseTripleBaseMultiplier { get; }
+        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false, bool modernScoring = false, decimal flushDamageMultiplier = 2m, bool wheelAceScoresOne = false, bool pureFlushScoresAllCards = false, decimal? fullHouseTripleBaseMultiplier = null)
         {
             Version = Guard.Text(version, nameof(version));
             var copy = Guard.Copy(entries, nameof(entries));
@@ -151,6 +154,11 @@ namespace PokerEngine
             ModernScoring = modernScoring;
             if (flushDamageMultiplier < 0) throw new ArgumentOutOfRangeException(nameof(flushDamageMultiplier));
             FlushDamageMultiplier = flushDamageMultiplier;
+            WheelAceScoresOne = wheelAceScoresOne; PureFlushScoresAllCards = pureFlushScoresAllCards;
+            if (fullHouseTripleBaseMultiplier < 0) throw new ArgumentOutOfRangeException(nameof(fullHouseTripleBaseMultiplier));
+            FullHouseTripleBaseMultiplier = fullHouseTripleBaseMultiplier;
+            if ((wheelAceScoresOne || pureFlushScoresAllCards) && !modernScoring || fullHouseTripleBaseMultiplier.HasValue && !fullHouseComponentDamage)
+                throw new ArgumentException("Contextual scoring requires modern scoring; component multipliers require full-house component damage.");
             if (modernScoring && (!combineCompatibleEffects || !flushAsAttribute))
                 throw new ArgumentException("Modern scoring requires compatible mechanisms and flush as an attribute.");
             if ((flushAsAttribute || fullHouseComponentDamage) && !combineCompatibleEffects) throw new ArgumentException("Composition options require compatible effects.");

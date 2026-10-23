@@ -28,7 +28,7 @@ namespace PokerEngine
         }
 
         public static PokerHandCompatibility Classify(IEnumerable<EffectiveCard> source, int minFlushCards = 5,
-            int minStraightCards = 5, bool ignoreFlush = false, bool flushAsAttribute = false, bool modernScoring = false)
+            int minStraightCards = 5, bool ignoreFlush = false, bool flushAsAttribute = false, bool modernScoring = false, bool pureFlushScoresAllCards = false)
         {
             var cards = source?.ToArray() ?? throw new ArgumentNullException(nameof(source));
             if (cards.Length < 1 || cards.Length > 512 || cards.Any(c => c == null) || cards.Select(c => c.Id).Distinct().Count() != cards.Length ||
@@ -59,7 +59,10 @@ namespace PokerEngine
             }
             if (categories.Count > 1 && !(modernScoring && best.Category == HandCategory.HighCard))
                 categories.Remove(HandCategory.HighCard);
-            var highest = new PokerHandClassification(best.Category, best.TieBreakRanks, cards.Select(c => c.Id), best.ScoringCards);
+            // A pure flush keeps the rank-effect branch but scores its complete same-suit subset.
+            var scoringCards = pureFlushScoresAllCards && modernScoring && best.Category == HandCategory.HighCard && categories.Contains(HandCategory.Flush)
+                ? FlushCards(cards, minFlushCards) : best.ScoringCards;
+            var highest = new PokerHandClassification(best.Category, best.TieBreakRanks, cards.Select(c => c.Id), scoringCards);
             // The existing royal-flush elimination branch remains exclusive.
             if (highest.Category == HandCategory.StraightFlush && highest.TieBreakRanks[0] == (int)Rank.Ace)
                 categories = modernScoring ? new HashSet<HandCategory> { HandCategory.StraightFlush, HandCategory.Flush } :
