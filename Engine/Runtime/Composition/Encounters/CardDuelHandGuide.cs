@@ -238,7 +238,9 @@ namespace PokerEngine
                 case HandGuideType.OnePair: return largest <= 2 && duplicates <= 1 && (size != 2 || distinct == 1);
                 case HandGuideType.TwoPair: return largest <= 2 && (size != 4 || distinct <= 2);
                 case HandGuideType.ThreeOfAKind: return largest <= 3 && duplicates <= 1 && (size != 3 || distinct == 1);
-                case HandGuideType.FourOfAKind: return largest <= 4 && duplicates <= 1 && (size != 4 || distinct == 1);
+                case HandGuideType.FourOfAKind:
+                    // Even filling every remaining slot with the largest rank group must reach four.
+                    return largest <= 4 && duplicates <= 1 && (size != 4 || distinct == 1) && largest + (size - cards.Count) >= 4;
                 case HandGuideType.FiveOfAKind: return distinct == 1;
                 case HandGuideType.FullHouse: return distinct <= 2 && largest <= 3 && triples <= 1;
                 case HandGuideType.RoyalFlush:
