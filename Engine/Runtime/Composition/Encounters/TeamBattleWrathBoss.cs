@@ -6,6 +6,21 @@ namespace PokerEngine
 {
     public sealed partial class TeamBattleEngine
     {
+        private static TeamBattleState BeginWrathOpeningWarning(TeamBattleState state)
+        {
+            if (state.CompletedRounds != 0) return state;
+            var enemies = state.Enemies.Select(body => {
+                var definition = body.Behavior?.Wrath;
+                if (definition == null || definition.InitialWarningRound != 1 || !state.Combat.Get(body.Id).IsAlive) return body;
+                var runtime = WrathBossRules.Runtime(body);
+                if (runtime.ReleaseRound.HasValue || runtime.ReadyRound > 1 ||
+                    WrathBossRules.Hands(state.Enemies, definition).Count(hand => state.Combat.Get(hand.Id).IsAlive) != 5) return body;
+                // Only the opening warning moves to phase entry; later warnings still follow the body's ordinary action.
+                return body.WithBehaviorState(body.BehaviorState.WithWrath(runtime.With(releaseRound: 2)));
+            }).ToArray();
+            return new TeamBattleState(state.Rules, state.Combat, state.Players, enemies, state.Phase,
+                state.PendingEnemies, state.Revision, state.CompletedRounds, state.Scores, state.Actions);
+        }
         private TeamBattleState RegenerateWrathHands(TeamBattleState state, List<CombatRuleEvent> facts, BattleTimelineRecorder timeline)
         {
             var draft = state;

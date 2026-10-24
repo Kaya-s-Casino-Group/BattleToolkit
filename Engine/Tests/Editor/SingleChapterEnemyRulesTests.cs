@@ -9,16 +9,17 @@ namespace PokerEngine.Tests
     {
         private static readonly ParticipantId Player = new ParticipantId("player"), Body = new ParticipantId("enemy");
 
-        private static CompiledBattleContent Content()
+        private static CompiledBattleContent Content(Func<string, string> transform = null)
         {
-            var compiled = BattleContentCompiler.CompileXml(ToolkitTestFiles.Read("Engine/Content/SingleChapterBattle.xml"));
+            string xml = ToolkitTestFiles.Read("Engine/Content/SingleChapterBattle.xml");
+            var compiled = BattleContentCompiler.CompileXml(transform == null ? xml : transform(xml));
             Assert.IsTrue(compiled.Success, string.Join("\n", compiled.Diagnostics.Select(d => d.Message)));
             return compiled.Content;
         }
 
-        private static BattleSession Battle(string encounter, bool durablePlayer = false)
+        private static BattleSession Battle(string encounter, bool durablePlayer = false, Func<string, string> transform = null)
         {
-            var built = BattleContentFactory.Create(Content(), new BattleSetupRequest(encounter,
+            var built = BattleContentFactory.Create(Content(transform), new BattleSetupRequest(encounter,
                 "single-chapter-enemy-rules", HmacDeckShuffler.FromSeed(new byte[32])));
             Assert.IsTrue(built.Success, string.Join("\n", built.Diagnostics.Select(d => d.Message)));
             Assert.IsTrue(built.Session.Execute(0, Player, CardDuelAction.Start).Accepted);
@@ -194,18 +195,22 @@ namespace PokerEngine.Tests
         }
 
         [Test]
-        public void ShippedWrathWarnsOnlyAfterItsFirstOrdinaryAction()
+        public void ShippedWrathWarnsAtFirstEnemyPhaseEntryBeforeAnyHandOrBodyAction()
         {
             var session = Battle("single-chapter-wrath", durablePlayer: true);
             var engine = session.Engine.Duel; var state = session.State.Duel;
+            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive, "The first player phase must remain unarmed.");
+            long initialHealth = state.Combat.Get(Player).Health;
             var end = engine.Execute(state, state.Revision, Player, ScoredDuelActionKind.EndPlayerTurn);
             Assert.IsTrue(end.Accepted); state = end.State;
-            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive, "Enemy phase entry must not start the warning.");
+            Assert.IsTrue(WrathBossQuery.Read(state).WarningActive, "The warning starts as the enemy phase begins.");
+            Assert.AreEqual(2, WrathBossQuery.Read(state).ReleaseRound);
+            Assert.AreEqual(initialHealth, state.Combat.Get(Player).Health, "No enemy has acted at the warning boundary.");
             while (state.NextEnemy != Body)
             {
                 var hand = engine.Execute(state, state.Revision, state.NextEnemy, ScoredDuelActionKind.EnemyAction);
                 Assert.IsTrue(hand.Accepted); state = hand.State;
-                Assert.IsFalse(WrathBossQuery.Read(state).WarningActive, "Hands act before the body checks its warning.");
+                Assert.IsTrue(WrathBossQuery.Read(state).WarningActive, "Every hand action preserves the opening warning.");
             }
             long hp = state.Combat.Get(Player).Health;
             var body = engine.Execute(state, state.Revision, Body, ScoredDuelActionKind.EnemyAction);
@@ -213,6 +218,83 @@ namespace PokerEngine.Tests
             Assert.AreEqual(33, hp - state.Combat.Get(Player).Health);
             Assert.IsTrue(WrathBossQuery.Read(state).WarningActive);
             Assert.AreEqual(2, WrathBossQuery.Read(state).ReleaseRound);
+        }
+
+        [Test]
+        public void FirstPlayerPhaseSeveringPreventsTheOpeningWarningAndRoundTwoUltimate()
+        {
+            var session = Battle("single-chapter-wrath", durablePlayer: true);
+            var engine = session.Engine.Duel; var state = session.State.Duel;
+            state = ApplyWrathScenarioEffects(engine, state,
+                new CombatEffect(CombatEffectKind.Damage, Player, new ParticipantId("hand-1"), 1));
+            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+            var end = engine.Execute(state, state.Revision, Player, ScoredDuelActionKind.EndPlayerTurn);
+            Assert.IsTrue(end.Accepted); state = end.State;
+            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+            while (state.Phase == ScoredDuelPhase.AwaitingEnemyAction)
+            {
+                var action = engine.Execute(state, state.Revision, state.NextEnemy, ScoredDuelActionKind.EnemyAction);
+                Assert.IsTrue(action.Accepted); state = action.State;
+                Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+            }
+            long health = state.Combat.Get(Player).Health;
+            state = Round(engine, state);
+            Assert.AreEqual(28, health - state.Combat.Get(Player).Health);
+            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+        }
+
+        [Test]
+        public void FirstEnemyPhaseEntryTimelineArmsWarningAndEntryRelicDamageCancelsItImmediately()
+        {
+            var session = Battle("single-chapter-wrath", durablePlayer: true, transform: xml => xml.Replace("</Relics>",
+                "<Relic id='entry-hand-breaker' name='Entry hand breaker' version='test.1'>" +
+                "<BoundaryTrigger id='sever' timing='PhaseStarted' phase='OpponentTeam'>" +
+                "<Effect kind='Damage' amount='1' target='Opponents' selection='AllLiving'/>" +
+                "</BoundaryTrigger></Relic></Relics>"));
+            Assert.IsTrue(session.ApplyAdmin(session.State.Revision, new BattleAdminPatch(relics: new[] {
+                new BattleAdminRelics(Player, new[] { new BattleAdminRelic("entry-hand-breaker") }) })).Accepted);
+            if (session.State.FlowFor(Player).Window == BattlePlayerWindow.Draw)
+                Assert.IsTrue(session.Execute(session.State.Revision, Player, CardDuelAction.SkipDraw).Accepted);
+            var result = session.Execute(session.State.Revision, Player, CardDuelAction.EndTurn);
+            Assert.IsTrue(result.Accepted, result.Error.ToString());
+            if (session.State.FlowFor(Player).Window == BattlePlayerWindow.Ending)
+                result = session.Execute(session.State.Revision, Player, CardDuelAction.FinishTurn);
+            Assert.IsTrue(result.Accepted, result.Error.ToString());
+            var entry = result.Timeline.Single(e => e.Kind == BattleTimelineKind.PhaseStarted && e.PhaseKey == "enemy");
+            Assert.IsTrue(WrathBossQuery.Read(entry.State.Duel).WarningActive,
+                "Playback must see the warning on enemy phase entry, before boundary effects or attacks.");
+            Assert.AreEqual(2, WrathBossQuery.Read(entry.State.Duel).ReleaseRound);
+            var firstDeath = result.Timeline.First(e => e.RuleEvent is CombatEvent hit &&
+                hit.After.Id == new ParticipantId("hand-1") && !hit.After.IsAlive);
+            Assert.IsFalse(WrathBossQuery.Read(firstDeath.State.Duel).WarningActive);
+            Assert.IsTrue(result.Timeline.Where(e => e.Sequence >= firstDeath.Sequence)
+                .All(e => !WrathBossQuery.Read(e.State.Duel).WarningActive),
+                "Later phase/action snapshots must not restore a canceled opening warning.");
+            Assert.IsFalse(WrathBossQuery.Read(session.State.Duel).WarningActive);
+            Assert.AreEqual(4, WrathBossQuery.Read(session.State.Duel).CooldownRemaining);
+            Assert.AreEqual(100000 - 8, session.State.Duel.Combat.Get(Player).Health);
+        }
+
+        [Test]
+        public void SeventhRoundWarningStillWaitsForTheOrdinaryBodyAction()
+        {
+            var session = Battle("single-chapter-wrath", durablePlayer: true);
+            var engine = session.Engine.Duel; var state = session.State.Duel;
+            for (int round = 1; round <= 6; round++) state = Round(engine, state);
+            var end = engine.Execute(state, state.Revision, Player, state.IsActionBlocked(Player)
+                ? ScoredDuelActionKind.SkipPlayerTurn : ScoredDuelActionKind.EndPlayerTurn);
+            Assert.IsTrue(end.Accepted); state = end.State;
+            Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+            while (state.NextEnemy != Body)
+            {
+                var hand = engine.Execute(state, state.Revision, state.NextEnemy, ScoredDuelActionKind.EnemyAction);
+                Assert.IsTrue(hand.Accepted); state = hand.State;
+                Assert.IsFalse(WrathBossQuery.Read(state).WarningActive);
+            }
+            var body = engine.Execute(state, state.Revision, Body, ScoredDuelActionKind.EnemyAction);
+            Assert.IsTrue(body.Accepted); state = body.State;
+            Assert.IsTrue(WrathBossQuery.Read(state).WarningActive);
+            Assert.AreEqual(8, WrathBossQuery.Read(state).ReleaseRound);
         }
 
         private static TeamBattleState ApplyWrathScenarioEffects(TeamBattleEngine engine, TeamBattleState state, params CombatEffect[] effects)
@@ -297,6 +379,23 @@ namespace PokerEngine.Tests
             }
             Assert.AreEqual(4, run.Battle.State.Duel.CompletedRounds);
             Assert.AreEqual(2, Bleeding(restored.Battle.State.Duel));
+        }
+
+        [Test]
+        public void RealSevenStationFirstWarningSurvivesRestoreAndReleasesOnlyAfterRoundTwoOrdinaryAttack()
+        {
+            var run = AdventureAt("boss", durablePlayer: true);
+            Assert.IsFalse(WrathBossQuery.Read(run.Battle.State.Duel).WarningActive);
+            Round(run);
+            Assert.AreEqual(99967, run.Health);
+            Assert.IsTrue(WrathBossQuery.Read(run.Battle.State.Duel).WarningActive);
+            Assert.AreEqual(2, WrathBossQuery.Read(run.Battle.State.Duel).ReleaseRound);
+            var restored = Restore(run);
+            Assert.IsTrue(WrathBossQuery.Read(restored.Battle.State.Duel).WarningActive);
+            Round(run); Round(restored);
+            Assert.AreEqual(99835, restored.Health, "Round two applies the 33-point ordinary strike then the 99-point ultimate.");
+            Assert.IsFalse(WrathBossQuery.Read(restored.Battle.State.Duel).WarningActive);
+            Assert.AreEqual(run.Export(), restored.Export());
         }
 
         [Test]
