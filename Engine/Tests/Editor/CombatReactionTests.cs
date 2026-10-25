@@ -11,9 +11,9 @@ namespace PokerEngine.Tests
         private static readonly ParticipantId Player = new ParticipantId("player"), Enemy = new ParticipantId("enemy"), Ally = new ParticipantId("ally");
         private static readonly StatusDefinitionId Control = new StatusDefinitionId("control"), Immunity = new StatusDefinitionId("immunity");
 
-        private static CombatState Create(int playerHealth = 10, int enemyHealth = 20, IEnumerable<StatusInstance> statuses = null) =>
+        private static CombatState Create(int playerHealth = 10, int enemyHealth = 20, IEnumerable<StatusInstance> statuses = null, long playerBlock = 0) =>
             new CombatState("reactions", 0, new[] {
-                new CombatantState(Player, "hero", "players", 20, playerHealth),
+                new CombatantState(Player, "hero", "players", 20, playerHealth, playerBlock),
                 new CombatantState(Enemy, "enemy", "enemies", 20, enemyHealth),
                 new CombatantState(Ally, "ally", "players", 20, 20)
             }, statuses);
@@ -298,9 +298,9 @@ namespace PokerEngine.Tests
                 if (insideProvider) throw new OverflowException("Reaction arithmetic overflow.");
                 return new[] { new CombatReaction(Block(long.MaxValue), "overflow", Player) };
             });
-            var state = Create();
+            var state = Create(playerBlock: 1);
             Rejected(state, CombatEngine.Resolve(state, 0, new[] { Damage() }, reactionProvider: provider), CombatError.Overflow);
-            Assert.AreEqual(20, state.Get(Enemy).Health); Assert.AreEqual(0, state.Get(Player).Block);
+            Assert.AreEqual(20, state.Get(Enemy).Health); Assert.AreEqual(1, state.Get(Player).Block);
         }
 
         [Test] public void FailedReactionStatusApplicationRollsBackThePrimaryAndEarlierReaction()

@@ -426,7 +426,8 @@ export function createPlaytest(root,{getConfig,getToken,onLoadStandard,external=
   if(drawing)refs['draw-count'].value=String(Math.max(player.drawLimit?1:0,Math.min(Number(refs['draw-count'].value)||5,player.drawLimit)));
   refs['end-turn'].disabled=unavailable||forced;refs['end-turn'].textContent=player?.window==='Ending'?'确认结束回合':'结束出牌阶段';
   refs['flow-hint'].textContent=forced?'必须恰好弃掉 '+player.requiredDiscards+' 张；本次默认不获得护盾。':drawing?
-   (player.drawWarning?'手牌较多：可以少摸，或先选择手牌弃置，再摸牌。':'先选择摸牌张数，或跳过。'):'剩余行动 '+(player?.actionsRemaining??'—');
+   (player.drawWarning?'手牌较多：可以少摸，或先选择手牌弃置，再摸牌。':'先选择摸牌张数，或跳过。'):
+   player?.energyOnly?'剩余能量 '+player.energy+' · 出牌不补牌，弃牌等量补回':'剩余行动 '+(player?.actionsRemaining??'—');
   renderPreview();
  }
  function renderPreview(){

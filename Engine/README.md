@@ -6,6 +6,20 @@
 
 XML 战斗内容入口：`BattleContentXmlReader` / `BattleContentCompiler` / `BattleContentFactory` 提供带来源位置的安全读取、统一校验、不可变类型化目录与独立 BattleSession 组装。配置边界、字段、触发与示例见 [XML 内容说明](Runtime/Composition/Content/README.md)。现有 SO 与场景入口继续保留，只有调用新入口时才消费 XML。 外部中文配置工具见 [战斗内容工坊](../Tools/BattleContentEditor/README.md)：支持十类表单、引用选择、XML 导入导出、草稿和现有 C# 编译器校验，不依赖 Unity 启动。
 
+## 单场战斗内部职责（Tyche 第一轮）
+
+单场公开入口仍为 `BattleSession`、`CardDuelEngine` 和 `BattleSessionPlayback`；以下组件均为 Composition 内部实现，不增加程序集或改变 XML/存档契约：
+
+- `BattleActionQuery`：只读操作窗口、预算、选牌成员及数量限制。Playback 额外叠加播放门禁；预览和正式执行共用牌数/选牌检查。按钮可用不等于完整规则合法，自定义目标、效果等仍由预览和执行验证。
+- `BattleHandEvaluator`：共享判型、计分及 `HandAttackInfo` 构建，供出牌、预览和手牌指南使用；不推进会话或随机状态。
+- `BattleAutoAdvancePolicy`：只选择下一个自动步骤。`BattleSession` 仍负责执行、失败时保留原状态、汇总 Steps/Timeline 并最终提交。
+
+自动推进保持收牌、敌人行动、玩家自动结束的既有优先级。旧流程的命令后收牌仍是独立检查点，不重新启动自动推进；终局出牌保留 Played 的行为不变。道具、管理员修改、效果/阶段结算和 Boss 机制保持原入口。
+
+当前主线 XML 使用 `energyOnly=true`：出牌和主动弃牌共享能量，每次至多 5 张；普通出牌不补牌，弃牌等量补回并受手牌容量限制。旧动作计数、手动摸牌与收尾接口保留兼容，未启用新模式时沿用旧语义。新模式的 `ActionsRemaining` 仅映射能量。配置和保存边界见 `Runtime/Composition/Content/README.md`。
+
+固定种子行为基线和专项测试说明见 `../Tests/README.md`。
+
 ## 模块与依赖
 
 ```text

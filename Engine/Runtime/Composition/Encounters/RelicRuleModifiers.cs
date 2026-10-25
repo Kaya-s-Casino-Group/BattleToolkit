@@ -134,11 +134,15 @@ namespace PokerEngine
         public CardDuelDealContext Context { get; }
         public ICardDuelDealPolicy BasePolicy { get; }
         public BattleRelicLoadout Loadout { get; }
+        public BattleTurnFlowRules Flow { get; }
         public BattleDealQuery(CardDuelDealContext context, ICardDuelDealPolicy basePolicy, BattleRelicLoadout loadout)
+            : this(context, basePolicy, loadout, null) { }
+        public BattleDealQuery(CardDuelDealContext context, ICardDuelDealPolicy basePolicy, BattleRelicLoadout loadout, BattleTurnFlowRules flow)
         {
             Context = context ?? throw new ArgumentNullException(nameof(context));
             BasePolicy = basePolicy ?? throw new ArgumentNullException(nameof(basePolicy)); Loadout = loadout ?? throw new ArgumentNullException(nameof(loadout));
             if (context.PlayerId != loadout.OwnerId) throw new ArgumentException("Refill rules must belong to the recipient.");
+            Flow = flow;
         }
     }
     public sealed class BattleRefillContribution
@@ -209,6 +213,15 @@ namespace PokerEngine
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
             var context = query.Context;
+            if (query.Flow?.EnergyOnly == true)
+            {
+                // Current gameplay has one authority for ordinary dealing. Additional item/hand draws
+                // are separate DrawCards effects, not a second refill policy overriding this result.
+                int requested = context.Trigger == CardDuelDealTrigger.OpeningTurn || context.Trigger == CardDuelDealTrigger.PlayerTurnStart
+                    ? context.MissingCards : context.Trigger == CardDuelDealTrigger.AfterDiscard
+                    ? Math.Min(context.DiscardedCount, context.MissingCards) : 0;
+                return new BattleDealResolution(context, requested, null, requested, 0, requested, Array.Empty<BattleRefillContribution>());
+            }
             int baseCount = query.BasePolicy.GetDrawCount(context);
             if (baseCount < 0 || baseCount > context.MissingCards) throw new ArgumentException("Base draw policy must respect the hand limit.");
             var contributions = query.Loadout.Relics.SelectMany(relic => query.Loadout.RulesFor(relic.InstanceId).RefillRules

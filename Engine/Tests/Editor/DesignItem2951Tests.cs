@@ -50,7 +50,11 @@ namespace PokerEngine.Tests
         }
         [Test] public void FreeItemsRemainUsableWithActionsButNoSeparateEnergy()
         {
-            var s=Load(new[]{"10002"},d=>((XmlElement)d.SelectSingleNode("//Player[@id='hero']")).SetAttribute("playEnergyCost","3"));
+            // This regression deliberately exercises the retained legacy two-budget contract.
+            var s=Load(new[]{"10002"},d=>{
+                var player=(XmlElement)d.SelectSingleNode("//Player[@id='hero']");
+                player.SetAttribute("energyOnly","false"); player.SetAttribute("playEnergyCost","3");
+            });
             var card=s.State.Zone(CardZoneKinds.Hand,P).Cards.First();
             Act(s,CardDuelAction.Play,new[]{card});
             Assert.AreEqual(0,s.State.Duel.Player(P).Energy.Energy);

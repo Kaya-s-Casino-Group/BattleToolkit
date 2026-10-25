@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace PokerEngine
 {
@@ -67,6 +66,14 @@ namespace PokerEngine
                 throw new ArgumentException("The initial state must belong to this engine's rules.", nameof(initialState));
         }
 
+        /// <summary>Ordinary card actions submit card identities only; the authority owns cost and dealing.</summary>
+        public BattleSessionResult Play(long expectedRevision, ParticipantId actor, IEnumerable<CardInstanceId> selected,
+            IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null) =>
+            Execute(expectedRevision, actor, CardDuelAction.Play, selected, targets, targetBindings);
+
+        public BattleSessionResult Discard(long expectedRevision, ParticipantId actor, IEnumerable<CardInstanceId> selected,
+            IEnumerable<ParticipantId> targets = null) => Execute(expectedRevision, actor, CardDuelAction.Discard, selected, targets);
+
         public BattleSessionResult Execute(long expectedRevision, ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected = null, IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null, int drawCount = 0)
         {
@@ -86,37 +93,8 @@ namespace PokerEngine
 
             // Each engine step completes its own draw/collection boundary before another automatic turn.
             // In particular, a newly started player phase draws before a blocked player is skipped.
-            while (!next.Duel.IsFinished)
+            while (BattleAutoAdvancePolicy.TryNext(next, out var automaticActor, out var automaticAction))
             {
-                ParticipantId automaticActor;
-                CardDuelAction automaticAction;
-                var uncollected = next.Duel.Players.FirstOrDefault(p => p.Rules.Flow.UsesTurnFlow && next.Zone(CardZoneKinds.Played, p.Id).Cards.Count > 0);
-                if (uncollected != null)
-                {
-                    automaticActor = uncollected.Id; automaticAction = CardDuelAction.CollectPlayed;
-                }
-                else if (next.Duel.Phase == ScoredDuelPhase.AwaitingEnemyAction)
-                {
-                    automaticActor = next.Duel.NextEnemy;
-                    automaticAction = CardDuelAction.EnemyAction;
-                }
-                else if (next.Duel.Phase == ScoredDuelPhase.AwaitingPlayerHand)
-                {
-                    var pending = next.Duel.Players.FirstOrDefault(p => next.Duel.HasPlayerWindow(p.Id) && p.Rules.Flow.UsesTurnFlow &&
-                        (next.FlowFor(p.Id).Window == BattlePlayerWindow.Ending && (next.FlowFor(p.Id).FinishAfterOverflow || !p.Rules.Flow.EndDefense ||
-                            next.Zone(CardZoneKinds.Hand, p.Id).Cards.Count == 0 || next.Duel.IsActionBlocked(p.Id)) ||
-                        next.FlowFor(p.Id).Window == BattlePlayerWindow.Action && next.Duel.IsActionBlocked(p.Id)));
-                    if (pending != null)
-                    {
-                        automaticActor = pending.Id;
-                        automaticAction = next.FlowFor(pending.Id).Window == BattlePlayerWindow.Ending ? CardDuelAction.FinishTurn : CardDuelAction.EndTurn;
-                    }
-                    else if (next.Duel.NextBlockedPlayer.IsValid && !next.Duel.Player(next.Duel.NextBlockedPlayer).Rules.Flow.UsesTurnFlow)
-                    { automaticActor = next.Duel.NextBlockedPlayer; automaticAction = CardDuelAction.SkipPlayerTurn; }
-                    else break;
-                }
-                else break;
-
                 result = Engine.Execute(next, next.Revision, automaticActor, automaticAction);
                 if (!result.Accepted) return Reject(before, result.Error);
                 steps.Add(new BattleSessionStep(automaticAction, automaticActor, next, result));
@@ -126,8 +104,7 @@ namespace PokerEngine
             // Play already performed its configured refill while the submitted cards were in Played.
             // Preserve that shuffle boundary. EnemyAction collects every player's Played itself;
             // a terminal player action intentionally leaves its cards in Played, as before.
-            if (next.Duel.Phase == ScoredDuelPhase.AwaitingPlayerHand &&
-                next.Zone(CardZoneKinds.Played, actor).Cards.Count > 0)
+            if (BattleAutoAdvancePolicy.ShouldCollectAfterCommand(next, actor))
             {
                 result = Engine.Execute(next, next.Revision, actor, CardDuelAction.CollectPlayed);
                 if (!result.Accepted) return Reject(before, result.Error);

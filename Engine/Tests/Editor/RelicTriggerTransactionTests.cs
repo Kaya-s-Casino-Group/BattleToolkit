@@ -73,7 +73,8 @@ namespace PokerEngine.Tests
         [Test] public void TriggerEffectOverflowRollsBackHealthCardsBudgetAndReports()
         {
             var trigger = RelicTriggerTestData.Trigger(effects: new[] { RelicTriggerTestData.Response(BattleEffectSpec.GainBlock(long.MaxValue)) });
-            var fixture = new RelicTriggerTestData.Fixture(new[] { RelicTriggerTestData.Gear(triggers: new[] { trigger }) });
+            var fixture = new RelicTriggerTestData.Fixture(new[] { RelicTriggerTestData.Gear(triggers: new[] { trigger }) }, ownerBlock: 1);
+            Assert.AreEqual(1, fixture.State.Duel.Combat.Get(Owner).Block, "1 + long.MaxValue must overflow.");
             Rejected(fixture.State, fixture.Engine.Execute(fixture.State, fixture.State.Revision, CardDuelAction.Play, fixture.Cards()), CardDuelError.Overflow);
         }
 

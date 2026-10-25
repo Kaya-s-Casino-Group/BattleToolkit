@@ -38,44 +38,14 @@ namespace PokerEngine
             BattleTargetBindings targetBindings = null, int drawCount = 0) =>
             Execute(Revision, actor, action, selected, targets, animate, targetBindings, drawCount);
 
-        public bool CanAct(ParticipantId actor)
-        {
-            var state = Session.State;
-            return !Presentation.IsPresenting && state.HasStarted && !state.Duel.IsFinished &&
-                state.Duel.HasPlayerWindow(actor) && (state.Duel.CanAct(actor) || state.Duel.Player(actor).Rules.Flow.UsesTurnFlow &&
-                    (state.FlowFor(actor).Window == BattlePlayerWindow.Draw || state.FlowFor(actor).Window == BattlePlayerWindow.ForcedDiscard || state.FlowFor(actor).Window == BattlePlayerWindow.Ending)) && state.Zone(CardZoneKinds.Played, actor).Cards.Count == 0;
-        }
+        public bool CanAct(ParticipantId actor) =>
+            !Presentation.IsPresenting && BattleActionQuery.CanAct(Session.State, actor);
 
-        public bool CanPlay(ParticipantId actor, IEnumerable<CardInstanceId> selected) => CanSelect(actor, selected, false);
-        public bool CanDiscard(ParticipantId actor, IEnumerable<CardInstanceId> selected) => CanSelect(actor, selected, true);
+        public bool CanPlay(ParticipantId actor, IEnumerable<CardInstanceId> selected) =>
+            !Presentation.IsPresenting && BattleActionQuery.CanSelect(Session.Engine.Duel, Session.State, actor, selected, false);
 
-        // Button availability checks input budgets and membership only. Custom rules are evaluated by previews/execution.
-        private bool CanSelect(ParticipantId actor, IEnumerable<CardInstanceId> selected, bool discard)
-        {
-            if (!CanAct(actor) || selected == null) return false;
-            var state = Session.State;
-            var player = state.Duel.Player(actor);
-            var rules = player.Rules;
-            if (!state.Duel.CanAct(actor)) return false;
-            bool freeDefense = discard && rules.Flow.UsesTurnFlow && (!rules.Flow.DiscardCostsAction || state.FlowFor(actor).Window == BattlePlayerWindow.Ending);
-            if (discard && !state.HasDiscardBudgetFor(actor) || !freeDefense &&
-                !Session.Engine.Duel.QueryActionCost(state.Duel, actor,
-                    discard ? ScoredDuelActionKind.Discard : ScoredDuelActionKind.ScoredHand).CanAfford) return false;
-            if (rules.Flow.UsesTurnFlow && (discard ? state.FlowFor(actor).Window != BattlePlayerWindow.Action && state.FlowFor(actor).Window != BattlePlayerWindow.Ending :
-                state.FlowFor(actor).Window != BattlePlayerWindow.Action)) return false;
-            int limit = discard ? rules.MaxDiscardCards : Session.Engine.PlayLimit(state, actor, false);
-            var hand = new HashSet<CardInstanceId>(state.Zone(CardZoneKinds.Hand, actor).Cards);
-            var seen = new HashSet<CardInstanceId>();
-            foreach (var id in selected)
-            {
-                if (!id.IsValid || !seen.Add(id) || seen.Count > limit || !hand.Contains(id)) return false;
-                var card = state.Table.GetCard(id);
-                if (discard ? !card.CanDiscard : !card.CanPlay) return false;
-            }
-            if (rules.Flow.UsesTurnFlow && (discard && (state.FlowFor(actor).DefenseUsed && BattleRuleResolver.Value(rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || state.FlowFor(actor).Window == BattlePlayerWindow.Ending && !rules.Flow.EndDefense) ||
-                !discard && state.FlowFor(actor).ActionsRemaining == 0)) return false;
-            return seen.Count >= (discard ? 1 : Session.Engine.PlayLimit(state, actor, true));
-        }
+        public bool CanDiscard(ParticipantId actor, IEnumerable<CardInstanceId> selected) =>
+            !Presentation.IsPresenting && BattleActionQuery.CanSelect(Session.Engine.Duel, Session.State, actor, selected, true);
 
         public CardDuelTransition PreviewPlay(ParticipantId actor, IEnumerable<CardInstanceId> selected,
             IEnumerable<ParticipantId> targets = null, BattleTargetBindings targetBindings = null)

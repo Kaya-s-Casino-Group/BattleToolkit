@@ -22,6 +22,7 @@ internal static partial class PlaytestBridge
                 var unit = Unit(entry, duel, player.Id, catalog, "Players");
                 unit["gold"] = Number(state.GoldFor(player.Id));
                 unit["energy"] = player.Energy.Energy; unit["maxEnergy"] = player.Energy.MaxEnergy;
+                unit["energyOnly"] = player.Rules.Flow.EnergyOnly;
                 unit["handLimit"] = player.Limits.HandLimit.Value; unit["discardsRemaining"] = state.RemainingDiscardBudgetFor(player.Id);
                 unit["manualDraw"] = player.Rules.Flow.ManualDraw;
                 unit["turnFlow"] = player.Rules.Flow.UsesTurnFlow;

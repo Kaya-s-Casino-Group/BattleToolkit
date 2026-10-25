@@ -38,7 +38,7 @@ namespace PokerEngine.Tests
         private static BattleSession Session(ICombatReactionProvider provider, IScoredHandEffectRule rule = null, int energy = 3,
             int enemyHealth = 200, int playerBlock = 0, IDiscardRewardRule discardReward = null, bool secondEnemy = false,
             PlayerBlockExpiry blockExpiry = PlayerBlockExpiry.Retain, BattleActorDamageRules enemyDamageRules = null,
-            CombatReactionLimits limits = null)
+            CombatReactionLimits limits = null, long secondEnemyBlock = 0)
         {
             var rules = new BattleRules("reactions.battle.1", 10, playerBlockExpiry: blockExpiry,
                 reactionProvider: provider, reactionLimits: limits);
@@ -49,7 +49,7 @@ namespace PokerEngine.Tests
                 rules: new BattlePlayerRules(maxEnergy: energy, initialEnergy: energy, discardReward: discardReward,
                     effectRule: rule ?? new SequenceRule(Hit(10)))) };
             var enemies = new List<BattleEnemySetup> { new BattleEnemySetup(Enemy, new CombatantDefinition("foe", enemyHealth), 7, enemyDamageRules) };
-            if (secondEnemy) enemies.Add(new BattleEnemySetup(Other, new CombatantDefinition("other", 200), 5));
+            if (secondEnemy) enemies.Add(new BattleEnemySetup(Other, new CombatantDefinition("other", 200, secondEnemyBlock), 5));
             return new BattleSession(engine, engine.Create("reaction-session", HmacDeckShuffler.FromSeed(new byte[32]), players, enemies));
         }
         private static BattleSessionResult Do(BattleSession session, CardDuelAction action, IEnumerable<CardInstanceId> cards = null)
@@ -206,12 +206,13 @@ namespace PokerEngine.Tests
                     ? new[] { Reaction(CombatEffectKind.GainBlock, Other, Other, long.MaxValue) }
                     : Array.Empty<CombatReaction>();
             });
-            var session = Session(provider, energy: 1, secondEnemy: true); Do(session, CardDuelAction.Start);
+            var session = Session(provider, energy: 1, secondEnemy: true, secondEnemyBlock: 1); Do(session, CardDuelAction.Start);
             var before = session.State; var cards = OneCard(session); var hand = before.Zone(CardZoneKinds.Hand, Player).Cards.ToArray();
             var played = session.Engine.Execute(before, before.Revision, Player, CardDuelAction.Play, cards);
             Assert.IsTrue(played.Accepted); Assert.AreEqual(45, played.State.Duel.Combat.Get(Player).Health); Assert.AreEqual(1, played.State.Duel.Combat.Statuses.Count);
             var firstEnemy = session.Engine.Execute(played.State, played.State.Revision, Enemy, CardDuelAction.EnemyAction);
             Assert.IsTrue(firstEnemy.Accepted); Assert.AreEqual(38, firstEnemy.State.Duel.Combat.Get(Player).Health);
+            Assert.AreEqual(1, firstEnemy.State.Duel.Combat.Get(Other).Block);
             var failedEnemy = session.Engine.Execute(firstEnemy.State, firstEnemy.State.Revision, Other, CardDuelAction.EnemyAction);
             Assert.AreEqual(CardDuelError.Overflow, failedEnemy.Error); Assert.AreSame(firstEnemy.State, failedEnemy.State);
             var result = session.Execute(before.Revision, Player, CardDuelAction.Play, cards);

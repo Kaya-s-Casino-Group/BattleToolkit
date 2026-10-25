@@ -17,6 +17,8 @@ namespace PokerEngine.Tests
             var xml = XDocument.Parse(ToolkitTestFiles.Read("Engine/Content/SingleChapterBattle.xml"));
             var player = xml.Root.Element("Players").Elements("Player").Single(item => (string)item.Attribute("id") == "hero");
             player.SetAttributeValue("minPlayCards", min); player.SetAttributeValue("maxPlayCards", max);
+            // Expanded selections are a retained legacy capability, outside the current five-card contract.
+            if (max > 5) player.SetAttributeValue("energyOnly", false);
             var content = BattleContentCompiler.CompileXml(xml.ToString());
             Assert.IsTrue(content.Success, string.Join(";", content.Diagnostics.Select(d => d.Message)));
             var session = BattleContentFactory.Create(content.Content, new BattleSetupRequest("single-chapter-battle-1", "four-prefix",

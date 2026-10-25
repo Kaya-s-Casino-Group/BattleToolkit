@@ -34,7 +34,20 @@ namespace PokerEngine.Tests
             Assert.That(opening.Accepted, Is.True); Assert.That(opening.State.HasStarted, Is.True); Assert.That(opening.State.Revision, Is.EqualTo(1));
             CollectionAssert.AreEqual(initial.Zone(CardZoneKinds.Deck).Cards.Reverse().Take(8), opening.State.Zone(CardZoneKinds.Hand).Cards);
             Assert.That(opening.State.Zone(CardZoneKinds.Deck).Cards.Count, Is.EqualTo(44));
-            Assert.That(opening.State.Duel, Is.SameAs(initial.Duel)); Assert.That(opening.State.Random, Is.SameAs(initial.Random));
+            // Opening may create immutable wrappers while dispatching lifecycle boundaries.
+            // The contract is unchanged gameplay resources, not reference identity of the team wrapper.
+            Assert.That(opening.State.Duel.Phase, Is.EqualTo(initial.Duel.Phase));
+            Assert.That(opening.State.Duel.CompletedRounds, Is.EqualTo(initial.Duel.CompletedRounds));
+            Assert.That(opening.State.Duel.PlayerTurn.Energy, Is.EqualTo(initial.Duel.PlayerTurn.Energy));
+            Assert.That(opening.State.Duel.PlayerTurn.MaxEnergy, Is.EqualTo(initial.Duel.PlayerTurn.MaxEnergy));
+            foreach (var unit in initial.Duel.Combat.Combatants)
+            {
+                Assert.That(opening.State.Duel.Combat.Get(unit.Id).Health, Is.EqualTo(unit.Health));
+                Assert.That(opening.State.Duel.Combat.Get(unit.Id).Block, Is.EqualTo(unit.Block));
+            }
+            CollectionAssert.AreEqual(initial.Duel.Combat.Statuses, opening.State.Duel.Combat.Statuses);
+            CollectionAssert.AreEqual(initial.Duel.PendingEnemies, opening.State.Duel.PendingEnemies);
+            Assert.That(opening.State.Random, Is.SameAs(initial.Random));
             Assert.That(opening.State.DiscardsRemaining, Is.EqualTo(initial.DiscardsRemaining)); Assert.That(opening.Events, Is.Empty); Assert.That(opening.Score, Is.Null);
             Assert.That(engine.Execute(opening.State, initial.Revision, CardDuelAction.Start).Error, Is.EqualTo(CardDuelError.StaleRevision));
             var retry = engine.Execute(opening.State, opening.State.Revision, CardDuelAction.Start);

@@ -60,16 +60,31 @@ else
 - `Loadout`：deckRef 省略时使用既有标准 52 张牌组。HandLevel 要求 category/level，省略类别默认 1 级。Relic 要求 instanceId/ref，level=1、growth=0、cooldownRounds=0；charges 省略继承遗物定义，未限次遗物不能填有限 charges。实例参数不能越过定义的等级/拷贝约束。
 - `Encounter`：rulesRef 必填。Player 子项要求 id/ref，可选 loadoutRef、initialHealth；Enemy 子项要求 id/ref。参与者数量、重复 ID 和初始血量通过现有组装检查。
 
-## 手动摸牌与弃牌窗口
+## 当前玩法：共享能量与五张选牌
 
-标准文件显式启用以下 Player 字段；直接 C# 组装和未声明 manualDraw 的已有内容仍可选择原补牌策略。标准与主题 XML 已原地更新。
+`final.xml`、`StandardSingleBattle-2026-10-21.xml`、`SingleChapterBattle.xml` 的玩家显式配置 `energyOnly="true"`。这是当前玩法的入口；省略或设置为 false 时保留原有规则与公开接口。
+
+- 出牌和主动弃牌共用 `Energy`，分别按 `playEnergyCost` / `discardEnergyCost` 扣费，默认各 1 点。`maxEnergy` / `initialEnergy` 默认各 3；不再额外扣行动次数，也不检查有限弃牌次数。
+- `maxPlayCards` / `maxDiscardCards` 仍可设更低限制，但当前模式的普通选牌硬上限为 5，包含旧 IgnorePlayLimit 特例。出牌最低张数沿用 `minPlayCards`，弃牌至少 1 张。
+- 开局和回合开始自动补至有效手牌上限，基础为 8。普通出牌不补牌；主动弃牌补回 `min(实际弃牌数, 弃牌后距上限的空位)`，牌源不足或终局等规则边界返回实际摸牌数。已出牌造成的空位不会由之后的弃牌额外补满。
+- 当前模式的普通补牌由统一规则计算，不消费旧 playRefill/discardRefill 和 Refill 修正。额外摸牌通过已有牌型/道具 DrawCards 效果执行；效果超限能力仍由 effectDrawOverflow 控制。
+- 没有主动摸牌、强制溢出弃牌或额外收尾防御弃牌。回合结束保留手牌。旧参数仍可读取，但当前模式忽略 manualDraw、drawUses、actionsPerTurn、discardCostsAction、discardEndsTurn、endDefense、forceDiscardOverflow 对这套流程的控制。
+- 成功操作后，如果能量不足以支付出牌和弃牌中的任意一种，自动结束；零费用操作仍可在零能量执行。主动道具不扣能量，但要求仍在行动窗口、有正能量，并满足自身次数/冷却/控制条件。
+
+`BattlePlayerFlow.ActionsRemaining` 在当前模式仅为 Energy 的兼容镜像，网页提示也显示能量，不是第二个预算。新调用方可用 `BattleSession.Play` / `Discard` 提交选牌；旧 Execute、预览、摸牌/收尾接口签名保留，其动作合法性取决于模式和窗口。
+
+XML 新字段和选牌上限进入已有内容指纹；采用新配置后旧配置的冒险档会按现有指纹校验拒绝恢复，不进行静默迁移。旧 XML 未启用新模式时的规则行为和指纹算法保持不变。
+
+## 兼容流程：手动摸牌与弃牌窗口
+
+旧 Demo、旧日期版和主题模板可以继续使用以下 Player 字段；直接 C# 组装在未传 energyOnly 时仍采用原语义。
 
 | 字段 | 缺省值 | 说明 |
 | --- | --- | --- |
 | manualDraw / openingDeal | false / false | 启用新窗口；是否开局额外按手牌上限发牌 |
 | drawCount / drawUses / drawWarningThreshold | 5 / 1 / 3 | 单次手动张数、每回合次数、已有手牌提示阈值 |
 | minPlayCards / actionsPerTurn | 1 / 3 | 出牌下限、独立于能量费用的行动上限 |
-| effectDrawOverflow | true | 效果摸牌可超过手牌上限，结束出牌时强制弃置 |
+| effectDrawOverflow | true | 效果摸牌可超过手牌上限；结束时是否强制处理由 forceDiscardOverflow 决定 |
 | discardEndsTurn / discardCostsAction | true / true | 行动内防御弃牌后结束、消耗一次行动及其费用 |
 | endDefense / overflowTriggersDefense | true / false | 结束出牌后可免费防御一次；超限弃牌是否带防御基础收益及默认防御触发 |
 | kickerScoring / layeredScoreRelics | None / false | 标准显式 ChipsOnly / true；可选 AllCards 或 None |

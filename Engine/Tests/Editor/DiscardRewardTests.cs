@@ -45,11 +45,11 @@ namespace PokerEngine.Tests
         }
         private static CardDuelEngine Engine() => new CardDuelEngine(
             new BattleRules("discard.test", 10));
-        private static CardDuelState Create(CardDuelEngine engine, bool smallDeck = false, IDiscardRewardRule reward = null)
+        private static CardDuelState Create(CardDuelEngine engine, bool smallDeck = false, IDiscardRewardRule reward = null, long playerBlock = 0)
         {
             var deck = smallDeck ? StandardDeck.Cards().Take(8).Select((card, i) => new DeckEntry("c" + i, card.Id)).ToArray() : null;
             var state = engine.Create("discard", HmacDeckShuffler.FromSeed(new byte[32]), new[] {
-                new BattlePlayerSetup(Player, new CombatantDefinition("p", 40), deck, rules: new BattlePlayerRules(discardReward: reward, damagePolicy: new NoAttacks()), targetRules: new BattleActorTargetRules(new NoAttacks())),
+                new BattlePlayerSetup(Player, new CombatantDefinition("p", 40, playerBlock), deck, rules: new BattlePlayerRules(discardReward: reward, damagePolicy: new NoAttacks()), targetRules: new BattleActorTargetRules(new NoAttacks())),
                 new BattlePlayerSetup(Ally, new CombatantDefinition("a", 40))
             }, new[] { new BattleEnemySetup(Enemy, new CombatantDefinition("e", 10000), 7) });
             return engine.Execute(state, state.Revision, Player, CardDuelAction.Start).State;
@@ -96,9 +96,12 @@ namespace PokerEngine.Tests
         }
         [Test] public void RewardOverflowRollsBackCostsCardsAndRandomState()
         {
-            var engine = Engine(); var state = Create(engine, true, new Reward(long.MaxValue));
+            var engine = Engine(); var state = Create(engine, true, new Reward(long.MaxValue), playerBlock: 1);
             var result = engine.PreviewDiscard(state, state.Revision, Player, state.Zone(CardZoneKinds.Hand, Player).Cards.Take(2));
             Assert.AreEqual(CardDuelError.Overflow, result.Error); Assert.AreSame(state, result.State); Assert.IsEmpty(result.Events);
+            Assert.IsEmpty(result.RuleEvents); Assert.IsEmpty(result.Draws);
+            Assert.AreEqual(1, state.Duel.Combat.Get(Player).Block);
+            Assert.AreEqual(3, state.Duel.Player(Player).Energy.Energy); Assert.AreEqual(3, state.DiscardsFor(Player));
         }
         [Test] public void RepeatedPreviewAndCommitShareRewardAndRecycleResultsWithoutMutatingInput()
         {

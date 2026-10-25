@@ -9,9 +9,9 @@ namespace PokerEngine.Tests
     {
         private static readonly ParticipantId Player = new ParticipantId("player"), Enemy = new ParticipantId("enemy");
         private const string Round1 = "status-battle/round/0000000001", Round2 = "status-battle/round/0000000002";
-        private static CombatState Create(IEnumerable<StatusInstance> statuses = null, long revision = 0) =>
+        private static CombatState Create(IEnumerable<StatusInstance> statuses = null, long revision = 0, long playerBlock = 0) =>
             new CombatState("status-battle", revision, new[] {
-                new CombatantDefinition("hero", 20).Create(Player, "player"), new CombatantDefinition("enemy", 20).Create(Enemy, "enemy") }, statuses);
+                new CombatantDefinition("hero", 20, playerBlock).Create(Player, "player"), new CombatantDefinition("enemy", 20).Create(Enemy, "enemy") }, statuses);
         private static StatusInstance Status(string id, string definition, StatusDuration duration, ParticipantId? target = null,
             ParticipantId? source = null, int stacks = 1) => new StatusInstance(new StatusInstanceId(id), new StatusDefinitionId(definition),
                 EntityRef.Participant(source ?? Player), EntityRef.Participant(target ?? Enemy), stacks, duration);
@@ -211,12 +211,13 @@ namespace PokerEngine.Tests
 
         [Test] public void LaterFailureRollsBackImmunityConsumptionAndEarlierDamage()
         {
-            var state = Create(new[] { Status("guard", "custom-guard", StatusDuration.ForTriggers(1)) });
+            var state = Create(new[] { Status("guard", "custom-guard", StatusDuration.ForTriggers(1)) }, playerBlock: 1);
             var result = CombatEngine.Resolve(state, 0, new[] { Damage(),
                 CombatEffect.ApplyStatus(Status("blocked", "custom-stop", StatusDuration.ForTriggers(1))),
                 new CombatEffect(CombatEffectKind.GainBlock, Player, Player, long.MaxValue) }, statusCatalog: Catalog());
             Assert.AreEqual(CombatError.Overflow, result.Error); Assert.AreSame(state, result.State); Assert.IsEmpty(result.RuleEvents);
             Assert.AreEqual(1, state.Statuses.Single().Duration.RemainingTriggers); Assert.AreEqual(20, state.Get(Enemy).Health);
+            Assert.AreEqual(1, state.Get(Player).Block);
         }
 
         [Test] public void PhaseAndRoundExpiryMatchExactBoundariesAndWorkAfterParticipantDeath()

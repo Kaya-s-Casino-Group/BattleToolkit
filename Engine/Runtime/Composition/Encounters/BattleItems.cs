@@ -96,7 +96,9 @@ namespace PokerEngine
         {
             if (state == null || !state.HasStarted || state.Duel.IsFinished || !state.Duel.CanAct(actor)) return false;
             var player = state.Duel.Player(actor);
-            if (player.Rules.Flow.UsesTurnFlow
+            if (player.Rules.Flow.EnergyOnly
+                ? state.FlowFor(actor).Window != BattlePlayerWindow.Action || player.Energy.Energy <= 0
+                : player.Rules.Flow.UsesTurnFlow
                 ? state.FlowFor(actor).Window != BattlePlayerWindow.Action || state.FlowFor(actor).ActionsRemaining <= 0
                 : player.Energy.Energy <= 0) return false;
             var relic = player.Relics.Relics.FirstOrDefault(r => r.InstanceId == instanceId); if (relic == null) return false;

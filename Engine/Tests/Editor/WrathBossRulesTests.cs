@@ -27,6 +27,15 @@ namespace PokerEngine.Tests
             Assert.IsTrue(built.Session.Execute(0, Player, CardDuelAction.Start).Accepted);
             return built.Session;
         }
+
+        private static string UseWrathOrdinaryStrike(string xml)
+        {
+            var document = new System.Xml.XmlDocument(); document.LoadXml(xml);
+            var stage = (System.Xml.XmlElement)document.SelectSingleNode("/BattleContent/Enemies/Enemy[@id='wrath']/Behavior/Stage[@id='normal']");
+            Assert.IsNotNull(stage, "The fixture must modify the intended boss stage regardless of XML formatting.");
+            stage.SetAttribute("mode", "Priority");
+            return document.OuterXml;
+        }
         private static TeamBattleState Round(TeamBattleEngine engine, TeamBattleState state)
         {
             var end = engine.Execute(state, state.Revision, Player, state.IsActionBlocked(Player) ? ScoredDuelActionKind.SkipPlayerTurn : ScoredDuelActionKind.EndPlayerTurn);
@@ -293,7 +302,7 @@ namespace PokerEngine.Tests
         [Test]
         public void ReviveDuringTheOrdinaryStrikeAbortsTheExtraUltimate()
         {
-            var session = Load(reviveItem: true, transform: xml => xml.Replace("<Stage id=\"normal\" mode=\"Sequence\">\n          <Action id=\"strike\" name=\"普攻\">", "<Stage id=\"normal\" mode=\"Priority\">\n          <Action id=\"strike\" name=\"普攻\">"));
+            var session = Load(reviveItem: true, transform: UseWrathOrdinaryStrike);
             var engine = session.Engine.Duel; var state = session.State.Duel;
             for (int r = 1; r <= 5; r++) state = Round(engine, state);
             state = Apply(engine, state, new CombatEffect(CombatEffectKind.LoseHealth, Player, Player, state.Combat.Get(Player).Health - 1));
@@ -315,9 +324,12 @@ namespace PokerEngine.Tests
         [Test]
         public void BodyKilledByReflectedOrdinaryDamageDoesNotReleaseItsUltimate()
         {
-            var session = Load(transform: xml => xml.Replace("<Stage id=\"normal\" mode=\"Sequence\">\n          <Action id=\"strike\" name=\"普攻\">", "<Stage id=\"normal\" mode=\"Priority\">\n          <Action id=\"strike\" name=\"普攻\">"));
+            var session = Load(transform: UseWrathOrdinaryStrike);
             var engine = session.Engine.Duel; var state = session.State.Duel;
             for (int r = 1; r <= 5; r++) state = Round(engine, state);
+            Assert.AreEqual("strike", state.Enemies.Single(e => e.Id == Body).BehaviorState.Intent.Id);
+            Assert.IsTrue(WrathBossQuery.Read(state).WarningActive);
+            Assert.IsFalse(state.Combat.Statuses.Any(s => s.Target.Id == Body.Value && s.DefinitionId.Value == "wrath-shell"));
             state = Apply(engine, state, new CombatEffect(CombatEffectKind.LoseHealth, Player, Body, state.Combat.Get(Body).Health - 1),
                 new CombatEffect(CombatEffectKind.GainBlock, Player, Player, 1000), Status(state, "shield-reflect", Player));
             state = Round(engine, state); Assert.AreEqual(ScoredDuelPhase.Won, state.Phase); Assert.AreEqual(967, state.Combat.Get(Player).Block);
@@ -364,7 +376,10 @@ namespace PokerEngine.Tests
             Assert.IsFalse(invalid.Accepted); Assert.AreSame(before, session.State); Assert.AreEqual(33, WrathBossQuery.Read(session.State.Duel).Attack);
             var played = session.Execute(before.Revision, Player, CardDuelAction.Play, cards);
             Assert.IsTrue(played.Accepted, played.Error.ToString()); Assert.AreEqual(ScoredDuelPhase.Won, session.State.Duel.Phase);
-            Assert.AreEqual(99912, session.State.Duel.Combat.Get(Player).Health);
+            // Current configured card points are 10 + 11 + 12 + 13 + 1 = 47; floor(47 * 0.2) = 9.
+            Assert.AreEqual(99909, session.State.Duel.Combat.Get(Player).Health);
+            Assert.AreEqual(9, played.Steps.SelectMany(step => step.Transition.Events)
+                .Where(e => e.Effect.Kind == CombatEffectKind.Heal && e.Effect.Target == Player).Sum(e => e.HealthRestored));
             Assert.AreEqual(6, played.Steps.SelectMany(step => step.Transition.Events).Count(e => e.Effect.Kind == CombatEffectKind.Eliminate));
         }
 

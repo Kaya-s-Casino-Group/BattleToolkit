@@ -330,7 +330,8 @@ namespace PokerEngine
                             try
                             {
                                 outgoingAmount = ModifyAmount(amountModifier,
-                                    current, effect, provenance, CombatAmountStage.Outgoing, settledAmount);
+                                    provenance.Origin == CombatEffectOrigin.Primary ? state : current,
+                                    effect, provenance, CombatAmountStage.Outgoing, settledAmount);
                                 settledAmount = outgoingAmount?.OutputAmount ?? settledAmount;
                             }
                             catch (ArgumentException) { return new CombatTransition(state, CombatError.InvalidAmountModifier); }

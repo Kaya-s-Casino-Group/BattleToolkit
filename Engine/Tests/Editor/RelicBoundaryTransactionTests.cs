@@ -92,7 +92,7 @@ namespace PokerEngine.Tests
             var effects = overflow ? new[] { RelicTriggerTestData.Response(BattleEffectSpec.GainBlock(long.MaxValue)) } : new[] {
                 RelicTriggerTestData.Response(BattleEffectSpec.GainBlock(1)), RelicTriggerTestData.Response(BattleEffectSpec.Heal(1)) };
             var f = new RelicTriggerTestData.Fixture(new[] { RelicBoundaryTestData.Gear(new[] { RelicBoundaryTestData.Boundary(effects: effects) }) },
-                limits: new CombatReactionLimits(1), start: false);
+                limits: new CombatReactionLimits(1), start: false, ownerBlock: overflow ? 1 : 0);
             Rejected(f.State, f.Engine.Execute(f.State, f.State.Revision, CardDuelAction.Start),
                 overflow ? CardDuelError.Overflow : CardDuelError.ReactionLimitExceeded);
             Assert.AreEqual(20, f.Relic().RemainingCharges);

@@ -70,27 +70,11 @@ namespace PokerEngine
             catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
-        public int PlayLimit(CardDuelState state, ParticipantId actor, bool minimum)
-        {
-            var player = state.Duel.Player(actor);
-            int max = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MaxPlayCards).Value;
-            if(RelicPrograms.Entries(player.Relics).Any(e=>e.Item2.Kind==RelicProgramKind.IgnorePlayLimit))max=Math.Max(max,state.Zone(CardZoneKinds.Hand,actor).Cards.Count);
-            return minimum ? Math.Min(max, BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinPlayCards).Value) : max;
-        }
-        public int DrawLimit(CardDuelState state, ParticipantId actor)
-        {
-            var p = state.Duel.Player(actor);
-            return Math.Min(Math.Max(0, p.Limits.HandLimit.Value - state.Zone(CardZoneKinds.Hand, actor).Cards.Count),
-                BattleRuleResolver.Value(p.Rules, p.Relics, BattleRuleValueKey.DrawCount).Value);
-        }
-        public bool RequiresDrawWarning(CardDuelState state, ParticipantId actor)
-        {
-            var p = state.Duel.Player(actor);
-            return state.FlowFor(actor).Window == BattlePlayerWindow.Draw && state.Zone(CardZoneKinds.Hand, actor).Cards.Count >
-                BattleRuleResolver.Value(p.Rules, p.Relics, BattleRuleValueKey.DrawWarningThreshold).Value;
-        }
-        public int RequiredDiscards(CardDuelState state, ParticipantId actor) =>
-            Math.Max(0, state.Zone(CardZoneKinds.Hand, actor).Cards.Count - state.Duel.Player(actor).Limits.HandLimit.Value);
+        public int PlayLimit(CardDuelState state, ParticipantId actor, bool minimum) =>
+            BattleActionQuery.PlayLimit(state, actor, minimum);
+        public int DrawLimit(CardDuelState state, ParticipantId actor) => BattleActionQuery.DrawLimit(state, actor);
+        public bool RequiresDrawWarning(CardDuelState state, ParticipantId actor) => BattleActionQuery.RequiresDrawWarning(state, actor);
+        public int RequiredDiscards(CardDuelState state, ParticipantId actor) => BattleActionQuery.RequiredDiscards(state, actor);
 
         private CardDuelTransition ExecuteFlow(CardDuelState state, long revision, ParticipantId actor, CardDuelAction action,
             IEnumerable<CardInstanceId> selected, IEnumerable<ParticipantId> targets, BattleTargetBindings bindings, int drawCount)
@@ -105,7 +89,7 @@ namespace PokerEngine
             var ids = (selected ?? Array.Empty<CardInstanceId>()).ToArray();
             var flows = state.CopyFlows();
             var flow = manual ? flows[actor] : null;
-            if (manual && (action == CardDuelAction.Play || action == CardDuelAction.Discard && player.Rules.Flow.DiscardCostsAction && flow.Window == BattlePlayerWindow.Action) && flow.ActionsRemaining == 0)
+            if (manual && !player.Rules.Flow.EnergyOnly && (action == CardDuelAction.Play || action == CardDuelAction.Discard && player.Rules.Flow.DiscardCostsAction && flow.Window == BattlePlayerWindow.Action) && flow.ActionsRemaining == 0)
                 return new CardDuelTransition(state, CardDuelError.InsufficientEnergy);
             bool ordinary = action == CardDuelAction.Start || action == CardDuelAction.EnemyAction || action == CardDuelAction.CollectPlayed;
             if (!ordinary && manual)
@@ -188,9 +172,9 @@ namespace PokerEngine
                 catch (CardHookException exception) { return new CardDuelTransition(state, exception.Error); }
                 catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
             }
-            if (manual && action == CardDuelAction.Discard && (flow.DefenseUsed && BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || flow.Window == BattlePlayerWindow.Ending && !player.Rules.Flow.EndDefense))
+            if (manual && !player.Rules.Flow.EnergyOnly && action == CardDuelAction.Discard && (flow.DefenseUsed && BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0 || flow.Window == BattlePlayerWindow.Ending && !player.Rules.Flow.EndDefense))
                 return new CardDuelTransition(state, CardDuelError.InvalidPhase);
-            bool freeDiscard = manual && action == CardDuelAction.Discard && (!player.Rules.Flow.DiscardCostsAction || flow.Window == BattlePlayerWindow.Ending);
+            bool freeDiscard = manual && !player.Rules.Flow.EnergyOnly && action == CardDuelAction.Discard && (!player.Rules.Flow.DiscardCostsAction || flow.Window == BattlePlayerWindow.Ending);
             var coreAction = action == CardDuelAction.FinishTurn ? CardDuelAction.EndTurn : action;
             if (manual && coreAction == CardDuelAction.EndTurn && state.Duel.IsActionBlocked(actor)) coreAction = CardDuelAction.SkipPlayerTurn;
             var resolved = ExecuteCore(state, revision, actor, coreAction, ids, targets, bindings, freeDiscard);
@@ -200,11 +184,15 @@ namespace PokerEngine
                 foreach (var p in next.Duel.Players) flows[p.Id] = CardDuelState.NewFlow(p);
             else if (manual && !next.Duel.IsFinished)
             {
-                int remaining = flow.ActionsRemaining - (action == CardDuelAction.Play || action == CardDuelAction.Discard && player.Rules.Flow.DiscardCostsAction && flow.Window == BattlePlayerWindow.Action ? 1 : 0);
+                bool energyOnly = player.Rules.Flow.EnergyOnly;
+                int remaining = energyOnly ? next.Duel.Player(actor).Energy.Energy : flow.ActionsRemaining -
+                    (action == CardDuelAction.Play || action == CardDuelAction.Discard && player.Rules.Flow.DiscardCostsAction && flow.Window == BattlePlayerWindow.Action ? 1 : 0);
+                bool exhausted = energyOnly ? !BattleActionQuery.HasAffordableCardAction(next, actor) : remaining == 0;
                 flow = flow.With(flow.Window, actions: remaining);
                 if (action == CardDuelAction.Discard)
-                    flows[actor] = flow.With((remaining == 0 || BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0) ? BattlePlayerWindow.Ending : BattlePlayerWindow.Action, true, BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0);
-                else if (action == CardDuelAction.Play && remaining == 0)
+                    flows[actor] = energyOnly ? flow.With(exhausted ? BattlePlayerWindow.Ending : BattlePlayerWindow.Action) :
+                        flow.With((exhausted || BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0) ? BattlePlayerWindow.Ending : BattlePlayerWindow.Action, true, BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.DiscardEndsTurn).Value > 0);
+                else if (action == CardDuelAction.Play && exhausted)
                     flows[actor] = flow.With(BattlePlayerWindow.Ending);
                 else flows[actor] = flow;
             }

@@ -83,7 +83,8 @@ namespace PokerEngine
             Flow = flow ?? new BattleTurnFlowRules();
             if (Flow.MinPlayCards > maxPlayCards) throw new ArgumentException("Minimum play cards exceeds maximum.");
             UnlimitedDiscards = unlimitedDiscards;
-            MaxPlayCards = Math.Min(maxPlayCards, handSize); MaxDiscardCards = maxDiscardCards;
+            MaxPlayCards = Math.Min(Flow.EnergyOnly ? Math.Min(maxPlayCards, 5) : maxPlayCards, handSize);
+            MaxDiscardCards = Flow.EnergyOnly ? Math.Min(maxDiscardCards, 5) : maxDiscardCards;
         }
     }
     /// <summary>Encounter input. Deck entries belong to this player; no Unity or presentation references.</summary>

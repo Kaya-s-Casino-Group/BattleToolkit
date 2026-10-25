@@ -21,6 +21,16 @@ namespace PokerEngine.Tests
             { Calls.Add(context); return apply == null ? new CombatAmountModification(context.Amount) : apply(context); }
         }
 
+        private sealed class FirstHitReaction : ICombatReactionProvider
+        {
+            public IEnumerable<CombatReaction> React(CombatReactionContext context)
+            {
+                if (context.Event.Provenance.Origin == CombatEffectOrigin.Primary && context.Event.Index == 0)
+                    return new[] { new CombatReaction(new CombatEffect(CombatEffectKind.Damage, A, B, 3), "follow-up", A) };
+                return Array.Empty<CombatReaction>();
+            }
+        }
+
         [TestCase(true)] [TestCase(false)]
         public void InvalidModifierReportRejectsTheWholeBatch(bool missingReport)
         {
@@ -44,6 +54,40 @@ namespace PokerEngine.Tests
             CollectionAssert.AreEqual(new[] { 100, 100 }, modifier.Calls.Where(item => item.Stage == CombatAmountStage.Outgoing).Select(item => item.Combat.Get(B).Health));
             CollectionAssert.AreEqual(new[] { 100, 90 }, modifier.Calls.Where(item => item.Stage == CombatAmountStage.Incoming).Select(item => item.Combat.Get(B).Health));
             Assert.IsTrue(result.Events.All(item => item.OutgoingAmountModification == null && item.IncomingAmountModification == null));
+        }
+
+        [Test] public void PrimarySnapshotStaysFrozenAcrossImmediateReactionsWhileDerivedEffectsUseLatestState()
+        {
+            var before = State(); var modifier = new Modifier();
+            var result = CombatEngine.Resolve(before, before.Revision, new[] {
+                new CombatEffect(CombatEffectKind.Damage, A, B, 10), new CombatEffect(CombatEffectKind.Damage, A, B, 10)
+            }, amountModifier: modifier, reactionProvider: new FirstHitReaction());
+            Assert.IsTrue(result.Accepted); Assert.AreEqual(6, modifier.Calls.Count);
+            var outgoing = modifier.Calls.Where(call => call.Stage == CombatAmountStage.Outgoing).ToArray();
+            CollectionAssert.AreEqual(new long[] { 100, 90, 100 }, outgoing.Select(call => call.Combat.Get(B).Health));
+            CollectionAssert.AreEqual(new[] { CombatEffectOrigin.Primary, CombatEffectOrigin.Triggered, CombatEffectOrigin.Primary },
+                outgoing.Select(call => call.Provenance.Origin));
+            Assert.AreSame(before, outgoing[0].Combat); Assert.AreSame(before, outgoing[2].Combat);
+            CollectionAssert.AreEqual(new long[] { 100, 90, 87 },
+                modifier.Calls.Where(call => call.Stage == CombatAmountStage.Incoming).Select(call => call.Combat.Get(B).Health));
+            CollectionAssert.AreEqual(new long[] { 10, 3, 10 }, result.Events.Select(fact => fact.SettledDamage));
+            Assert.AreEqual(77, result.State.Get(B).Health); Assert.AreEqual(100, before.Get(B).Health);
+        }
+
+        [Test] public void MaximumLongBlockIsLegalButOneMorePointRollsBackTheWholeBatch()
+        {
+            var before = State();
+            var maximum = new CombatEffect(CombatEffectKind.GainBlock, A, A, long.MaxValue);
+            var accepted = CombatEngine.Resolve(before, before.Revision, new[] { maximum });
+            Assert.IsTrue(accepted.Accepted); Assert.AreEqual(long.MaxValue, accepted.State.Get(A).Block);
+            Assert.AreEqual(0, before.Get(A).Block);
+            var rejected = CombatEngine.Resolve(before, before.Revision, new[] {
+                new CombatEffect(CombatEffectKind.Damage, A, B, 10), maximum,
+                new CombatEffect(CombatEffectKind.GainBlock, A, A, 1)
+            });
+            Assert.AreEqual(CombatError.Overflow, rejected.Error); Assert.AreSame(before, rejected.State);
+            Assert.IsEmpty(rejected.RuleEvents); Assert.IsEmpty(rejected.Events);
+            Assert.AreEqual(0, before.Get(A).Block); Assert.AreEqual(100, before.Get(B).Health);
         }
 
         [Test] public void EliminationsStatusApplicationsAndEffectsSkippedAfterDeathDoNotCallNumericModifiers()

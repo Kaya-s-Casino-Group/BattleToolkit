@@ -22,14 +22,14 @@ namespace PokerEngine.Tests
             internal CardDuelState State;
             internal Fixture(CardFace[] cards, BattleRelicSetup[] gear = null, EffectTargetSpec singleTarget = null,
                 int enemyHealth = 10000, bool ally = false, IDiscardRewardRule reward = null, IScoredHandEffectRule customRule = null,
-                IEnumerable<CombatStatusDefinition> additionalStatuses = null, BattleRelicSetup[] allyGear = null)
+                IEnumerable<CombatStatusDefinition> additionalStatuses = null, BattleRelicSetup[] allyGear = null, long ownerBlock = 0)
             {
                 var profile = RelicHandEffectTestData.Profile();
                 Engine = new CardDuelEngine(new BattleRules("structure-battle.1", 20,
                     statusCatalog: profile.CreateStatusCatalog("structure-statuses.1", additionalStatuses)));
                 var deck = cards.Select((card, index) => new DeckEntry("origin/" + index, StandardDeck.CardId(card.Suit, card.Rank))).ToArray();
                 var rules = new BattlePlayerRules(handSize: cards.Length, effectRule: customRule ?? new PokerHandEffectRule(profile, singleTarget), discardReward: reward);
-                var players = new List<BattlePlayerSetup> { new BattlePlayerSetup(Owner, new CombatantDefinition("hero", 1000),
+                var players = new List<BattlePlayerSetup> { new BattlePlayerSetup(Owner, new CombatantDefinition("hero", 1000, ownerBlock),
                     deck, 400, rules, relics: gear) };
                 if (ally) players.Add(new BattlePlayerSetup(Ally, new CombatantDefinition("ally", 1000), deck, 500, rules, relics: allyGear));
                 State = Engine.Create("structure-battle", HmacDeckShuffler.FromSeed(new byte[32]), players, new[] {
@@ -186,10 +186,11 @@ namespace PokerEngine.Tests
         [Test] public void AppendedOverflowRollsBackDamageCardsAndResources()
         {
             var fixture = new Fixture(Flush, new[] { Gear(RelicHandEffectModifierSpec.Append("overflow", HandCategory.Flush,
-                BattleEffectSpec.GainBlock(long.MaxValue), EffectTargetSpec.Self())) });
+                BattleEffectSpec.GainBlock(long.MaxValue), EffectTargetSpec.Self())) }, ownerBlock: 1);
             var before = fixture.State; var result = fixture.Engine.Execute(before, before.Revision, Owner, CardDuelAction.Play, fixture.Hand);
             Assert.AreEqual(CardDuelError.Overflow, result.Error); Assert.AreSame(before, result.State); Assert.IsEmpty(result.RuleEvents);
             Assert.AreEqual(10000, before.Duel.Combat.Get(Enemy).Health); Assert.AreEqual(400, before.Duel.Combat.Get(Owner).Health);
+            Assert.AreEqual(1, before.Duel.Combat.Get(Owner).Block);
         }
 
         [Test] public void AddedStatusUsesExistingReactionQueueWithoutReapplyingStructuralPass()

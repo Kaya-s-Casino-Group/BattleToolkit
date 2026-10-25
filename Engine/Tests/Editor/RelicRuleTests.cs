@@ -66,12 +66,27 @@ namespace PokerEngine.Tests
 
         [TestCase(BattleRuleValueKey.MaxEnergy, -3)]
         [TestCase(BattleRuleValueKey.InitialEnergy, -4)]
-        [TestCase(BattleRuleValueKey.HandLimit, -8)]
         [TestCase(BattleRuleValueKey.HandLimit, 45)]
         public void InvalidEffectiveCapacityFailsAtBattleCreation(BattleRuleValueKey key, int delta)
         {
             Assert.Throws<ArgumentException>(() => new RelicRuleTestData.Fixture(gear: new[] {
                 RelicRuleTestData.Gear("bad", new[] { RelicRuleTestData.Value("value", key, delta) }) }));
+        }
+
+        [TestCase(-8)] [TestCase(-9)]
+        public void ZeroAndNegativeEffectiveHandLimitsClampToZeroAndAllowTurnCompletion(int delta)
+        {
+            var fixture = new RelicRuleTestData.Fixture(gear: new[] {
+                RelicRuleTestData.Gear("empty-hand", new[] { RelicRuleTestData.Value("limit", BattleRuleValueKey.HandLimit, delta) }) }, start: false);
+            var owner = RelicRuleTestData.Owner;
+            Assert.AreEqual(0, fixture.State.Duel.Player(owner).Limits.HandLimit.Value);
+            var session = new BattleSession(fixture.Engine, fixture.State);
+            Assert.IsTrue(session.Execute(session.State.Revision, owner, CardDuelAction.Start).Accepted);
+            Assert.IsEmpty(session.State.Zone(CardZoneKinds.Hand, owner).Cards);
+            Assert.IsTrue(session.Execute(session.State.Revision, owner, CardDuelAction.EndTurn).Accepted);
+            Assert.AreEqual(1, session.State.Duel.CompletedRounds);
+            Assert.IsEmpty(session.State.Zone(CardZoneKinds.Hand, owner).Cards);
+            Assert.IsFalse(session.State.Duel.IsFinished);
         }
 
         [TestCase(BattleRuleValueKey.MaxEnergy)] [TestCase(BattleRuleValueKey.InitialEnergy)]

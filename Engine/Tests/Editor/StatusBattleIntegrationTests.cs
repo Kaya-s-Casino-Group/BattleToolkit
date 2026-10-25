@@ -39,8 +39,8 @@ namespace PokerEngine.Tests
         private static BattleEffectStep Step(BattleEffectSpec effect, EffectTargetSpec target) => new BattleEffectStep(effect, target);
         private static BattleEffectStep Status(StatusDefinitionId id, EffectTargetSpec target) =>
             Step(BattleEffectSpec.ApplyStatus(new StatusApplicationSpec(id)), target);
-        private static BattleEnemySetup Foe(ParticipantId id, long damage = 7, IEnemyBattleEffectRule rule = null) =>
-            new BattleEnemySetup(id, new CombatantDefinition("foe", 1000), damage, effectRule: rule);
+        private static BattleEnemySetup Foe(ParticipantId id, long damage = 7, IEnemyBattleEffectRule rule = null, long initialBlock = 0) =>
+            new BattleEnemySetup(id, new CombatantDefinition("foe", 1000, initialBlock), damage, effectRule: rule);
         private static EnemyRule FirstAttackControls(long damage) => new EnemyRule(context => {
             var hit = Step(BattleEffectSpec.Damage(damage), EffectTargetSpec.Opponents(EffectTargetSelection.AllLiving));
             return context.Combat.Get(context.Source).Block == 0 ? new[] {
@@ -275,7 +275,7 @@ namespace PokerEngine.Tests
             } : new[] { Step(BattleEffectSpec.GainBlock(0), EffectTargetSpec.Self()) });
             var failingEnemy = new EnemyRule(Step(BattleEffectSpec.Damage(5), EffectTargetSpec.Opponents()),
                 Step(BattleEffectSpec.GainBlock(long.MaxValue), EffectTargetSpec.Self()));
-            var session = Session(rule, energy: 2, enemies: new[] { Foe(Enemy), Foe(Other), Foe(Last, rule: failingEnemy) });
+            var session = Session(rule, energy: 2, enemies: new[] { Foe(Enemy), Foe(Other), Foe(Last, rule: failingEnemy, initialBlock: 1) });
             playerPhaseScope = BattleStatusTiming.RoundScope(session.State.Duel);
             Start(session); Do(session, Player, CardDuelAction.Play, OneCard(session, Player));
             var before = session.State; var cards = OneCard(session, Player); var statuses = before.Duel.Combat.Statuses.Select(StatusKey).ToArray();
@@ -287,6 +287,7 @@ namespace PokerEngine.Tests
             Assert.IsTrue(skipped.Accepted); Assert.IsEmpty(skipped.State.Duel.Combat.Statuses);
             var hit = session.Engine.Execute(skipped.State, skipped.State.Revision, Other, CardDuelAction.EnemyAction);
             Assert.IsTrue(hit.Accepted); Assert.AreEqual(93, hit.State.Duel.Combat.Get(Player).Health);
+            Assert.AreEqual(1, hit.State.Duel.Combat.Get(Last).Block, "The final gain must exceed long.MaxValue.");
             Assert.AreEqual(CardDuelError.Overflow, session.Engine.Execute(hit.State, hit.State.Revision, Last, CardDuelAction.EnemyAction).Error);
             var rejected = session.Execute(before.Revision, Player, CardDuelAction.Play, cards);
             Assert.AreEqual(CardDuelError.Overflow, rejected.Error); Assert.AreSame(before, rejected.State); Assert.AreSame(before, session.State);

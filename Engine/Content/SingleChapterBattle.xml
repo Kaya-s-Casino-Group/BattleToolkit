@@ -154,7 +154,7 @@
     </Relic>
   </Relics>
   <Players>
-    <Player id="hero" name="玩家" maxHealth="120" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="512" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" />
+    <Player id="hero" name="玩家" maxHealth="120" initialBlock="0" handRuleRef="document-hands" maxEnergy="3" initialEnergy="3" playEnergyCost="1" discardEnergyCost="1" handSize="8" discards="3" unlimitedDiscards="true" maxPlayCards="5" maxDiscardCards="5" playRefill="NextPlayerTurn" discardRefill="DiscardedCount" manualDraw="false" openingDeal="true" drawCount="5" drawUses="0" drawWarningThreshold="3" minPlayCards="1" actionsPerTurn="3" effectDrawOverflow="true" discardEndsTurn="false" forceDiscardOverflow="false" discardCostsAction="true" endDefense="false" overflowTriggersDefense="true" kickerScoring="None" minFlushCards="5" minStraightCards="5" layeredScoreRelics="true" discardBlockPerPoint="1" attackTarget="LowestHealth" autoDrawToLimit="true" energyOnly="true" />
   </Players>
   <Enemies>
     <Enemy id="rotator" name="小怪" maxHealth="350">
