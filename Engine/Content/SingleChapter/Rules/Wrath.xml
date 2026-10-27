@@ -1,0 +1,5 @@
+<BattleContent schemaVersion="1" id="single-chapter-wrath" version="single-chapter-battle.2026-10-26.3">
+  <BattleRules>
+    <Rules id="thousand-hands-rules" name="暴怒·击败本体获胜·20回合" scoringRef="single-battle-score" roundLimit="20" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" victoryEnemyRef="wrath" />
+  </BattleRules>
+</BattleContent>

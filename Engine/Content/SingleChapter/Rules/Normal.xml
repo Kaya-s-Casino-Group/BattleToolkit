@@ -1,0 +1,5 @@
+<BattleContent schemaVersion="1" id="single-chapter-normal" version="single-chapter-battle.2026-10-26.3">
+  <BattleRules>
+    <Rules id="single-battle-rules" name="普通战·10回合" scoringRef="single-battle-score" roundLimit="10" roundLimitBehavior="Lose" enrageDamagePerRound="0" clearEnemyBlock="false" blockExpiry="PlayerTurnStart" maxReactionEffects="256" maxReactionDepth="16" clearEnemyBlockAtTurnStart="true" />
+  </BattleRules>
+</BattleContent>

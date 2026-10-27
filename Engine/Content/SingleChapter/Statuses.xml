@@ -1,0 +1,32 @@
+<BattleContent schemaVersion="1" id="single-chapter-statuses" version="single-chapter-battle.2026-10-26.3">
+  <Statuses>
+    <Status id="stun" name="眩晕·跳过一次行动窗口" tags="Control" lifetime="TriggerCount" count="1">
+      <BlockActionWindow />
+    </Status>
+    <Status id="control-immunity" name="控制免疫·至下个敌方阶段结束" lifetime="ThroughNextPhase" phase="enemy">
+      <PreventStatusApplication tags="Control" />
+    </Status>
+    <Status id="bleed" tags="Negative" name="中毒·按层数伤害并衰减" lifetime="UntilRemoved" reapply="AddStacks">
+      <PeriodicDamage timing="TurnStarted" timingSubject="Holder" amount="1" target="Self" stackDecay="1" />
+    </Status>
+    <Status id="shield-reflect" name="盾反·按实际格挡等额反伤" lifetime="UntilRemoved">
+      <ReflectBlockedDamage ratio="1" target="EventSource" />
+    </Status>
+    <Status id="overheal-damage" name="溢出治疗等额转单体伤害" lifetime="UntilRemoved">
+      <OverhealDamage ratio="1" target="Opponents" selection="FirstLiving" />
+    </Status>
+    <Status id="life-steal" name="吸血·实际伤害20%" lifetime="UntilRemoved">
+      <LifeSteal ratio="0.2" target="Self" />
+    </Status>
+    <Status id="layer-armor" name="多段击破护甲" lifetime="UntilRemoved">
+      <HitArmor multiplier="0.25" consumeStacks="1" primaryOnly="true" />
+    </Status>
+    <Status id="elite-bleeding" name="流血·每层使敌方攻击伤害提高30%，施加者行动结束减1层" tags="Negative" lifetime="UntilRemoved" reapply="AddStacks">
+      <IncomingAttackDamagePerStack rate="0.3" />
+      <StackDecay timing="ActionCompleted" timingSubject="Applier" stacks="1" />
+    </Status>
+    <Status id="wrath-shell" name="龟缩·两次免伤" lifetime="UntilRemoved" reapply="KeepLonger">
+      <DamageImmunity />
+    </Status>
+  </Statuses>
+</BattleContent>

@@ -4,8 +4,8 @@ using System.Linq;
 
 namespace PokerEngine
 {
-    // Flush is deliberately a filter, not a competing scoring category.
-    public enum HandGuideType { Any, HighCard, OnePair, TwoPair, ThreeOfAKind, Straight, FullHouse, FourOfAKind, FiveOfAKind, RoyalFlush }
+    // Preserve old numeric identities; final flush types also have explicit queries.
+    public enum HandGuideType { Any, HighCard, OnePair, TwoPair, ThreeOfAKind, Straight, FullHouse, FourOfAKind, FiveOfAKind, RoyalFlush, Flush, StraightFlush, FlushHouse, FlushFive }
     public enum HandGuideAvailability { Complete, Completable, Impossible, SearchLimited }
 
     public sealed class HandGuideRequest
@@ -18,7 +18,7 @@ namespace PokerEngine
         {
             if (!Enum.IsDefined(typeof(HandGuideType), type) || maxCandidates < 1 || maxCandidates > 256 || nodeBudget < 1 || nodeBudget > 2000000)
                 throw new ArgumentOutOfRangeException(nameof(type));
-            Type = type; RequireFlush = requireFlush; MaxCandidates = maxCandidates; NodeBudget = nodeBudget;
+            Type = type; RequireFlush = requireFlush || type == HandGuideType.Flush || type == HandGuideType.StraightFlush || type == HandGuideType.FlushHouse || type == HandGuideType.FlushFive; MaxCandidates = maxCandidates; NodeBudget = nodeBudget;
         }
     }
 
@@ -40,11 +40,13 @@ namespace PokerEngine
         public int MissingCount => Cards.Count(c => c.IsMissing);
         public HandCategory Category { get; }
         public bool IsFlush { get; }
+        public BattleHandType FinalType { get; }
         // Binds the preview to the exact immutable source, including encounter and hidden rule state.
         internal CardDuelState Snapshot { get; }
-        internal HandGuideCandidate(CardDuelState state, ParticipantId actor, IEnumerable<HandGuideCard> cards, HandCategory category, bool flush)
+        internal HandGuideCandidate(CardDuelState state, ParticipantId actor, IEnumerable<HandGuideCard> cards, HandCategory category, bool flush, int highRank = 0)
         {
             Snapshot = state; Revision = state.Revision; Actor = actor; Cards = Array.AsReadOnly(cards.ToArray()); Category = category; IsFlush = flush;
+            FinalType = HandAttackInfo.ResolveFinalType(category, flush, highRank);
             Id = string.Join("|", Cards.Select(c => c.Card.Id.Value).OrderBy(x => x, StringComparer.Ordinal).Select(x => x.Length + ":" + x));
         }
     }

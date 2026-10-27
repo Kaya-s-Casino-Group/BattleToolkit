@@ -25,7 +25,7 @@ namespace PokerEngine.Tests
         }
         private static BattleSession Create(int energy = 3, int initial = -1, int actions = 3, int playCost = 1,
             int discardCost = 1, int deckSize = 20, IScoredHandEffectRule effect = null, IEnumerable<BattleRelicSetup> relics = null,
-            int players = 1)
+            int players = 1, CardDuelRefillTiming playRefill = CardDuelRefillTiming.NextPlayerTurn)
         {
             // Deliberately contradictory legacy flags and budgets must not control the current mode.
             var flow = new BattleTurnFlowRules(manualDraw: true, drawUses: 2, actionsPerTurn: actions,
@@ -33,7 +33,7 @@ namespace PokerEngine.Tests
             var rules = new BattlePlayerRules(maxEnergy: energy, initialEnergy: initial < 0 ? energy : initial,
                 playEnergyCost: playCost, discardEnergyCost: discardCost, handSize: 8, discards: 0, unlimitedDiscards: false,
                 maxPlayCards: 10, maxDiscardCards: 512,
-                dealPolicy: new CardDuelDealPolicy(CardDuelRefillTiming.AfterAction, CardDuelRefillTiming.NextPlayerTurn),
+                dealPolicy: new CardDuelDealPolicy(playRefill, CardDuelRefillTiming.NextPlayerTurn),
                 effectRule: effect, flow: flow);
             var deck = StandardDeck.Cards().Take(deckSize).Select((card, i) => new DeckEntry("card/" + i, card.Id));
             var engine = new CardDuelEngine(new BattleRules("energy-only", 20));
@@ -51,6 +51,27 @@ namespace PokerEngine.Tests
             Assert.IsTrue(result.Accepted, result.Error.ToString()); return result;
         }
         private static int Energy(BattleSession s) => s.State.Duel.Player(Player).Energy.Energy;
+
+        [Test] public void ConfiguredAfterPlayRefillWorksAtEveryEnergyIncludingLastAction()
+        {
+            var s = Create(playRefill: CardDuelRefillTiming.AfterAction);
+            for (int i = 0; i < 3; i++)
+            {
+                var before = s.State;
+                var cards = Hand(s, 5);
+                var preview = s.Engine.PreviewPlay(before, before.Revision, Player, cards);
+                Assert.IsTrue(preview.Accepted, preview.Error.ToString());
+                Assert.AreSame(before, s.State);
+                var result = Act(s, false, 5);
+                var transition = result.Steps[0].Transition;
+                Assert.AreEqual(5, transition.Draws.Sum(d => d.DrawnCount));
+                Assert.AreEqual(8, transition.State.Zone(CardZoneKinds.Hand, Player).Cards.Count);
+                Assert.AreEqual(2 - i, transition.State.Duel.Player(Player).Energy.Energy);
+                CollectionAssert.AreEqual(preview.State.Zone(CardZoneKinds.Hand, Player).Cards,
+                    transition.State.Zone(CardZoneKinds.Hand, Player).Cards);
+            }
+            Assert.AreEqual(1, s.State.Duel.CompletedRounds);
+        }
 
         [Test] public void PlayAndDiscardShareEnergyAndDiscardReplacesOnlyItsOwnCards()
         {

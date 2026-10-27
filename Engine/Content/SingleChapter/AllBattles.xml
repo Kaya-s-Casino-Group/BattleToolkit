@@ -1,0 +1,6 @@
+<BattleContent schemaVersion="1" id="single-chapter-battle" name="单章七站·战斗配置" version="single-chapter-battle.2026-10-26.3">
+  <Import path="Battle1.xml" />
+  <Import path="Battle2.xml" />
+  <Import path="Gatekeeper.xml" />
+  <Import path="Wrath.xml" />
+</BattleContent>

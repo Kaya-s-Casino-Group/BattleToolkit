@@ -1,0 +1,92 @@
+<BattleContent schemaVersion="1" id="single-chapter-wrath" version="single-chapter-battle.2026-10-26.3">
+  <Enemies>
+    <Enemy id="wrath" name="暴怒·千手" maxHealth="2000">
+      <Behavior attack="8" intentPreviewTurns="8">
+        <Wrath bloodHandRefs="wrath-blood-1,wrath-blood-2,wrath-blood-3,wrath-blood-4" bindingHandRef="wrath-binding" baseAttack="8" attackPerHand="5" attackPerCharge="10" chargeActionId="charge" initialWarningRound="1" cooldownRounds="5" regenerationRounds="8" ultimateScale="3" />
+        <Stage id="normal" mode="Sequence">
+          <Action id="strike" name="普攻">
+            <Effects>
+              <Effect id="main" kind="Damage" amountKind="EnemyAttackScale" amount="1" />
+            </Effects>
+          </Action>
+          <Action id="strike-2" name="普攻">
+            <Effects>
+              <Effect id="main" kind="Damage" amountKind="EnemyAttackScale" amount="1" />
+            </Effects>
+          </Action>
+          <Action id="guard" name="防御·龟缩免疫两次伤害">
+            <Effects>
+              <Effect id="shell" kind="ApplyStatus" statusRef="wrath-shell" stacks="2" target="Self" />
+            </Effects>
+          </Action>
+          <Action id="charge" name="蓄力·攻击永久增加10">
+            <Effects>
+              <Effect id="charge" kind="GainBlock" amount="0" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-blood-1" name="饮血手1" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="blood-heal" name="饮血·本体回复10生命">
+            <Effects>
+              <Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-blood-2" name="饮血手2" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="blood-heal" name="饮血·本体回复10生命">
+            <Effects>
+              <Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-blood-3" name="饮血手3" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="blood-heal" name="饮血·本体回复10生命">
+            <Effects>
+              <Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-blood-4" name="饮血手4" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior>
+        <Stage id="normal" mode="Sequence">
+          <Action id="blood-heal" name="饮血·本体回复10生命">
+            <Effects>
+              <Effect id="heal" kind="Heal" amount="10" target="Allies" selection="FirstLiving" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="wrath-binding" name="束缚手" maxHealth="1" scaleHealthWithAdventure="false">
+      <Behavior>
+        <Stage id="normal" mode="Priority">
+          <Action id="binding" name="束缚·眩晕玩家">
+            <When kind="RoundModulo" value="5" />
+            <Effects>
+              <Effect id="binding" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="AllLiving" />
+            </Effects>
+          </Action>
+          <Action id="wait" name="等待束缚">
+            <Effects>
+              <Effect id="wait" kind="GainBlock" amount="0" target="Self" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+  </Enemies>
+</BattleContent>

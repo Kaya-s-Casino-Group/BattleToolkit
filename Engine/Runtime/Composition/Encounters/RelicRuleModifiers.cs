@@ -219,7 +219,9 @@ namespace PokerEngine
                 // are separate DrawCards effects, not a second refill policy overriding this result.
                 int requested = context.Trigger == CardDuelDealTrigger.OpeningTurn || context.Trigger == CardDuelDealTrigger.PlayerTurnStart
                     ? context.MissingCards : context.Trigger == CardDuelDealTrigger.AfterDiscard
-                    ? Math.Min(context.DiscardedCount, context.MissingCards) : 0;
+                    ? Math.Min(context.DiscardedCount, context.MissingCards) : context.Trigger == CardDuelDealTrigger.AfterPlay
+                    ? query.BasePolicy.GetDrawCount(context) : 0;
+                if (requested < 0 || requested > context.MissingCards) throw new ArgumentException("Base draw policy must respect the hand limit.");
                 return new BattleDealResolution(context, requested, null, requested, 0, requested, Array.Empty<BattleRefillContribution>());
             }
             int baseCount = query.BasePolicy.GetDrawCount(context);

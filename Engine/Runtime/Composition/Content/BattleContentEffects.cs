@@ -65,7 +65,7 @@ namespace PokerEngine
         {
             return ReadDefinitions(section, "HandRule", node =>
             {
-                Check(node, new[] { "id", "name", "version", "flushUsesRankEffects", "combineCompatibleEffects", "flushAsAttribute", "fullHouseComponentDamage", "modernScoring", "flushDamageMultiplier" }, new[] { "Hand", "FlushBonus" });
+                Check(node, new[] { "id", "name", "version", "flushUsesRankEffects", "combineCompatibleEffects", "flushAsAttribute", "fullHouseComponentDamage", "modernScoring", "flushDamageMultiplier", "wheelAceScoresOne", "pureFlushScoresAllCards", "fullHouseTripleBaseMultiplier", "exclusiveHandEffects" }, new[] { "Hand", "FlushBonus" });
                 var entries = node.Children.Where(item => item.Name == "Hand").Select(hand => Capture(hand, () =>
                 {
                     Check(hand, new[] { "category", "variant" }, new[] { "Effect" });
@@ -76,7 +76,9 @@ namespace PokerEngine
                 if (bonus.Length > 1) throw new ArgumentException("Only one FlushBonus is supported.");
                 if (bonus.Length == 1) Check(bonus[0], Array.Empty<string>(), new[] { "Effect" });
                 return new ConfiguredHandEffectRule(Text(node, "version", ContentVersion), entries,
-                    bonus.SelectMany(b => b.Children).Select(e => ReadConfiguredStep(e, true, true)), Bool(node, "flushUsesRankEffects", false), Bool(node, "combineCompatibleEffects", false), Bool(node, "flushAsAttribute", false), Bool(node, "fullHouseComponentDamage", false), Bool(node, "modernScoring", false), Decimal(node, "flushDamageMultiplier", 2m));
+                    bonus.SelectMany(b => b.Children).Select(e => ReadConfiguredStep(e, true, true)), Bool(node, "flushUsesRankEffects", false), Bool(node, "combineCompatibleEffects", false), Bool(node, "flushAsAttribute", false), Bool(node, "fullHouseComponentDamage", false), Bool(node, "modernScoring", false), Decimal(node, "flushDamageMultiplier", 2m),
+                    Bool(node, "wheelAceScoresOne", false), Bool(node, "pureFlushScoresAllCards", false),
+                    Optional(node, "fullHouseTripleBaseMultiplier") == null ? (decimal?)null : Decimal(node, "fullHouseTripleBaseMultiplier", 0), Bool(node, "exclusiveHandEffects", false));
             });
         }
 
@@ -109,10 +111,11 @@ namespace PokerEngine
                 throw new ArgumentException("Flush bonus cannot assume a full-house component score.");
             var onHit = node.Children.Where(c => c.Name == "OnHitStatus").ToArray();
             if (onHit.Length > 1 || onHit.Length > 0 && kind != CombatEffectKind.Damage) throw new ArgumentException("One OnHitStatus is allowed on a damage effect.");
-            if (onHit.Length > 0) Check(onHit[0], new[] { "statusRef", "stacks", "stacksPerSubmittedCard", "lifetime", "count", "phase" }, Array.Empty<string>());
+            if (onHit.Length > 0) Check(onHit[0], new[] { "statusRef", "stacks", "stacksKind", "stacksPerSubmittedCard", "lifetime", "count", "phase" }, Array.Empty<string>());
             return new ConfiguredEffectStep(Text(node, "id"), kind, ReadEffectTarget(node),
                 IsNumeric(kind) ? ReadAmount(node, allowScore) : null, kind == CombatEffectKind.ApplyStatus ? ReadStatusApplication(node, allowScore) : null,
-                onHit.Length == 0 ? null : ReadStatusApplication(onHit[0], allowScore), perCard);
+                onHit.Length == 0 ? null : ReadStatusApplication(onHit[0], allowScore), perCard,
+                onHit.Length == 0 ? OnHitStacksKind.Constant : Enum(onHit[0], "stacksKind", OnHitStacksKind.Constant));
         }
 
         private BattleEffectSpec ReadConstantEffect(BattleContentNode node, bool allowTarget = true, bool allowId = true, bool allowHandCount = false, bool allowSubmittedCards = false)

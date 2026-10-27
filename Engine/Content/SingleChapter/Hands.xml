@@ -1,0 +1,79 @@
+<BattleContent schemaVersion="1" id="single-chapter-hands" version="single-chapter-battle.2026-10-26.3">
+  <ScoringProfiles>
+    <Scoring id="single-battle-score" name="标准计分·数值初版" version="score.standard-single-battle.1">
+      <Hand category="HighCard" points="0" multiplier="1" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="OnePair" points="0" multiplier="2" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="TwoPair" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="ThreeOfAKind" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="Straight" points="0" multiplier="3" pointsPerLevel="0" multiplierPerLevel="1" />
+      <Hand category="Flush" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FullHouse" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="FourOfAKind" points="0" multiplier="4" pointsPerLevel="0" multiplierPerLevel="2" />
+      <Hand category="StraightFlush" points="0" multiplier="8" pointsPerLevel="0" multiplierPerLevel="4" />
+      <Hand category="FiveOfAKind" points="0" multiplier="12" pointsPerLevel="0" multiplierPerLevel="3" />
+      <CardPoints>
+        <Rank rank="Two" points="2" />
+        <Rank rank="Three" points="3" />
+        <Rank rank="Four" points="4" />
+        <Rank rank="Five" points="5" />
+        <Rank rank="Six" points="6" />
+        <Rank rank="Seven" points="7" />
+        <Rank rank="Eight" points="8" />
+        <Rank rank="Nine" points="9" />
+        <Rank rank="Ten" points="10" />
+        <Rank rank="Jack" points="11" />
+        <Rank rank="Queen" points="12" />
+        <Rank rank="King" points="13" />
+        <Rank rank="Ace" points="14" />
+      </CardPoints>
+    </Scoring>
+  </ScoringProfiles>
+  <HandRules>
+    <HandRule id="document-hands" name="策划牌型技能" version="document-hands.standard.2953" modernScoring="true" exclusiveHandEffects="true" fullHouseComponentDamage="true" wheelAceScoresOne="false" fullHouseTripleBaseMultiplier="2">
+      <Hand category="HighCard">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="OnePair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="TwoPair">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="ThreeOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="Straight">
+        <Effect id="damage/1" kind="Damage" amountKind="CardScoreScale" amount="1" perSubmittedCard="true" target="Opponents" selection="ActorPolicy" retargetChain="straight">
+          <OnHitStatus statusRef="bleed" stacks="1" />
+        </Effect>
+      </Hand>
+      <Hand category="Flush">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="ActorPolicy" />
+      </Hand>
+      <Hand category="FullHouse">
+        <Effect id="triple" kind="Damage" amountKind="ThreeOfAKindTotalScale" amount="2" target="Opponents" selection="AllLiving" />
+        <Effect id="pair" kind="Damage" amountKind="OnePairTotalScale" amount="2" target="Opponents" selection="Requested" />
+        <Effect id="stun" kind="ApplyStatus" statusRef="stun" target="Opponents" selection="AllLiving" />
+        <Effect id="cleanse" kind="Cleanse" target="Self" />
+        <Effect id="control-immunity" kind="ApplyStatus" statusRef="control-immunity" target="Self" />
+      </Hand>
+      <Hand category="FourOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="StraightFlush" variant="Ordinary">
+        <Effect id="damage/1" kind="Damage" amountKind="CardScoreScale" amount="1" perSubmittedCard="true" target="Opponents" selection="ActorPolicy" retargetChain="straight">
+          <OnHitStatus statusRef="bleed" stacks="1" />
+        </Effect>
+      </Hand>
+      <Hand category="StraightFlush" variant="Royal">
+        <Effect id="eliminate" kind="Eliminate" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <Hand category="FiveOfAKind">
+        <Effect id="damage/1" kind="Damage" amountKind="ScoreTotalScale" amount="1" target="Opponents" selection="AllLiving" />
+      </Hand>
+      <FlushBonus>
+        <Effect id="heal" kind="Heal" amountKind="FlushBaseTotalScale" amount="0.5" target="Self" />
+      </FlushBonus>
+    </HandRule>
+  </HandRules>
+</BattleContent>

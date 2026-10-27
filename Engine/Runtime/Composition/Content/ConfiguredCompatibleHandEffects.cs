@@ -33,16 +33,17 @@ namespace PokerEngine
                 var primary = damage[0].Step;
                 bool repeated = damage.Any(d => d.Step.PerSubmittedCard);
                 var target = MergeTargets(damage.Select(d => d.Step.Target).ToArray());
-                var onHit = damage.Select(d => d.Step.OnHitStatus).Where(s => s != null).ToArray();
-                if (onHit.Length > 1 && onHit.Skip(1).Any(s => !StatusBytes(onHit[0]).SequenceEqual(StatusBytes(s))))
+                var onHit = damage.Select(d => d.Step).Where(s => s.OnHitStatus != null).ToArray();
+                if (onHit.Length > 1 && onHit.Skip(1).Any(s => s.OnHitStacksKind != onHit[0].OnHitStacksKind ||
+                    !StatusBytes(onHit[0].OnHitStatus).SequenceEqual(StatusBytes(s.OnHitStatus))))
                     throw new ArgumentException("Compatible damage steps have conflicting on-hit statuses.");
-                var status = onHit.FirstOrDefault();
+                var statusSource = onHit.FirstOrDefault();
                 long total = primary.Amount.Kind == EffectAmountKind.CardScoreScale
                     ? checked((long)decimal.Floor(primary.Amount.Value * context.Score.Total))
                     : primary.Amount.Resolve(context.Score, context.Hand.FlushBaseTotal);
                 var aliases = damage.Select(d => new HandEffectSourceAlias(d.Entry.Category, d.Step.Id)).ToArray();
                 if (!repeated)
-                    effects.Add(new BattleEffectStep(primary.Id, BattleEffectSpec.Damage(total, status), target, aliases));
+                    effects.Add(new BattleEffectStep(primary.Id, BattleEffectSpec.Damage(total, statusSource?.ResolveOnHitStatus()), target, aliases));
                 else
                 {
                     var amounts = context.Hand.ModernScoring ? CardDamage(primary.Amount.Value, context.Score, context.Hand) :
@@ -53,7 +54,8 @@ namespace PokerEngine
                         // Base aliases stay on the first hit so AddHits means extra hits once per action.
                         var sources = i == 0 ? aliases : damage.Select(d =>
                             new HandEffectSourceAlias(d.Entry.Category, d.Step.Id + "/card/" + (i + 1))).ToArray();
-                        effects.Add(new BattleEffectStep(id, BattleEffectSpec.Damage(amounts[i], status), target, sources));
+                        var card = (context.Hand.ModernScoring ? context.Hand.AttackCards : context.Hand.SubmittedCards)[i];
+                        effects.Add(new BattleEffectStep(id, BattleEffectSpec.Damage(amounts[i], statusSource?.ResolveOnHitStatus(card)), target, sources));
                     }
                 }
             }

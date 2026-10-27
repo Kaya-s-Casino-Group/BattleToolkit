@@ -751,6 +751,7 @@ namespace PokerEngine
                         var regenerationFacts = new List<CombatRuleEvent>();
                         state = RegenerateWrathHands(WindowState(state, combat, players, phase, rounds, pending), regenerationFacts, timeline);
                         combat = state.Combat; events = events.Concat(regenerationFacts).ToArray();
+                        state = BeginWrathOpeningWarning(state);
                         timelineSource = state;
                     }
                     pending = EnemyPhaseQueue(state);

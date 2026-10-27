@@ -171,7 +171,7 @@ namespace PokerEngine
         /// <summary>Battle scoring policy: kickers add chips after multiplication; component scores retain their own category multipliers.</summary>
         public static ScoreResult EvaluateBattle(string id, ScoreProfile profile, PokerHandClassification pattern, int handLevel,
             IEnumerable<ScoringCard> submitted, IEnumerable<ScoringRelic> relics, KickerScoring kickerMode, bool layered,
-            Func<HandCategory, int> levelFor = null, bool includeLegacyComponents = true)
+            Func<HandCategory, int> levelFor = null, bool includeLegacyComponents = true, decimal? fullHouseTripleBaseMultiplier = null, HandCategory? scoringCategory = null)
         {
             if (pattern == null) throw new ArgumentNullException(nameof(pattern));
             if (!Enum.IsDefined(typeof(KickerScoring), kickerMode)) throw new ArgumentException("Unknown kicker scoring policy.");
@@ -180,7 +180,7 @@ namespace PokerEngine
                 !new HashSet<string>(cards.Select(c => c.Id), StringComparer.Ordinal).SetEquals(pattern.SubmittedCards.Select(c => c.Value)))
                 throw new ArgumentException("Scoring input must contain exactly the submitted instances.");
             var scoring = new HashSet<string>(pattern.ScoringCards.Select(c => c.Value));
-            var result = Evaluate(id, profile, pattern.Category, handLevel,
+            var result = Evaluate(id, profile, scoringCategory ?? pattern.Category, handLevel,
                 cards.Where(c => kickerMode == KickerScoring.AllCards || scoring.Contains(c.Id)), ordered, layered);
             long extra = 0; var steps = result.Steps.ToList();
             if (kickerMode == KickerScoring.ChipsOnly)
@@ -194,9 +194,20 @@ namespace PokerEngine
                 foreach (var group in cards.Where(c => scoring.Contains(c.Id)).GroupBy(c => c.Face.Rank))
                 {
                     var category = group.Count() == 3 ? HandCategory.ThreeOfAKind : HandCategory.OnePair;
-                    parts.Add(Evaluate(id + "/" + category, profile, category, levelFor == null ? 1 : levelFor(category), group, ordered, layered));
+                    var componentProfile = profile;
+                    if (category == HandCategory.ThreeOfAKind && fullHouseTripleBaseMultiplier.HasValue)
+                    {
+                        // A mode may keep the full-house triple component stable when standalone triples are rebalanced.
+                        // Only its base multiplier changes: component levels, card effects and relics still apply normally.
+                        var rule = profile.Rule(category);
+                        var replacement = new HandScoreRule(category, rule.BasePoints, fullHouseTripleBaseMultiplier.Value,
+                            rule.PointsPerLevel, rule.MultiplierPerLevel);
+                        componentProfile = new ScoreProfile(profile.Version, Enum.GetValues(typeof(HandCategory)).Cast<HandCategory>()
+                            .Select(value => value == category ? replacement : profile.Rule(value)), profile.CardPoints);
+                    }
+                    parts.Add(Evaluate(id + "/" + category, componentProfile, category, levelFor == null ? 1 : levelFor(category), group, ordered, layered));
                 }
-            return new ScoreResult(id, result.Category, result.BasePoints, result.BaseMultiplier, result.Points, result.Multiplier, steps, extra, parts);
+            return new ScoreResult(id, pattern.Category, result.BasePoints, result.BaseMultiplier, result.Points, result.Multiplier, steps, extra, parts);
         }
         public static ScoreResult Fixed(string id, long points)
         {

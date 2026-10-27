@@ -34,15 +34,18 @@ namespace PokerEngine
                 bool compatible = handRule?.CombineCompatibleEffects == true;
                 var pattern = ClassifyHand(player, ordered);
                 bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
-                var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(pattern.Category);
+                var scoreCategory = handRule?.ExclusiveHandEffects == true && pattern.Category == HandCategory.StraightFlush && !royal ? HandCategory.Straight : pattern.Category;
+                var level = state.Duel.Player(actor).Rules.HandLevels.LevelFor(scoreCategory);
                 facts = BuildHandFacts(state, actor, ordered, pattern);
                 var relics = RelicPrograms.Scores(player.Relics, facts);
                 var kicker = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.AllCardsScore).Value > 0 ? KickerScoring.AllCards : flow.KickerScoring;
                 var score = ScoreEngine.EvaluateBattle(duel.NextScoreId(state.Duel), Scoring, pattern, level,
-                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects)),
+                    ordered.Select(card => new ScoringCard(card.Id.Value, new CardFace(Face(card).Rank, Face(card).Suit), effects: card.Effects,
+                        basePointsOverride: WheelAcePoints(handRule, pattern, card))),
                     flow.UsesTurnFlow || flow.LayeredScoreRelics ? relics : Array.Empty<ScoringRelic>(), kicker, flow.LayeredScoreRelics, player.Rules.HandLevels.LevelFor,
-                    includeLegacyComponents: !compatible || (player.Rules.EffectRule as ConfiguredHandEffectRule)?.FullHouseComponentDamage == true);
-                if (handRule?.ModernScoring == true && facts.IsFlush && !royal)
+                    includeLegacyComponents: !compatible || (player.Rules.EffectRule as ConfiguredHandEffectRule)?.FullHouseComponentDamage == true,
+                    fullHouseTripleBaseMultiplier: handRule?.FullHouseTripleBaseMultiplier, scoringCategory: scoreCategory);
+                if (handRule?.ModernScoring == true && !handRule.ExclusiveHandEffects && facts.IsFlush && !royal)
                     score = ScoreEngine.ScaleMultiplier(score, handRule.FlushDamageMultiplier, "hand/flush");
                 var itemMultiplier = BattleItemRuntime.HandMultiplier(player.Relics);
                 if (itemMultiplier != 1) score = ScoreEngine.ScaleMultiplier(score, itemMultiplier, "item/roulette");
@@ -51,6 +54,11 @@ namespace PokerEngine
             catch (OverflowException) { return new CardDuelTransition(state, CardDuelError.Overflow); }
         }
 
+        private long? WheelAcePoints(ConfiguredHandEffectRule rule, PokerHandClassification pattern, CardInstance card) =>
+            rule?.WheelAceScoresOne == true && (pattern.Category == HandCategory.Straight || pattern.Category == HandCategory.StraightFlush) &&
+            pattern.TieBreakRanks[0] == 5 && pattern.ScoringCards.Count == 5 && pattern.ScoringCards.Contains(card.Id) && Face(card).Rank == Rank.Ace
+                ? (long?)1 : null;
+
         internal PokerHandClassification ClassifyHand(BattlePlayerTurn player, CardInstance[] ordered)
         {
             var rule = player.Rules.EffectRule as ConfiguredHandEffectRule;
@@ -58,7 +66,7 @@ namespace PokerEngine
             int straight = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value;
             var cards = ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)).ToArray();
             var pattern = rule?.CombineCompatibleEffects == true ?
-                PokerHandCompatibility.Classify(cards, flush, straight, flushAsAttribute: rule.FlushAsAttribute, modernScoring: rule.ModernScoring).Highest :
+                PokerHandCompatibility.Classify(cards, flush, straight, flushAsAttribute: rule.FlushAsAttribute, modernScoring: rule.ModernScoring, pureFlushScoresAllCards: rule.PureFlushScoresAllCards).Highest :
                 PokerHandClassifier.ClassifyBest(cards, flush, straight);
             bool royal = pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] == (int)Rank.Ace;
             return !royal && rule?.FlushUsesRankEffects == true ? PokerHandClassifier.ClassifyBest(cards, flush, straight, true) : pattern;
@@ -82,18 +90,20 @@ namespace PokerEngine
                 {
                     var faces = ordered.Select(card => new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit)).ToArray();
                     var flushIds = PokerHandCompatibility.FlushCards(faces, flushMin);
-                    // A low Ace changes straight ordering, never the configured scoring/healing points.
+                    // Damage and flush healing use the same contextual Ace value; other cards keep the configured points.
                     flushBase = ordered.Where(card => flushIds.Contains(card.Id) && CardEffectRules.CanScore(card.Effects)).Aggregate(0L, (sum, card) =>
-                        checked(sum + Scoring.CardPoints.GetBasePoints(new CardFace(Face(card).Rank, Face(card).Suit))));
+                        checked(sum + (WheelAcePoints(rule, pattern, card) ?? Scoring.CardPoints.GetBasePoints(new CardFace(Face(card).Rank, Face(card).Suit)))));
                 }
                 else flushBase = ScoreEngine.Evaluate(duel.NextScoreId(state.Duel) + "/flush-base", Scoring, HandCategory.Flush, 1,
                     ordered.Select(c => new ScoringCard(c.Id.Value, new CardFace(Face(c).Rank, Face(c).Suit), effects: c.Effects)),
                     Array.Empty<ScoringRelic>(), true).Total;
             }
             return new HandAttackInfo(pattern, ordered.Select(card => new AttackCardSnapshot(card,
-                new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit))),
+                new EffectiveCard(card.Id, Face(card).Rank, Face(card).Suit),
+                CardEffectRules.CanScore(card.Effects) ? WheelAcePoints(rule, pattern, card) ??
+                    Scoring.CardPoints.GetBasePoints(new CardFace(Face(card).Rank, Face(card).Suit)) : 0)),
                 BattleRuleResolver.Value(state.Duel.Player(actor).Rules, state.Duel.Player(actor).Relics, BattleRuleValueKey.MinFlushCards).Value,
-                straightMin, flushBase, rule?.FlushUsesRankEffects == true, rule?.CombineCompatibleEffects == true, rule?.FlushAsAttribute == true, rule?.ModernScoring == true);
+                straightMin, flushBase, rule?.FlushUsesRankEffects == true, rule?.CombineCompatibleEffects == true, rule?.FlushAsAttribute == true, rule?.ModernScoring == true, rule?.PureFlushScoresAllCards == true, rule?.ExclusiveHandEffects == true);
         }
 
     }

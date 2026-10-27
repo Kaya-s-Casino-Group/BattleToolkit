@@ -1,0 +1,11 @@
+<BattleContent schemaVersion="1" id="single-chapter-gatekeeper" version="single-chapter-battle.2026-10-26.3">
+  <Import path="Shared.xml" />
+  <Import path="Rules/Elite.xml" />
+  <Import path="Enemies/Elite.xml" />
+  <Encounters>
+    <Encounter id="single-chapter-gatekeeper" name="守门人" rulesRef="elite-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="summoner" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

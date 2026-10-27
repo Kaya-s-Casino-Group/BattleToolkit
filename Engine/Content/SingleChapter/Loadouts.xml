@@ -1,0 +1,5 @@
+<BattleContent schemaVersion="1" id="single-chapter-loadouts" version="single-chapter-battle.2026-10-26.3">
+  <Loadouts>
+    <Loadout id="baseline" name="标准初始构筑·无遗物" deckRef="standard-deck" />
+  </Loadouts>
+</BattleContent>

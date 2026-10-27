@@ -9,6 +9,16 @@ namespace PokerEngine
 {
     public static class BattleContentCompiler
     {
+        public static BattleContentBuildResult CompileFiles(string entryPath, Func<string, string> readText)
+        {
+            var loaded = BattleContentLoader.Load(entryPath, readText);
+            return loaded.Success ? Compile(loaded.Source) : new BattleContentBuildResult(null, loaded.Diagnostics);
+        }
+        public static BattleContentBuildResult CompileFile(string entryPath)
+        {
+            var loaded = BattleContentLoader.LoadFile(entryPath);
+            return loaded.Success ? Compile(loaded.Source) : new BattleContentBuildResult(null, loaded.Diagnostics);
+        }
         public static BattleContentBuildResult CompileXml(string xml, string sourceName = "content.xml")
         {
             var read = BattleContentXmlReader.Read(xml, sourceName);
@@ -25,7 +35,7 @@ namespace PokerEngine
         internal Dictionary<string, CombatStatusDefinition> Statuses;
         internal string ContentVersion;
         private readonly List<BattleDiagnostic> diagnostics = new List<BattleDiagnostic>();
-        private static readonly string[] Sections = { "ScoringProfiles", "BattleRules", "HandRules", "Statuses", "Relics", "Players", "Enemies", "Decks", "Loadouts", "Encounters" };
+        internal static readonly string[] Sections = { "ScoringProfiles", "BattleRules", "HandRules", "Statuses", "Relics", "Players", "Enemies", "Decks", "Loadouts", "Encounters" };
 
         internal BattleContentBuildResult Build(BattleContentSource source)
         {
@@ -58,17 +68,20 @@ namespace PokerEngine
             });
             var players = ReadPlayers(section("Players"), hands);
             var enemies = ReadEnemies(section("Enemies"));
-            foreach (var enemy in enemies.Values)
-                foreach (var summon in (enemy.Behavior?.Stages.SelectMany(s => s.Actions).SelectMany(a => a.WorldEffects) ?? Enumerable.Empty<EnemyWorldEffect>()).Where(e => e.EnemyRef != null))
-                    Reference(section("Enemies"), "enemyRef", summon.EnemyRef, enemies);
-            foreach(var rule in rules.Values.Where(r=>r.Rules.VictoryEnemyRef!=null)) Reference(section("BattleRules"),"victoryEnemyRef",rule.Rules.VictoryEnemyRef,enemies);
-            foreach(var enemy in enemies.Values.Where(e=>e.Behavior!=null)) {
+            Func<string, string, BattleContentNode> definitionNode = (group, id) => section(group).Children.First(n => Optional(n, "id") == id);
+            foreach (var enemy in enemies)
+                foreach (var summon in (enemy.Value.Behavior?.Stages.SelectMany(s => s.Actions).SelectMany(a => a.WorldEffects) ?? Enumerable.Empty<EnemyWorldEffect>()).Where(e => e.EnemyRef != null))
+                    Reference(definitionNode("Enemies", enemy.Key), "enemyRef", summon.EnemyRef, enemies);
+            foreach(var rule in rules.Where(r=>r.Value.Rules.VictoryEnemyRef!=null)) Reference(definitionNode("BattleRules", rule.Key),"victoryEnemyRef",rule.Value.Rules.VictoryEnemyRef,enemies);
+            foreach(var pair in enemies.Where(e=>e.Value.Behavior!=null)) {
+                var enemy = pair.Value;
+                var enemyNode = definitionNode("Enemies", pair.Key);
                 var b=enemy.Behavior;
                 var references=b.Stages.SelectMany(s=>ConditionRefs(s.Condition).Concat(s.EntryEffects.SelectMany(e=>e.ReviveRefs)).Concat(s.Actions.SelectMany(a=>ConditionRefs(a.Condition).Concat(a.WorldEffects.SelectMany(e=>e.ReviveRefs)))))
                     .Concat(b.Links.SelectMany(l=>l.Targets.Where(t=>t!="Self"&&t!="Opponents").Concat(l.CountRefs).Concat(ConditionRefs(l.Condition)).Concat(l.HealTarget==null?Array.Empty<string>():new[]{l.HealTarget})));
                 references = references.Concat(b.Wrath?.HandRefs ?? Array.Empty<string>());
-                if (b.Wrath != null && !b.Stages.SelectMany(s => s.Actions).Any(a => a.Id == b.Wrath.ChargeActionId)) AddError(section("Enemies"), "InvalidWrath", "Wrath chargeActionId must name an ordinary action.");
-                foreach(var reference in references.Distinct())Reference(section("Enemies"),"enemyRefs",reference,enemies);
+                if (b.Wrath != null && !b.Stages.SelectMany(s => s.Actions).Any(a => a.Id == b.Wrath.ChargeActionId)) AddError(enemyNode, "InvalidWrath", "Wrath chargeActionId must name an ordinary action.");
+                foreach(var reference in references.Distinct())Reference(enemyNode,"enemyRefs",reference,enemies);
             }
             var decks = ReadDecks(section("Decks"));
             var loadouts = ReadLoadouts(section("Loadouts"), relics, decks);

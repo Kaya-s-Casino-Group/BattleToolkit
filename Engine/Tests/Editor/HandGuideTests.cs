@@ -120,7 +120,7 @@ namespace PokerEngine.Tests
             var filtered = session.Engine.QueryHandGuide(before, Player, new HandGuideRequest(HandGuideType.Straight, true));
             Assert.AreEqual(unfiltered.Candidates.Single().Id, filtered.Candidates.Single().Id);
             var preview = session.Engine.PreviewHandGuide(before, filtered.Candidates.Single(), true, new[] { Enemy });
-            Assert.IsTrue(preview.Hand.IsFlush); Assert.AreEqual(80, preview.Score.Total);
+            Assert.IsTrue(preview.Hand.IsFlush); Assert.AreEqual(60, preview.Score.Total);
             Assert.AreEqual(10m, preview.RuleEffects.Steps.Single(s => s.Effect.Kind == CombatEffectKind.Heal).Effect.UnroundedAmount);
             Assert.AreEqual(16, preview.BaseEffects.Steps.Single(s => s.Effect.Kind == CombatEffectKind.Heal).Effect.Amount);
             Assert.AreEqual(16, preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
@@ -129,13 +129,13 @@ namespace PokerEngine.Tests
             CollectionAssert.AreEqual(actual.Steps[0].Transition.Events.Select(e => e.SettledAmount), preview.Events.Select(e => e.SettledAmount));
             Assert.AreEqual(CardDuelError.StaleRevision, session.Engine.PreviewHandGuide(session.State, filtered.Candidates.Single()).Error);
         }
-        [Test] public void PureFlushKeepsScoringCardsSeparateFromHealingCardsEvenAtFullHealth()
+        [Test] public void PureFlushScoresAllCardsWhileHealingStillReportsOverhealAtFullHealth()
         {
             var session = Setup(new[] { Card(2), Card(5), Card(7), Card(9), Card(13) }, fullHealth: true);
-            var candidate = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(HandGuideType.HighCard, true)).Candidates.Single();
+            var candidate = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(HandGuideType.Flush)).Candidates.Single();
             var preview = session.Engine.PreviewHandGuide(session.State, candidate, true, new[] { Enemy });
-            Assert.AreEqual(1, preview.Hand.ScoringCards.Count); Assert.AreEqual(5, preview.Hand.FlushCards.Count);
-            Assert.AreEqual(26, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
+            Assert.AreEqual(5, preview.Hand.ScoringCards.Count); Assert.AreEqual(5, preview.Hand.FlushCards.Count);
+            Assert.AreEqual(144, preview.Score.Total); Assert.AreEqual(36, preview.Hand.FlushBaseTotal);
             var heal = preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal);
             Assert.AreEqual(18, heal.SettledAmount); Assert.AreEqual(0, heal.HealthRestored); Assert.AreEqual(18, heal.Overheal);
         }
@@ -181,11 +181,33 @@ namespace PokerEngine.Tests
             foreach (HandGuideType type in Enum.GetValues(typeof(HandGuideType))) foreach (bool flush in new[] { false, true })
             {
                 var result = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(type, flush));
-                bool possible = type != HandGuideType.FiveOfAKind && (!flush || type == HandGuideType.Any || type == HandGuideType.HighCard ||
+                bool possible = type != HandGuideType.FiveOfAKind && type != HandGuideType.FlushFive && type != HandGuideType.FlushHouse &&
+                    (!flush || type == HandGuideType.Any || type == HandGuideType.Flush || type == HandGuideType.StraightFlush ||
                     type == HandGuideType.Straight || type == HandGuideType.RoyalFlush);
                 Assert.AreEqual(possible ? HandGuideAvailability.Completable : HandGuideAvailability.Impossible,
                     result.Availability, type + " flush=" + flush + " nodes=" + result.VisitedNodes);
             }
+        }
+
+        [TestCase(new[] { 7, 7, 2, 5, 13 }, HandGuideType.Flush, BattleHandType.Flush, 136, EffectTargetSelection.ActorPolicy)]
+        [TestCase(new[] { 7, 7, 2, 2, 13 }, HandGuideType.Flush, BattleHandType.Flush, 124, EffectTargetSelection.ActorPolicy)]
+        [TestCase(new[] { 7, 7, 7, 2, 13 }, HandGuideType.Flush, BattleHandType.Flush, 144, EffectTargetSelection.ActorPolicy)]
+        [TestCase(new[] { 7, 7, 7, 2, 2 }, HandGuideType.FlushHouse, BattleHandType.FlushHouse, 100, EffectTargetSelection.AllLiving)]
+        [TestCase(new[] { 7, 7, 7, 7, 7 }, HandGuideType.FlushFive, BattleHandType.FlushFive, 420, EffectTargetSelection.AllLiving)]
+        public void FinalFlushTypesExposeOnlyTheirOwnAttackAndHealing(int[] ranks, HandGuideType query, BattleHandType final, long damage, EffectTargetSelection target)
+        {
+            var session = Setup(ranks.Select(r => Card(r)).ToArray());
+            var candidate = session.Engine.QueryHandGuide(session.State, Player, new HandGuideRequest(query)).Candidates.Single();
+            Assert.AreEqual(final, candidate.FinalType);
+            var preview = session.Engine.PreviewHandGuide(session.State, candidate, true,
+                targetBindingResolver: effects => GuideTargets(session.State, effects));
+            Assert.AreEqual(CardDuelError.None, preview.SettlementError);
+            Assert.AreEqual(final, preview.Hand.FinalType);
+            var attacks = preview.RuleEffects.Steps.Where(s => s.Effect.Kind == CombatEffectKind.Damage).ToArray();
+            Assert.AreEqual(final == BattleHandType.FlushHouse ? 2 : 1, attacks.Length);
+            Assert.AreEqual(target, attacks[0].Target.Selection);
+            Assert.AreEqual(damage, preview.Events.Where(e => e.Effect.Kind == CombatEffectKind.Damage).Sum(e => e.SettledDamage));
+            Assert.AreEqual(ranks.Sum() / 2, preview.Events.Single(e => e.Effect.Kind == CombatEffectKind.Heal).HealthRestored);
         }
     }
 }

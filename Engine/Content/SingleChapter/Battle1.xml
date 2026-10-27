@@ -1,0 +1,11 @@
+<BattleContent schemaVersion="1" id="single-chapter-battle1" version="single-chapter-battle.2026-10-26.3">
+  <Import path="Shared.xml" />
+  <Import path="Rules/Normal.xml" />
+  <Import path="Enemies/Grunts.xml" />
+  <Encounters>
+    <Encounter id="single-chapter-battle-1" name="小怪一" rulesRef="single-battle-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="rotator" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

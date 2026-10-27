@@ -4,6 +4,16 @@
 
 ## 启动
 
+命令行也支持多文件配置（在仓库根目录执行）：
+
+```powershell
+dotnet run --project Build/BattleToolkit.Host -- --bundle Engine/Content/SingleChapter/AllBattles.xml
+dotnet run --project Build/BattleToolkit.Host -- --bundle Engine/Content/SingleChapter/Wrath.xml --start single-chapter-wrath
+dotnet run --project Build/BattleToolkit.Host -- --bundle Engine/Content/SingleChapter/AllBattles.xml --export Engine/Content/SingleChapterBattle.xml
+```
+
+三个命令依次用于递归加载并校验、用固定种子实际创建/启动单局、导出兼容单文件。错误输出原文件与行列；失败退出码为 1。导出前统一做语义校验，避免输出部分内容。HTML 表单当前仍编辑单文档；多文件请先导出后导入，不直接将带 Import 的入口拖入表单。单章模块为维护源，表单里的临时试玩修改不会自动写回各模块。
+
 Windows 双击仓库根目录 `start.cmd`；macOS 双击 `start.command`。缺少 .NET 10 SDK 时，启动器从 Microsoft 官方下载安装到本仓库 `.runtime/dotnet`，随后构建并打开默认浏览器。不需要 Unity、Python、Mono 或 Node；首次启动需要联网。
 
 默认地址 **http://127.0.0.1:18767**，请保留终端窗口。启动失败可以按 R 重试。规则源码修改后重启服务；XML 修改后重新开局。详细参数与排错见 [一键启动](../../scripts/README.md)。

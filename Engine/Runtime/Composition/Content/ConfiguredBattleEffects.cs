@@ -6,6 +6,7 @@ namespace PokerEngine
 {
     public enum EffectAmountKind { Constant = 1, ScoreTotalScale, ScorePointsScale, ThreeOfAKindTotalScale, OnePairTotalScale, FlushBaseTotalScale, CardScoreScale, EnemyAttackScale }
     public enum HandEffectVariant { Any = 1, Ordinary, Royal }
+    public enum OnHitStacksKind { Constant = 1, CardBasePoints }
 
     /// <summary>Restricted content expression evaluated from authoritative score facts.</summary>
     public sealed class EffectAmountSpec
@@ -49,10 +50,12 @@ namespace PokerEngine
         public EffectAmountSpec Amount { get; }
         public StatusApplicationSpec Status { get; }
         public StatusApplicationSpec OnHitStatus { get; }
+        public OnHitStacksKind OnHitStacksKind { get; }
         public EffectTargetSpec Target { get; }
         public bool PerSubmittedCard { get; }
         public ConfiguredEffectStep(string id, CombatEffectKind kind, EffectTargetSpec target,
-            EffectAmountSpec amount = null, StatusApplicationSpec status = null, StatusApplicationSpec onHitStatus = null, bool perSubmittedCard = false)
+            EffectAmountSpec amount = null, StatusApplicationSpec status = null, StatusApplicationSpec onHitStatus = null, bool perSubmittedCard = false,
+            OnHitStacksKind onHitStacksKind = OnHitStacksKind.Constant)
         {
             Id = Guard.Text(id, nameof(id)); Target = target ?? throw new ArgumentNullException(nameof(target));
             bool numeric = kind == CombatEffectKind.Damage || kind == CombatEffectKind.Heal || kind == CombatEffectKind.GainBlock || kind == CombatEffectKind.DrawCards;
@@ -64,14 +67,29 @@ namespace PokerEngine
                 status.Lifetime.PhaseKey != BattleStatusTiming.PlayerPhase && status.Lifetime.PhaseKey != BattleStatusTiming.EnemyPhase)
                 throw new ArgumentException("Configured effects require relative battle lifetimes.");
             if (onHitStatus != null && kind != CombatEffectKind.Damage) throw new ArgumentException("On-hit status requires damage.");
+            if (!Enum.IsDefined(typeof(OnHitStacksKind), onHitStacksKind) ||
+                onHitStacksKind == OnHitStacksKind.CardBasePoints && (!perSubmittedCard || onHitStatus == null || onHitStatus.StacksPerSubmittedCard != 0))
+                throw new ArgumentException("CardBasePoints stacks require a repeated damage effect with OnHitStatus and no stacksPerSubmittedCard.");
             if (amount?.Kind == EffectAmountKind.CardScoreScale && !perSubmittedCard) throw new ArgumentException("CardScoreScale requires perSubmittedCard.");
             if (amount?.Kind == EffectAmountKind.EnemyAttackScale && (kind != CombatEffectKind.Damage || perSubmittedCard))
                 throw new ArgumentException("EnemyAttackScale requires a non-repeated enemy damage effect.");
             Kind = kind; Amount = amount; Status = status; OnHitStatus = onHitStatus; PerSubmittedCard = perSubmittedCard;
+            OnHitStacksKind = onHitStacksKind;
         }
-        public BattleEffectStep Resolve(ScoreResult score = null, long? flushBaseTotal = null, string cardId = null, bool includeSharedPoints = false)
+        public StatusApplicationSpec ResolveOnHitStatus(AttackCardSnapshot card = null)
         {
-            var effect = Kind == CombatEffectKind.Damage ? (Amount.Kind == EffectAmountKind.EnemyAttackScale ? BattleEffectSpec.DamageFromEnemyAttack(Amount.Value, OnHitStatus) : BattleEffectSpec.Damage(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints), OnHitStatus)) :
+            if (OnHitStacksKind == OnHitStacksKind.Constant) return OnHitStatus;
+            if (card?.BasePoints == null) throw new ArgumentException("CardBasePoints stacks require authoritative per-card base points.");
+            int stacks = checked((int)(OnHitStatus.Stacks * card.BasePoints.Value));
+            if (stacks == 0) return null;
+            return OnHitStatus.Lifetime != null ? StatusApplicationSpec.WithLifetime(OnHitStatus.DefinitionId, OnHitStatus.Lifetime, stacks) :
+                OnHitStatus.Duration != null ? new StatusApplicationSpec(OnHitStatus.DefinitionId, stacks, OnHitStatus.Duration) :
+                new StatusApplicationSpec(OnHitStatus.DefinitionId, stacks);
+        }
+        public BattleEffectStep Resolve(ScoreResult score = null, long? flushBaseTotal = null, string cardId = null, bool includeSharedPoints = false, AttackCardSnapshot card = null)
+        {
+            var onHitStatus = ResolveOnHitStatus(card);
+            var effect = Kind == CombatEffectKind.Damage ? (Amount.Kind == EffectAmountKind.EnemyAttackScale ? BattleEffectSpec.DamageFromEnemyAttack(Amount.Value, onHitStatus) : BattleEffectSpec.Damage(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints), onHitStatus)) :
                 Kind == CombatEffectKind.Heal ? BattleEffectSpec.Heal(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :
                 Kind == CombatEffectKind.GainBlock ? BattleEffectSpec.GainBlock(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :
                 Kind == CombatEffectKind.DrawCards ? BattleEffectSpec.DrawCards(Amount.Resolve(score, flushBaseTotal, cardId, includeSharedPoints)) :
@@ -91,7 +109,7 @@ namespace PokerEngine
             var cards = hand.ModernScoring ? hand.AttackCards : hand.SubmittedCards;
             for (int i = 0; i < cards.Count; i++)
             {
-                var step = Resolve(score, hand.FlushBaseTotal, cards[i].Id.Value, i == 0);
+                var step = Resolve(score, hand.FlushBaseTotal, cards[i].Id.Value, i == 0, cards[i]);
                 yield return i == 0 ? step : new BattleEffectStep(Id + "/card/" + (i + 1), step.Effect, step.Target);
             }
         }
@@ -127,8 +145,12 @@ namespace PokerEngine
         public bool FlushAsAttribute { get; }
         public bool FullHouseComponentDamage { get; }
         public bool ModernScoring { get; }
+        public bool ExclusiveHandEffects { get; }
         public decimal FlushDamageMultiplier { get; }
-        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false, bool modernScoring = false, decimal flushDamageMultiplier = 2m)
+        public bool WheelAceScoresOne { get; }
+        public bool PureFlushScoresAllCards { get; }
+        public decimal? FullHouseTripleBaseMultiplier { get; }
+        public ConfiguredHandEffectRule(string version, IEnumerable<HandEffectEntry> entries, IEnumerable<ConfiguredEffectStep> flushBonus = null, bool flushUsesRankEffects = false, bool combineCompatibleEffects = false, bool flushAsAttribute = false, bool fullHouseComponentDamage = false, bool modernScoring = false, decimal flushDamageMultiplier = 2m, bool wheelAceScoresOne = false, bool pureFlushScoresAllCards = false, decimal? fullHouseTripleBaseMultiplier = null, bool exclusiveHandEffects = false)
         {
             Version = Guard.Text(version, nameof(version));
             var copy = Guard.Copy(entries, nameof(entries));
@@ -149,11 +171,19 @@ namespace PokerEngine
             FlushUsesRankEffects = flushUsesRankEffects;
             CombineCompatibleEffects = combineCompatibleEffects; FlushAsAttribute = flushAsAttribute; FullHouseComponentDamage = fullHouseComponentDamage;
             ModernScoring = modernScoring;
+            ExclusiveHandEffects = exclusiveHandEffects;
+            if (exclusiveHandEffects && (!modernScoring || combineCompatibleEffects || flushAsAttribute || flushUsesRankEffects || pureFlushScoresAllCards))
+                throw new ArgumentException("Exclusive hand effects require modern scoring and cannot use compatible/overlay composition.");
             if (flushDamageMultiplier < 0) throw new ArgumentOutOfRangeException(nameof(flushDamageMultiplier));
             FlushDamageMultiplier = flushDamageMultiplier;
-            if (modernScoring && (!combineCompatibleEffects || !flushAsAttribute))
+            WheelAceScoresOne = wheelAceScoresOne; PureFlushScoresAllCards = pureFlushScoresAllCards;
+            if (fullHouseTripleBaseMultiplier < 0) throw new ArgumentOutOfRangeException(nameof(fullHouseTripleBaseMultiplier));
+            FullHouseTripleBaseMultiplier = fullHouseTripleBaseMultiplier;
+            if ((wheelAceScoresOne || pureFlushScoresAllCards) && !modernScoring || fullHouseTripleBaseMultiplier.HasValue && !fullHouseComponentDamage)
+                throw new ArgumentException("Contextual scoring requires modern scoring; component multipliers require full-house component damage.");
+            if (modernScoring && !exclusiveHandEffects && (!combineCompatibleEffects || !flushAsAttribute))
                 throw new ArgumentException("Modern scoring requires compatible mechanisms and flush as an attribute.");
-            if ((flushAsAttribute || fullHouseComponentDamage) && !combineCompatibleEffects) throw new ArgumentException("Composition options require compatible effects.");
+            if ((flushAsAttribute || fullHouseComponentDamage) && !combineCompatibleEffects && !exclusiveHandEffects) throw new ArgumentException("Composition options require compatible or exclusive effects.");
             if (flushUsesRankEffects && combineCompatibleEffects) throw new ArgumentException("Choose one hand composition mode.");
             if (combineCompatibleEffects && (copy.Any(entry => !(fullHouseComponentDamage && entry.Category == HandCategory.FullHouse) && entry.Effects.Count(e => e.Kind == CombatEffectKind.Damage) > 1) ||
                 copy.Where(entry => !(fullHouseComponentDamage && entry.Category == HandCategory.FullHouse)).SelectMany(entry => entry.Effects).Any(e => e.Amount?.Kind == EffectAmountKind.ThreeOfAKindTotalScale || e.Amount?.Kind == EffectAmountKind.OnePairTotalScale) ||
@@ -165,7 +195,8 @@ namespace PokerEngine
             if (context == null) throw new ArgumentNullException(nameof(context));
             if (CombineCompatibleEffects && !(context.Hand?.Pattern.Category == HandCategory.StraightFlush && context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace))
                 return ResolveCompatible(context);
-            var matches = Entries.Where(item => item.Category == context.Score.Category).ToArray();
+            if (ExclusiveHandEffects && context.Hand == null) throw new ArgumentException("Exclusive effects require authoritative hand facts.");
+            var matches = Entries.Where(item => item.Category == (ExclusiveHandEffects ? context.Hand.Pattern.Category : context.Score.Category)).ToArray();
             var entry = matches[0];
             if (matches.Length == 2)
             {
@@ -173,13 +204,13 @@ namespace PokerEngine
                 bool royal = context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace;
                 entry = matches.Single(item => item.Variant == (royal ? HandEffectVariant.Royal : HandEffectVariant.Ordinary));
             }
-            bool flush = context.Hand?.IsFlush == true && (ModernScoring || !(context.Score.Category == HandCategory.StraightFlush && context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace));
+            bool flush = ExclusiveHandEffects ? context.Hand.ReceivesFlushBonus : context.Hand?.IsFlush == true && (ModernScoring || !(context.Score.Category == HandCategory.StraightFlush && context.Hand.Pattern.TieBreakRanks[0] == (int)Rank.Ace));
             if (flush && FlushUsesRankEffects)
                 entry = Entries.Single(item => item.Category == context.Hand.RankPattern.Category);
             var effects = entry.Effects.SelectMany(item => item.ResolveAll(context.Score, context.Hand)).ToList();
             if (flush) effects.AddRange(FlushBonus.SelectMany(item => item.ResolveAll(context.Score, context.Hand)).Select(resolved =>
                 new BattleEffectStep("flush-bonus/" + resolved.Id, resolved.Effect, resolved.Target)));
-            return new BattleEffectSequence(Version, "配置牌型效果：" + entry.Category + (flush ? "＋同花加成" : ""), effects);
+            return new BattleEffectSequence(Version, "配置牌型效果：" + (ExclusiveHandEffects ? context.Hand.FinalType.ToString() : entry.Category.ToString()) + (flush ? "＋同花治疗" : ""), effects);
         }
         public void ValidateStatusCatalog(CombatStatusCatalog catalog)
         {

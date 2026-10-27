@@ -1,0 +1,45 @@
+<BattleContent schemaVersion="1" id="single-chapter-relics" version="single-chapter-battle.2026-10-26.3">
+  <Relics>
+    <Relic id="10001" name="10001·同花倍率" version="relic.2951.1" maxCopies="1" sellPrice="10" quality="0">
+      <Program id="flush-multiplier" kind="ScoreMultiplier" amount="2" hand="Flush" />
+      <Program id="other-multiplier" kind="ScoreMultiplier" amount="-1" hand="Flush" excludeHand="true" />
+    </Relic>
+    <Relic id="10002" name="急救药水" version="relic.2951.1" maxCopies="32" charges="1" sellPrice="10" quality="0">
+      <Item activation="Effects" removeOnDepleted="true">
+        <Effect kind="Heal" amount="10" target="Self" />
+      </Item>
+    </Relic>
+    <Relic id="11002" name="心连心" version="relic.2951.1" maxCopies="1" sellPrice="20" quality="1">
+      <Program id="flush-heal-ratio" kind="HealRatioAdd" amount="0.3" hand="Flush" />
+    </Relic>
+    <Relic id="11003" name="存折" version="relic.2951.1" maxCopies="1" sellPrice="20" quality="1">
+      <Item locationLeaveGoldRatio="0.1" />
+    </Relic>
+    <Relic id="11004" name="一串手雷" version="relic.2951.1" maxCopies="32" charges="3" sellPrice="20" quality="1">
+      <Item activation="Effects" removeOnDepleted="true">
+        <Effect kind="Damage" amount="20" target="Opponents" selection="AllLiving" />
+      </Item>
+    </Relic>
+    <Relic id="12001" name="反甲" version="relic.2951.1" maxCopies="1" sellPrice="30" quality="2">
+      <Item reflectRatio="0.2" />
+    </Relic>
+    <Relic id="13001" name="债券" version="relic.2951.1" maxCopies="1" sellPrice="50" quality="3">
+      <Item locationEnterHeal="3" />
+    </Relic>
+    <Relic id="13002" name="13002·致命一击" version="relic.2951.1" maxCopies="1" sellPrice="50" quality="3">
+      <Item executeChance="0.1" />
+    </Relic>
+    <Relic id="13003" name="13003·牌型倍率+2" version="relic.2951.1" maxCopies="1" sellPrice="50" quality="3">
+      <Program id="hand-multiplier" kind="ScoreMultiplier" amount="2" />
+    </Relic>
+    <Relic id="13004" name="替死鬼" version="relic.2951.1" maxCopies="32" charges="1" sellPrice="50" quality="3">
+      <Item reviveRatio="0.6" removeOnDepleted="true" />
+    </Relic>
+    <Relic id="14001" name="六面骰" version="relic.2951.1" maxCopies="1" sellPrice="100" quality="4">
+      <Item activation="ReplaceHeld" cooldownBattles="6" />
+    </Relic>
+    <Relic id="15001" name="俄罗斯转盘" version="relic.2951.1" maxCopies="1" sellPrice="100" quality="5">
+      <Item activation="Roulette" rouletteBase="10" rouletteTurns="6" explosionDamage="2147483647" />
+    </Relic>
+  </Relics>
+</BattleContent>

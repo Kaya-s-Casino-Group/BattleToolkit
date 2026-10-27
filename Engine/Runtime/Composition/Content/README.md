@@ -28,6 +28,24 @@ else
 
 编译阶段也走真实创建路径校验每个编成，但不 Start、不结算效果、不消耗遗物。运行中的溢出、触发队列上限、死亡目标、费用、补牌与整体事务提交继续由现有引擎负责。编译通过不表示任何运行状态下都不可能溢出，也不代替对局/平衡测试。
 
+## 多文件装配
+
+入口和模块都使用 `BattleContent` 根节点；根下通过 `<Import path="Players.xml" />` 显式引用模块。路径相对声明 Import 的文件，允许目录内的 `..`，禁止越出 bundle 根目录、绝对路径和 URL；路径区分大小写。磁盘适配器以入口文件所在目录为 bundle 根，Unity 可按相同虚拟路径提供 `TextAsset.text`。
+
+```csharp
+// 磁盘：同时支持原单文件和带 Import 的入口。
+var build = BattleContentCompiler.CompileFile("Engine/Content/SingleChapter/Wrath.xml");
+// 内存 / Unity / 资源系统：resolver 接收归一化的 bundle 相对路径；缺失时返回 null。
+var assetsBuild = BattleContentCompiler.CompileFiles("Wrath.xml", path => texts[path]);
+// 成功后通过 BattleContentFactory.Create 指定 Encounter，取得未 Start 的会话。
+```
+
+装配先递归读取，再合并各配置目录并统一编译，所以跨文件引用不依赖 Import 顺序。共享文件只加载一次；不同文件允许出现相同目录，不允许重复定义同一个 ID，也不做隐式覆盖。同一文件重复目录、循环引用、缺失文件、未知元素/属性均报错；定义保留原文件、行号及节点路径。入口根的 `id/version/name` 决定整包元数据，未显式指定版本的定义继承入口版本；模块根版本不覆盖入口。
+
+`BattleContentLoader.Load` / `LoadFile` 返回装配后的来源树；校验通过后可用 `ExportXml` 导出兼容单文件。`CompileXml` 仍只解析给定的一个文档，不自行访问 Import。装配保持原编译/Factory 的原子失败约定，不返回部分内容；限制为最多 128 文件、16 层引用、8 Mi 字符、100000 节点，各文档仍遵守读取器的限制。文件读取由宿主信任的 resolver 提供。
+
+单章示例入口见 [AllBattles.xml](../../../Content/SingleChapter/AllBattles.xml)；四个单局、模块分工与兼容导出见 [单章说明](../../../Content/SingleChapter.md)。
+
 ## 配置归属
 
 根为 `<BattleContent schemaVersion="1" id="..." version="...">`。每个目录至多一次；目录可省略，适合先编辑内容草稿。目录内 ID 唯一、大小写敏感；跨目录通过明确的类型引用，不隐式查找同名内容。
@@ -66,8 +84,8 @@ else
 
 - 出牌和主动弃牌共用 `Energy`，分别按 `playEnergyCost` / `discardEnergyCost` 扣费，默认各 1 点。`maxEnergy` / `initialEnergy` 默认各 3；不再额外扣行动次数，也不检查有限弃牌次数。
 - `maxPlayCards` / `maxDiscardCards` 仍可设更低限制，但当前模式的普通选牌硬上限为 5，包含旧 IgnorePlayLimit 特例。出牌最低张数沿用 `minPlayCards`，弃牌至少 1 张。
-- 开局和回合开始自动补至有效手牌上限，基础为 8。普通出牌不补牌；主动弃牌补回 `min(实际弃牌数, 弃牌后距上限的空位)`，牌源不足或终局等规则边界返回实际摸牌数。已出牌造成的空位不会由之后的弃牌额外补满。
-- 当前模式的普通补牌由统一规则计算，不消费旧 playRefill/discardRefill 和 Refill 修正。额外摸牌通过已有牌型/道具 DrawCards 效果执行；效果超限能力仍由 effectDrawOverflow 控制。
+- 开局和回合开始自动补至有效手牌上限，基础为 8。出牌按 `playRefill` 配置补牌：`AfterAction` 立即补至上限，`NextPlayerTurn` 留待下回合；SingleChapterBattle.xml 使用 AfterAction。主动弃牌补回 `min(实际弃牌数, 弃牌后距上限的空位)`，牌源不足或终局等规则边界返回实际摸牌数。已出牌造成的空位不会由之后的弃牌额外补满。
+- 当前模式的普通补牌由统一规则计算，出牌读取基础补牌策略，弃牌仍忽略旧 discardRefill；两者均不消费 Refill 修正。额外摸牌通过已有牌型/道具 DrawCards 效果执行；效果超限能力仍由 effectDrawOverflow 控制。
 - 没有主动摸牌、强制溢出弃牌或额外收尾防御弃牌。回合结束保留手牌。旧参数仍可读取，但当前模式忽略 manualDraw、drawUses、actionsPerTurn、discardCostsAction、discardEndsTurn、endDefense、forceDiscardOverflow 对这套流程的控制。
 - 成功操作后，如果能量不足以支付出牌和弃牌中的任意一种，自动结束；零费用操作仍可在零能量执行。主动道具不扣能量，但要求仍在行动窗口、有正能量，并满足自身次数/冷却/控制条件。
 
@@ -153,6 +171,7 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 - `Effect.perSubmittedCard="true"`：按实际提交顺序展开（规则层使用手牌顺序），每张执行一次；未设置时只执行一次。展开后的首段沿用原 id，后续为 `id/card/2` 等，AddHits 仍按精确 stepId 匹配。总展开上限 64，超限回滚。
 - `amountKind="CardScoreScale"`：限逐张牌型效果，读取本牌计分筹码乘权威伤害牌型倍率，再乘 amount；全局筹码加成只加入首段一次。各段向下取整。
 - Damage 可包含一个 `<OnHitStatus statusRef="bleed" stacks="1"/>`。命中后立即施加给受击者，死亡目标跳过；与 retargetChain、AOE、AddHits 配合。将伤害整体 ReplaceEffect 替换时，是否附带状态由替换效果决定。
+- 逐牌 Damage（`perSubmittedCard="true"`）可配置 `<OnHitStatus statusRef="bleed" stacksKind="CardBasePoints" stacks="1"/>`：每次命中叠加 `stacks × 当前牌基础点数`，采用 CardPoints 配置及上下文覆盖；开启 `wheelAceScoresOne` 时 A2345 的 A 为 1，其他 A 使用配置值（当前为 14）。不包含牌型等级、同花倍率、遗物加点或伤害倍率；不能计分的牌及基础点数为 0 的牌不附加状态。`stacks` 为非负整数系数（此模式必须大于 0），不可同时设置非零 `stacksPerSubmittedCard`。仅用于牌型逐牌伤害，缺少基础点数事实会报错；省略 stacksKind 或设为 Constant 保持原逻辑。兼容牌型合并、转火和追加命中沿用每一段已解析的层数，状态寿命不变。当前 SingleChapterBattle.xml 仍使用固定每击 1 层，切换该属性即可启用按点数中毒。
 - ApplyStatus / OnHitStatus 的层数为 `stacks + stacksPerSubmittedCard × 实际出牌张数`。默认 stacks=1、stacksPerSubmittedCard=0；两者非负且不能同时为零。按出牌张数加层仅供牌型效果、持有手牌事实的 FactTrigger 使用；无手牌事实的触发不执行、不扣预算。敌人自动行为不接受此依赖。
 - `HandRule.flushUsesRankEffects="true"`：旧配置口径，除皇家同花顺外，伤害忽略花色判型、计分和选技能。标准 XML 已改用下面的兼容机制模式；两个开关不能同时开启。
 - `FlushBonus` 专用 `amountKind="FlushBaseTotalScale"`：全部有效出牌筹码 × 同花一级基础倍率 × amount，标准 amount=0.2。与牌型等级及计分遗物解耦，仍接受最终治疗数值修正。
@@ -175,9 +194,21 @@ Conditions 是 AND 列表，支持 FactAtLeast、OwnerHealthAtMost、OwnerHasSta
 新模式每个 Hand 分支至多一个基础 Damage，FlushBonus 只放非伤害效果，不能使用旧葫芦分项金额。合并后的伤害金额取最高的伤害分支，使用最高牌型计分；逐张与群攻可组合成逐张群攻。逐张分配依据各牌计分贡献，以累计取整分配尾差，保证合计等于这份总伤害。不同命中状态或互不相容的单体选敌、目标组、转火链会明确拒绝本次操作，不能静默覆盖。跨牌型遗物若对同一合并步骤进行互斥替换，同样拒绝且不消耗行动。
 
 
+## 七站独占牌型（2026-10-26）
+
+- `HandRule.exclusiveHandEffects=true` 与 `modernScoring=true` 配合使用；不允许同时启用 `combineCompatibleEffects`、`flushAsAttribute`、`flushUsesRankEffects` 或 `pureFlushScoresAllCards`。未声明时，旧模板行为不变。
+- 根据权威最高牌型只执行一个 Hand 分支。同花使用 Flush 的倍率和五张计分牌，覆盖对子/两对/三条；四条仍执行 FourOfAKind 分支，不能获得 FlushBonus。五条的群攻由自身XML明确声明，不依赖低牌型合并。
+- Flush、普通 StraightFlush、同花 FullHouse、同花 FiveOfAKind 及皇家 StraightFlush 执行 FlushBonus。现代治疗使用有效同花牌基础点数和，不读取牌型倍率；独占模式不应用 `flushDamageMultiplier`。
+- 普通同花顺读取 Straight 的计分规则和等级，执行 StraightFlush/Ordinary 的逐张攻击配置；同花葫芦与同花五条继续使用原牌型的计分、等级和效果，只增加治疗。普通顺子与普通同花顺的 OnHitStatus 可以分别配置，若要同步按点数中毒，应同时设置两个分支。
+- `HandAttackInfo.FinalType` 和 `HandGuideCandidate.FinalType` 提供13种 `BattleHandType` 表现身份，含 FlushHouse、FlushFive、RoyalFlush。核心 HandCategory 与既有存档枚举保持不变，复合身份不另建成长等级。`ReceivesFlushBonus` 表示最终牌型是否获得同花治疗；`IsFlush` 仍只描述花色事实，四条即使 IsFlush=true 也不治疗。
+- `HandGuideType` 增加 Flush、StraightFlush、FlushHouse、FlushFive 查询；原 Straight 加 RequireFlush 仍可查询普通同花顺。HighCard/OnePair/TwoPair/ThreeOfAKind 加 RequireFlush 在独占模式下返回不可能，因为最终牌型已被同花覆盖。包含的低牌型仍可被遗物的显式条件读取，不会自动附加基础技能。
+- 完整数值与表现清单见 [单章七站](../../../Content/SingleChapter.md)。
+
 ## revision 2951 字段与道具接口
 
 - `HandRule.modernScoring=true` 启用最新计分口径，`flushDamageMultiplier=2` 控制同花额外乘数；旧模板缺省关闭。
+- 七站配置使用 `HandRule.wheelAceScoresOne=false`：A2345 的 A 仅在顺子判断及出手顺序中为低位，计分、同花治疗和按点数叠层均使用 CardPoints 配置（当前 A=14）。可选的 `wheelAceScoresOne=true` 仍支持仅完整 A2345 将 A 的基础点数覆盖为 1。旧兼容模式下的 `pureFlushScoresAllCards=true` 将纯同花的高牌分支改为全部同花牌计分；两项缺省为 false，且仅允许现代计分模式。
+- `HandRule.fullHouseTripleBaseMultiplier` 可单独指定葫芦三条分项的基础倍率，必须启用 `fullHouseComponentDamage`。它不改变三条分项的等级增长或道具处理。七站设为 2，原分项效果系数 2，因此葫芦仍为有效 ×4，独立三条调整为 ×3。未填写时继续使用三条计分配置。
 - `Player.discardRefill=DiscardedCount` 限定主动弃牌最多补回实际弃牌数且不超过手牌上限；`forceDiscardOverflow=false` 允许超限留手牌。弃牌张数上限独立于手牌上限，最大 512。
 - `Rules.blockExpiry=PlayerTurnStart` 在玩家新回合开始清盾；`clearEnemyBlockAtTurnStart=true` 在敌人自身窗口开始清盾。
 - 每个 `Relic` 最多一个 `Item`，主动模式 `activation=None|Effects|ReplaceHeld|Roulette`。Effects 内支持固定 Heal / Damage / GainBlock，可选择 Self / Opponents / Allies 及自动选敌。只设置本模式适用的能力，原有 Numeric / Program 等机制可同时组合。

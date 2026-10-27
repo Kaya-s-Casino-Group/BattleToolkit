@@ -51,6 +51,7 @@ internal static class NativeServer
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--bundle") return BundleBridge.Run(args);
         if (args.Length == 1 && args[0] == "--metadata") return CompilerBridge.Run(args);
         if (args.Length == 1 && args[0] == "--validate") return CompilerBridge.Run(Array.Empty<string>());
         if (args.Length == 1 && args[0] == "--playtest") return PlaytestBridge.Run();

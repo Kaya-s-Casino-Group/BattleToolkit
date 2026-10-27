@@ -6,6 +6,8 @@ namespace PokerEngine
 {
     public enum AttackOrigin { Other = 0, ScoredHand, EnemyAttack }
     public enum AttackCardScope { None = 0, Submitted, Pattern, Scoring }
+    /// <summary>Final battle identity for presentation. Composite hands share their parent score/level rules.</summary>
+    public enum BattleHandType { HighCard = 1, OnePair, TwoPair, ThreeOfAKind, Straight, Flush, FullHouse, FourOfAKind, StraightFlush, FiveOfAKind, FlushHouse, FlushFive, RoyalFlush }
 
     /// <summary>Immutable effective face and card state captured before the played cards move zones.</summary>
     public sealed class AttackCardSnapshot
@@ -18,11 +20,15 @@ namespace PokerEngine
         public CardEffects Effects { get; }
         public bool IsDisabled { get; }
         public bool CanScore => CardEffectRules.CanScore(Effects);
-        public AttackCardSnapshot(CardInstance card, EffectiveCard face)
+        /// <summary>Configured base points after contextual overrides, before score and damage modifiers.</summary>
+        public long? BasePoints { get; }
+        public AttackCardSnapshot(CardInstance card, EffectiveCard face, long? basePoints = null)
         {
             if (card == null || face == null || card.Id != face.Id) throw new ArgumentException("Snapshot must describe the same card.");
+            if (basePoints < 0) throw new ArgumentOutOfRangeException(nameof(basePoints));
             Id = card.Id; DefinitionId = card.DefinitionId; OriginId = card.OriginId;
             Rank = face.Rank; Suit = face.Suit; Effects = card.Effects; IsDisabled = card.IsDisabled;
+            BasePoints = basePoints;
         }
     }
 
@@ -38,6 +44,9 @@ namespace PokerEngine
         public bool ModernScoring { get; }
         public bool UsesFlushOverlay { get; }
         public bool UsesCompatibleEffects { get; }
+        public BattleHandType FinalType { get; }
+        public bool ReceivesFlushBonus => FinalType == BattleHandType.Flush || FinalType == BattleHandType.StraightFlush ||
+            FinalType == BattleHandType.FlushHouse || FinalType == BattleHandType.FlushFive || FinalType == BattleHandType.RoyalFlush;
         public IReadOnlyList<HandCategory> CompatibleCategories { get; }
         public bool MatchesCategory(HandCategory category) => CompatibleCategories.Contains(category);
         public IReadOnlyList<AttackCardSnapshot> SubmittedCards { get; }
@@ -45,7 +54,7 @@ namespace PokerEngine
         public IReadOnlyList<AttackCardSnapshot> ScoringCards { get; }
         public IReadOnlyList<AttackCardSnapshot> AttackCards { get; }
         public IReadOnlyList<AttackCardSnapshot> FlushCards { get; }
-        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false, bool flushAsAttribute = false, bool modernScoring = false)
+        public HandAttackInfo(PokerHandClassification pattern, IEnumerable<AttackCardSnapshot> submitted, int minFlushCards = 5, int minStraightCards = 5, long? flushBaseTotal = null, bool usesFlushOverlay = false, bool usesCompatibleEffects = false, bool flushAsAttribute = false, bool modernScoring = false, bool pureFlushScoresAllCards = false, bool exclusiveHandEffects = false)
         {
             Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
             var cards = Guard.Copy(submitted, nameof(submitted));
@@ -60,22 +69,35 @@ namespace PokerEngine
             FlushBaseTotal = flushBaseTotal; UsesFlushOverlay = usesFlushOverlay; UsesCompatibleEffects = usesCompatibleEffects; ModernScoring = modernScoring;
             SubmittedCards = Guard.View(cards);
             var faces = cards.Select(c => new EffectiveCard(c.Id, c.Rank, c.Suit)).ToArray();
-            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute, modernScoring: modernScoring) : null;
+            var compatible = usesCompatibleEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, flushAsAttribute: flushAsAttribute, modernScoring: modernScoring, pureFlushScoresAllCards: pureFlushScoresAllCards) : null;
             IsFlush = usesCompatibleEffects ? compatible.Categories.Contains(HandCategory.Flush) :
                 cards.Length >= minFlushCards && cards.All(c => c.Suit == cards[0].Suit);
             RankPattern = usesCompatibleEffects ? compatible.RankHighest :
                 PokerHandClassifier.ClassifyBest(faces, minFlushCards, minStraightCards, true);
-            CompatibleCategories = compatible?.Categories ?? Array.AsReadOnly(new[] { Pattern.Category }.Concat(
+            // Contained combinations remain available to explicitly configured relic conditions;
+            // they do not add their base skills to an exclusive hand.
+            var contained = exclusiveHandEffects ? PokerHandCompatibility.Classify(faces, minFlushCards, minStraightCards, modernScoring: true).Categories : null;
+            CompatibleCategories = contained ?? compatible?.Categories ?? Array.AsReadOnly(new[] { Pattern.Category }.Concat(
                 UsesFlushOverlay && IsFlush ? new[] { HandCategory.Flush, RankPattern.Category } : Array.Empty<HandCategory>()).Distinct().OrderByDescending(c => c).ToArray());
             if (compatible != null && (compatible.Highest.Category != pattern.Category || !compatible.Highest.ScoringCards.SequenceEqual(pattern.ScoringCards)))
                 throw new ArgumentException("Compatible mechanisms require the authoritative highest scoring pattern.");
             PatternCards = Guard.View(pattern.ScoringCards.Select(id => cards.Single(card => card.Id == id)).ToArray());
             ScoringCards = Guard.View(PatternCards.Where(card => card.CanScore).ToArray());
             FlushCards = Guard.View(PokerHandCompatibility.FlushCards(faces, minFlushCards).Select(id => cards.Single(card => card.Id == id)).ToArray());
+            FinalType = ResolveFinalType(Pattern.Category, IsFlush, Pattern.TieBreakRanks[0]);
             AttackCards = modernScoring && RankPattern.Category == HandCategory.Straight ?
                 Guard.View(cards.Where(card => RankPattern.ScoringCards.Contains(card.Id)).OrderBy(StraightRank).ToArray()) : SubmittedCards;
         }
-        // Ordering only: A2345 starts with Ace; scoring always uses the card point profile.
+        public static BattleHandType ResolveFinalType(HandCategory category, bool flush, int highRank)
+        {
+            if (!Enum.IsDefined(typeof(HandCategory), category)) throw new ArgumentOutOfRangeException(nameof(category));
+            if (category == HandCategory.StraightFlush && highRank == (int)Rank.Ace) return BattleHandType.RoyalFlush;
+            if (flush && category == HandCategory.FullHouse) return BattleHandType.FlushHouse;
+            if (flush && category == HandCategory.FiveOfAKind) return BattleHandType.FlushFive;
+            if (flush && category == HandCategory.Straight) return BattleHandType.StraightFlush;
+            return (BattleHandType)(int)category;
+        }
+        // Ordering only: contextual scoring is supplied by the mode when it builds ScoringCard values.
         public int StraightRank(AttackCardSnapshot card) => card.Rank == Rank.Ace &&
             RankPattern.Category == HandCategory.Straight && RankPattern.TieBreakRanks[0] != (int)Rank.Ace ? 1 : (int)card.Rank;
         public IReadOnlyList<AttackCardSnapshot> Cards(AttackCardScope scope)

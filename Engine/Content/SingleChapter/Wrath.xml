@@ -1,0 +1,16 @@
+<BattleContent schemaVersion="1" id="single-chapter-wrath" version="single-chapter-battle.2026-10-26.3">
+  <Import path="Shared.xml" />
+  <Import path="Rules/Wrath.xml" />
+  <Import path="Enemies/Wrath.xml" />
+  <Encounters>
+    <Encounter id="single-chapter-wrath" name="暴怒·千手" rulesRef="thousand-hands-rules">
+      <Player id="player" ref="hero" loadoutRef="baseline" />
+      <Enemy id="enemy" ref="wrath" />
+      <Enemy id="hand-1" ref="wrath-blood-1" />
+      <Enemy id="hand-2" ref="wrath-blood-2" />
+      <Enemy id="hand-3" ref="wrath-blood-3" />
+      <Enemy id="hand-4" ref="wrath-blood-4" />
+      <Enemy id="hand-5" ref="wrath-binding" />
+    </Encounter>
+  </Encounters>
+</BattleContent>

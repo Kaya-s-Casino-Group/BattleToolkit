@@ -33,6 +33,12 @@ namespace PokerEngine
                 .SelectMany(z => z.Cards.Select(id => new HandGuideCard(state.Table.GetCard(id), Face(state.Table.GetCard(id)), z.Kind)))
                 .Where(c => c.Card.CanPlay).OrderBy(c => c.IsMissing).ThenBy(c => c.Card.Id.Value, StringComparer.Ordinal).ToArray();
             var player = state.Duel.Player(actor);
+            if (player.Rules.EffectRule is ConfiguredHandEffectRule exclusive && exclusive.ExclusiveHandEffects && request.RequireFlush &&
+                (request.Type == HandGuideType.HighCard || request.Type == HandGuideType.OnePair || request.Type == HandGuideType.TwoPair || request.Type == HandGuideType.ThreeOfAKind))
+            {
+                yield return new HandGuideResult(state.Revision, Array.Empty<HandGuideCandidate>(), false, 0);
+                yield break;
+            }
             int flush = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinFlushCards).Value;
             int straight = BattleRuleResolver.Value(player.Rules, player.Relics, BattleRuleValueKey.MinStraightCards).Value;
             int min = Math.Max(PlayLimit(state, actor, true), MinimumGuideCards(request.Type, straight));
@@ -83,7 +89,7 @@ namespace PokerEngine
                                     cards.Length >= flush && chosen.All(c => c.Face.Suit == chosen[0].Face.Suit);
                                 if (MatchesGuide(request, pattern, isFlush))
                                 {
-                                    found.Add(new HandGuideCandidate(state, actor, chosen, pattern.Category, isFlush));
+                                    found.Add(new HandGuideCandidate(state, actor, chosen, pattern.Category, isFlush, pattern.TieBreakRanks[0]));
                                     if (found.Count >= request.MaxCandidates) stopped = true;
                                 }
                                 Backtrack(); continue;
@@ -174,7 +180,8 @@ namespace PokerEngine
                 case HandGuideType.ThreeOfAKind: return 3;
                 case HandGuideType.TwoPair: case HandGuideType.FourOfAKind: return 4;
                 case HandGuideType.Straight: return straight;
-                case HandGuideType.FullHouse: case HandGuideType.FiveOfAKind: case HandGuideType.RoyalFlush: return 5;
+                case HandGuideType.FullHouse: case HandGuideType.FiveOfAKind: case HandGuideType.RoyalFlush:
+                case HandGuideType.FlushHouse: case HandGuideType.FlushFive: case HandGuideType.StraightFlush: case HandGuideType.Flush: return 5;
                 default: return 1;
             }
         }
@@ -190,10 +197,10 @@ namespace PokerEngine
                 case HandGuideType.TwoPair: return counts.Values.Count(n => n >= 2) >= 2;
                 case HandGuideType.ThreeOfAKind: return counts.Values.Any(n => n >= 3);
                 case HandGuideType.FourOfAKind: return counts.Values.Any(n => n >= 4);
-                case HandGuideType.FiveOfAKind: return counts.Values.Any(n => n >= 5);
-                case HandGuideType.FullHouse: return counts.Any(a => a.Value >= 3 && counts.Any(b => b.Key != a.Key && b.Value >= 2));
+                case HandGuideType.FiveOfAKind: case HandGuideType.FlushFive: return counts.Values.Any(n => n >= 5);
+                case HandGuideType.FullHouse: case HandGuideType.FlushHouse: return counts.Any(a => a.Value >= 3 && counts.Any(b => b.Key != a.Key && b.Value >= 2));
                 case HandGuideType.RoyalFlush: return Enumerable.Range(15 - straight, straight).All(counts.ContainsKey);
-                case HandGuideType.Straight: return Enumerable.Range(1, 15 - straight).Any(low =>
+                case HandGuideType.Straight: case HandGuideType.StraightFlush: return Enumerable.Range(1, 15 - straight).Any(low =>
                     Enumerable.Range(low, straight).All(rank => counts.ContainsKey(rank == 1 ? 14 : rank)));
                 default: return true;
             }
@@ -210,7 +217,11 @@ namespace PokerEngine
                 case HandGuideType.OnePair: return pattern.Category == HandCategory.OnePair;
                 case HandGuideType.TwoPair: return pattern.Category == HandCategory.TwoPair;
                 case HandGuideType.ThreeOfAKind: return pattern.Category == HandCategory.ThreeOfAKind;
-                case HandGuideType.Straight: return pattern.Category == HandCategory.Straight;
+                case HandGuideType.Straight: return pattern.Category == HandCategory.Straight || pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] != (int)Rank.Ace;
+                case HandGuideType.Flush: return pattern.Category == HandCategory.Flush;
+                case HandGuideType.StraightFlush: return flush && (pattern.Category == HandCategory.Straight || pattern.Category == HandCategory.StraightFlush && pattern.TieBreakRanks[0] != (int)Rank.Ace);
+                case HandGuideType.FlushHouse: return flush && pattern.Category == HandCategory.FullHouse;
+                case HandGuideType.FlushFive: return flush && pattern.Category == HandCategory.FiveOfAKind;
                 case HandGuideType.FullHouse: return pattern.Category == HandCategory.FullHouse;
                 case HandGuideType.FourOfAKind: return pattern.Category == HandCategory.FourOfAKind;
                 case HandGuideType.FiveOfAKind: return pattern.Category == HandCategory.FiveOfAKind;

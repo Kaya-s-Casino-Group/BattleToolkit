@@ -1,0 +1,21 @@
+<BattleContent schemaVersion="1" id="single-chapter-elite" version="single-chapter-battle.2026-10-26.3">
+  <Enemies>
+    <Enemy id="summoner" name="流血精英" maxHealth="800">
+      <Behavior attack="8" attackPerRound="5">
+        <Stage id="normal" mode="Sequence">
+          <Action id="cast" name="施法·半攻伤害后叠加3层流血">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="0.5" amountKind="EnemyAttackScale" />
+              <Effect id="bleeding" kind="ApplyStatus" statusRef="elite-bleeding" stacks="3" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="普攻">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="1" amountKind="EnemyAttackScale" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+  </Enemies>
+</BattleContent>

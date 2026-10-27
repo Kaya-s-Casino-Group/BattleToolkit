@@ -1,0 +1,8 @@
+<BattleContent schemaVersion="1" id="single-chapter-shared" version="single-chapter-battle.2026-10-26.3">
+  <Import path="Hands.xml" />
+  <Import path="Statuses.xml" />
+  <Import path="Relics.xml" />
+  <Import path="Players.xml" />
+  <Import path="Decks.xml" />
+  <Import path="Loadouts.xml" />
+</BattleContent>

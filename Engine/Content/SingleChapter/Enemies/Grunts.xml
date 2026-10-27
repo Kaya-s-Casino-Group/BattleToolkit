@@ -1,0 +1,47 @@
+<BattleContent schemaVersion="1" id="single-chapter-grunts" version="single-chapter-battle.2026-10-26.3">
+  <Enemies>
+    <Enemy id="rotator" name="小怪" maxHealth="350">
+      <Behavior consumeFailedSummon="false">
+        <Stage id="normal" mode="Sequence">
+          <Action id="jab" name="试探攻击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="15" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="重击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="15" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="rotator-strong" name="强化小怪" maxHealth="400">
+      <Behavior consumeFailedSummon="false">
+        <Stage id="normal" mode="Sequence">
+          <Action id="jab" name="试探攻击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="15" />
+            </Effects>
+          </Action>
+          <Action id="strike" name="重击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="15" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+    <Enemy id="guard" name="召唤护卫" maxHealth="150">
+      <Behavior consumeFailedSummon="false">
+        <Stage id="normal" mode="Sequence">
+          <Action id="stab" name="刺击">
+            <Effects>
+              <Effect id="hit" kind="Damage" amount="20" />
+            </Effects>
+          </Action>
+        </Stage>
+      </Behavior>
+    </Enemy>
+  </Enemies>
+</BattleContent>
